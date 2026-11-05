@@ -1,7 +1,7 @@
-using System.IO;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Buddy.Core;
 using Buddy.Core.Mentor;
 
@@ -37,13 +37,10 @@ public sealed class FirstRunWindow : Window
         Width = 560;
         Height = 680;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        FontFamily = new FontFamily("Segoe UI");
-        FontSize = 13;
-        Background = new SolidColorBrush(Color.FromRgb(0xFA, 0xF9, 0xFC));
-        Topmost = true;
+        Classes.Add("form");
 
         var form = new StackPanel { Margin = new Thickness(20) };
-        form.Children.Add(new TextBlock { Text = "Ciao! Facciamo conoscenza 👋", FontSize = 20, FontWeight = FontWeights.SemiBold });
+        form.Children.Add(new TextBlock { Text = "Ciao! Facciamo conoscenza 👋", FontSize = 20, FontWeight = FontWeight.SemiBold });
         form.Children.Add(Hint("Bastano due minuti. Tutto si può cambiare dopo da Impostazioni."));
 
         form.Children.Add(Heading("Come ti chiami?"));
@@ -101,12 +98,11 @@ public sealed class FirstRunWindow : Window
         form.Children.Add(Hint("Diario, profilo e pillole li scrive Claude in questa cartella (per esempio nel tuo vault Obsidian). Il buddy non scrive altrove."));
         _journal.Text = string.IsNullOrWhiteSpace(_settings.Mentor.JournalPath) ? SuggestJournal(_settings.ProjectPath) : _settings.Mentor.JournalPath;
         var browse = new Button { Content = "Sfoglia…", Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(6, 4, 0, 4) };
-        browse.Click += (_, _) =>
+        browse.Click += async (_, _) =>
         {
-            var dialog = new Microsoft.Win32.OpenFolderDialog();
-            if (dialog.ShowDialog(this) == true)
+            if (await Dialogs.PickFolderAsync(this, _journal.Text) is { } folder)
             {
-                _journal.Text = dialog.FolderName;
+                _journal.Text = folder;
             }
         };
         var journalRow = new DockPanel();
@@ -123,7 +119,8 @@ public sealed class FirstRunWindow : Window
         {
             Content = "Iniziamo",
             IsDefault = true,
-            FontWeight = FontWeights.SemiBold,
+            Classes = { "accent" },
+            FontWeight = FontWeight.SemiBold,
             Padding = new Thickness(18, 5, 18, 5),
             Margin = new Thickness(0, 16, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Right,
@@ -131,39 +128,49 @@ public sealed class FirstRunWindow : Window
         start.Click += (_, _) => Finish();
         form.Children.Add(start);
 
-        Content = new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Content = new ScrollViewer { Content = form, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto };
     }
 
-    /// <summary>The settings chosen in the wizard (valid after DialogResult is true).</summary>
-    public BuddySettings Result => _settings;
+    /// <summary>Shows the wizard; completes with the chosen settings, or null if it was closed without finishing.</summary>
+    public Task<BuddySettings?> ShowAndWaitAsync()
+    {
+        var closed = new TaskCompletionSource<BuddySettings?>();
+        Closed += (_, _) => closed.TrySetResult(_finished ? _settings : null);
+        Show();
+        Activate();
+        return closed.Task;
+    }
+
+    private bool _finished;
 
     private void Finish()
     {
         var mentor = _settings.Mentor;
-        mentor.UserName = _userName.Text.Trim();
-        _settings.Appearance.Name = _buddyName.Text.Trim() is { Length: > 0 } name ? name : "Buddy";
+        mentor.UserName = (_userName.Text ?? "").Trim();
+        _settings.Appearance.Name = (_buddyName.Text ?? "").Trim() is { Length: > 0 } name ? name : "Buddy";
 
-        if (_customPersonality.IsChecked == true && _customText.Text.Trim().Length > 0)
+        if (_customPersonality.IsChecked == true && (_customText.Text ?? "").Trim().Length > 0)
         {
             mentor.Personality = Personalities.Custom;
-            mentor.CustomPersonality = _customText.Text.Trim();
+            mentor.CustomPersonality = (_customText.Text ?? "").Trim();
         }
         else
         {
             mentor.Personality = _personalities.FirstOrDefault(r => r.IsChecked == true)?.Tag as string ?? Personalities.All[0].Key;
         }
 
-        mentor.Interests = _interests.Where(b => b.IsChecked == true).Select(b => (string)b.Content)
-            .Concat(_otherInterests.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        mentor.Interests = _interests.Where(b => b.IsChecked == true).Select(b => (string)b.Content!)
+            .Concat((_otherInterests.Text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        mentor.JournalPath = _journal.Text.Trim();
+        mentor.JournalPath = (_journal.Text ?? "").Trim();
         mentor.Enabled = _mentor.IsChecked == true;
         _settings.FirstRunCompleted = true;
-        DialogResult = true;
+        _finished = true;
+        Close();
     }
 
-    /// <summary>"Personale\Buddy" in the root of the Obsidian vault that contains the project folder, if found.</summary>
+    /// <summary>"Personale/Buddy" in the root of the Obsidian vault that contains the project folder, if found.</summary>
     internal static string SuggestJournal(string projectPath)
     {
         for (var dir = string.IsNullOrWhiteSpace(projectPath) ? null : new DirectoryInfo(projectPath); dir is not null; dir = dir.Parent)
@@ -178,14 +185,13 @@ public sealed class FirstRunWindow : Window
     }
 
     private static TextBlock Heading(string text) =>
-        new() { Text = text, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 4) };
+        new() { Text = text, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 16, 0, 4) };
 
     private static TextBlock Hint(string text) =>
-        new() { Text = text, Foreground = new SolidColorBrush(Color.FromRgb(0x6B, 0x66, 0x80)), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 4) };
+        new() { Text = text, Classes = { "hint" }, FontSize = 12, Margin = new Thickness(0, 2, 0, 4) };
 
     private static TextBox Field(TextBox box)
     {
-        box.Padding = new Thickness(4, 3, 4, 3);
         box.Margin = new Thickness(0, 4, 0, 4);
         return box;
     }

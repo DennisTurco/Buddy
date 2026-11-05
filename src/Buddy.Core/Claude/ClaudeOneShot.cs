@@ -29,7 +29,7 @@ public sealed class ClaudeOneShot(IOptions<BuddySettings> options, ILogger<Claud
             return new OneShotResult(false, $"Cartella non trovata: {workingDirectory}");
         }
 
-        var startInfo = new ProcessStartInfo(settings.Claude.Executable)
+        var startInfo = new ProcessStartInfo(ClaudeExecutable.Resolve(settings.Claude.Executable))
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardInput = true,
@@ -95,7 +95,7 @@ public sealed class ClaudeOneShot(IOptions<BuddySettings> options, ILogger<Claud
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or OperationCanceledException or InvalidOperationException or IOException)
         {
             _log.LogError(ex, "claude -p non eseguito in {Folder}", workingDirectory);
-            return new OneShotResult(false, ex.Message);
+            return new OneShotResult(false, ClaudeExecutable.Describe(ex, settings.Claude.Executable));
         }
     }
 }

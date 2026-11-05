@@ -1,10 +1,11 @@
-using System.IO;
 using System.Text.Json;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Buddy.App.Chat;
 using Buddy.App.Pet;
 using Buddy.Core;
@@ -16,25 +17,25 @@ using Microsoft.Extensions.Options;
 namespace Buddy.App;
 
 /// <summary>
-/// Development aid: `Buddy.App.exe --snapshot <folder>` renders the sprites, a sample chat and every tab of the
-/// settings window to PNG files, so the UI can be checked without looking at the desktop.
+/// Development aid: `Buddy.App --snapshot &lt;folder&gt;` renders the sprites, a sample chat and every tab of the
+/// settings window to PNG files, so the UI can be checked without looking at the desktop. The windows appear
+/// on screen for a moment while they are captured.
 /// </summary>
 internal static class Snapshot
 {
-    public static void Render(Conversation conversation, PetWindow pet, BubbleWindow bubble, string folder, IServiceProvider services)
+    public static async Task RenderAsync(Conversation conversation, PetWindow pet, BubbleWindow bubble, string folder, IServiceProvider services)
     {
         Directory.CreateDirectory(folder);
-        RenderSprites(pet.Sprites, Path.Combine(folder, "sprites.png"));
+        await RenderSpritesAsync(pet.Sprites, Path.Combine(folder, "sprites.png"));
 
         conversation.Greet();
-        Pump(conversation.RefreshCurrentTaskAsync());
-        Pump(conversation.SendAsync("/modifiche"));
-        File.WriteAllText(Path.Combine(folder, "instant.md"), string.Join("\n\n-----\n\n", conversation.Entries.Select(e => $"[{e.Speaker}] {e.Text}")));
-        Pump(conversation.SendAsync("/stato"));
-        Pump(conversation.SendAsync("/cerca retention"));
+        await conversation.RefreshCurrentTaskAsync();
+        await conversation.SendAsync("/stato");
         File.WriteAllText(Path.Combine(folder, "instant.md"), string.Join("\n\n-----\n\n", conversation.Entries.Select(e => $"[{e.Speaker}] {e.Text}")));
         conversation.Entries.Clear();
-        conversation.PendingAttachment = Attachment.FromText("System.NullReferenceException: Object reference not set to an instance of an object.\n   at LoginFallito.Registra()", "appunti");
+        conversation.PendingAttachment = Attachment.Combine(
+            Attachment.FromText("System.NullReferenceException: Object reference not set to an instance of an object.\n   at LoginFallito.Registra()", "appunti"),
+            Attachment.FromImage(pet.Sprites.IconPng(96), "immagine dagli appunti"));
         conversation.Entries.Add(new ChatEntry(Speaker.Mentor, "**TCP o UDP?** TCP garantisce ordine e consegna (handshake, ritrasmissioni); UDP spedisce e basta, più veloce. Nel tuo lavoro, dove sceglieresti UDP?"));
         conversation.Entries.Add(new ChatEntry(Speaker.User, "a che punto è NUSR-2367?"));
         conversation.Entries.Add(new ChatEntry(Speaker.Local, "È in **Da controllare**: mancano i test di\n- riattivazione NUSR-2370\n- report *Account bloccati*\n\nFonti: [To-Do.md (NUSR-2367)](obsidian://open?path=x) · [Stato attuale.md](obsidian://open?path=y)")
@@ -43,18 +44,17 @@ internal static class Snapshot
             CanEscalate = true,
         });
         conversation.Entries.Add(new ChatEntry(Speaker.System, "Ora parli con Claude."));
+        var screenshot = Attachment.FromImage(pet.Sprites.IconPng(128), "immagine dagli appunti");
+        conversation.Entries.Add(new ChatEntry(Speaker.User, "perché il pulsante è verde?\n📎 1 immagine") { Images = screenshot.Images });
         conversation.Entries.Add(new ChatEntry(Speaker.User, "/lavora NUSR-2367"));
-        conversation.Entries.Add(new ChatEntry(Speaker.Claude, "Leggo la voce e il codice. Piano:\n\n1. aggiorno `LoginFallito.vb`\n2. rigenero lo script"));
-        using var input = JsonDocument.Parse("""{"file_path":"D:\\Projects\\portale20\\Common\\Business\\BusinessBase\\Accounts\\Data\\LoginFallito.vb"}""");
+        conversation.Entries.Add(new ChatEntry(Speaker.Claude, "Leggo la voce e il codice. Piano:\n\n1. aggiorno `LoginFallito.vb`\n2. rigenero lo script\n\n| Task | Dove | Stato |\n|---|---|---|\n| T-010 | `To-Do` | da fare |\n| T-011 | `Da valutare` | idea |\n\n```sql\nselect * from utenti where bloccato = 1;\n```\n\n> Nota: vedi [Stato attuale](obsidian://open?path=x)"));
+        using var input = JsonDocument.Parse("""{"file_path":"/home/me/portale20/Common/Business/Accounts/Data/LoginFallito.vb"}""");
         conversation.Entries.Add(new PermissionEntry(new PermissionRequest("r1", "Edit", input.RootElement.Clone())));
 
         pet.Show();
-        pet.Left = -3000;
-        pet.Top = 0;
-        bubble.Show();
-        bubble.Left = -3000;
-        bubble.Top = 300;
-        Flush();
+        bubble.Anchor = pet;
+        bubble.ShowAndFocus();
+        await FlushAsync();
 
         Save(bubble, Path.Combine(folder, "bubble.png"));
         Save(pet, Path.Combine(folder, "pet.png"));
@@ -64,48 +64,120 @@ internal static class Snapshot
         conversation.PendingAttachment = null;
         conversation.Entries.Clear();
         local.ForEach(conversation.Entries.Add);
-        Flush();
+        await FlushAsync();
         Save(bubble, Path.Combine(folder, "bubble-local.png"));
 
-        // Maximized: fills a screen; moved off-screen again before rendering.
+        // Maximized: fills the screen of the pet.
         conversation.Entries.Add(new ChatEntry(Speaker.Claude, string.Join("\n\n", Enumerable.Range(1, 4).Select(i =>
             $"**Punto {i}.** Una risposta lunga di Claude con molte informazioni, che nella nuvoletta piccola va a capo ogni poche parole e diventa difficile da leggere; a schermo intero le righe si allargano fino a una lunghezza comoda."))));
         bubble.SetMaximized(true);
-        bubble.Left = -6000;
-        Flush();
+        await FlushAsync();
         Save(bubble, Path.Combine(folder, "bubble-max.png"));
         bubble.SetMaximized(false);
+        bubble.Hide();
 
         var settings = new Settings.SettingsWindow(
             services.GetRequiredService<IOptions<BuddySettings>>().Value,
-            services.GetRequiredService<Buddy.Core.Llm.OllamaClient>())
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -3000,
-            Top = 0,
-        };
+            services.GetRequiredService<Buddy.Core.Llm.OllamaClient>());
         settings.Show();
-        var tabs = FindChild<TabControl>(settings)!;
-        for (var i = 0; i < tabs.Items.Count; i++)
+        await FlushAsync();
+        var tabs = settings.GetVisualDescendants().OfType<TabControl>().First();
+        for (var i = 0; i < tabs.ItemCount; i++)
         {
             tabs.SelectedIndex = i;
-            Flush();
+            await FlushAsync();
             Save(settings, Path.Combine(folder, $"settings-{i}.png"));
         }
 
         settings.Close();
+
+        var wizard = new Settings.FirstRunWindow(services.GetRequiredService<IOptions<BuddySettings>>().Value);
+        wizard.Show();
+        await FlushAsync();
+        Save(wizard, Path.Combine(folder, "first-run.png"));
+        wizard.Close();
+
+        // Project window on the configured vault: every view, an item in the side panel, and editing it.
+        var project = new Project.ProjectWindow(
+            services.GetRequiredService<Buddy.Core.Vault.VaultIndex>(),
+            services.GetRequiredService<IOptions<BuddySettings>>(),
+            services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
+            services.GetRequiredService<PetWindow>().Sprites.Frames(PetState.Idle, ChatMode.Local)[0]);
+        project.Show();
+        foreach (var view in new[] { "overview", "board", "archive", "manualtests", "webtests", "notes" })
+        {
+            project.ShowView(view);
+            await FlushAsync();
+            Save(project, Path.Combine(folder, $"project-{view}.png"));
+        }
+
+        project.ShowView("overview");
+        var menu = project.OpenProjectMenu();
+        await FlushAsync();
+        File.WriteAllText(Path.Combine(folder, "project-switcher.txt"), menu);
+        project.CloseProjectMenu();
+
+        // A run of the first saved script (the snapshot vault points it to a harmless command).
+        if (project.Scripts.FirstOrDefault() is { } script && Environment.GetEnvironmentVariable("BUDDY_SNAPSHOT_RUN") == "1")
+        {
+            project.ShowView("webtests");
+            await project.RunScriptAsync(script);
+            await FlushAsync();
+            Save(project, Path.Combine(folder, "project-webtest-run.png"));
+        }
+
+        // "Nuove idee" with the local model (free), into the snapshot vault's appunti.
+        if (Environment.GetEnvironmentVariable("BUDDY_SNAPSHOT_IDEAS") == "1"
+            && services.GetRequiredService<Buddy.Core.Vault.VaultIndex>() is { IsAvailable: true } vault
+            && Buddy.Core.Vault.ProjectBoard.Load(vault, services.GetRequiredService<IOptions<BuddySettings>>().Value.TaskIdPattern) is { } board
+            && board.Columns.FirstOrDefault(c => c.Key == "appunti") is { } inbox)
+        {
+            var settingsValue = services.GetRequiredService<IOptions<BuddySettings>>().Value;
+            var scheda = vault.Notes.FirstOrDefault(n => n.Title == "Scheda progetto")?.Content;
+            var ideas = new Project.IdeasWindow(board, scheda, Path.Combine(settingsValue.ProjectPath, inbox.NotePath), settingsValue,
+                async (prompt, _, token) =>
+                {
+                    var answer = new System.Text.StringBuilder();
+                    await foreach (var delta in services.GetRequiredService<Buddy.Core.Llm.OllamaClient>()
+                                       .ChatAsync([Buddy.Core.Llm.LlmMessage.User(prompt)], token))
+                    {
+                        answer.Append(delta);
+                    }
+
+                    File.WriteAllText(Path.Combine(folder, "ideas-answer.txt"), answer.ToString());
+                    return (true, answer.ToString());
+                });
+            ideas.Show();
+            await ideas.GenerateForSnapshotAsync("più statistiche utili per il docente sui risultati degli studenti");
+            await FlushAsync();
+            await FlushAsync();
+            Save(ideas, Path.Combine(folder, "ideas.png"));
+            ideas.Close();
+        }
+
+        project.ShowView("board");
+        if ((project.Cards.FirstOrDefault(c => c.HasDetails) ?? project.Cards.FirstOrDefault()) is { } card)
+        {
+            project.Select(card);
+            await FlushAsync();
+            Save(project, Path.Combine(folder, "project-detail.png"));
+            project.BeginEditSelected();
+            await FlushAsync();
+            Save(project, Path.Combine(folder, "project-edit.png"));
+        }
+
+        project.Close();
     }
 
     /// <summary>
-    /// `--export-icon <folder>`: writes the project icon from the idle sprite: icon.png (256 px, for the README)
-    /// and buddy.ico (16-256 px, PNG frames) for the exe.
+    /// `--export-icon &lt;folder&gt;`: writes the project icon from the idle sprite: icon.png (256 px, for the README)
+    /// and buddy.ico (16-256 px, PNG frames) for the Windows exe.
     /// </summary>
     public static void ExportIcon(PetSprites sprites, string folder)
     {
         Directory.CreateDirectory(folder);
-        var sprite = sprites.Frames(PetState.Idle, ChatMode.Local)[0];
         int[] sizes = [16, 24, 32, 48, 64, 128, 256];
-        var frames = sizes.ToDictionary(s => s, s => Png(sprite, s));
+        var frames = sizes.ToDictionary(s => s, sprites.IconPng);
         File.WriteAllBytes(Path.Combine(folder, "icon.png"), frames[256]);
 
         using var ico = new BinaryWriter(File.Create(Path.Combine(folder, "buddy.ico")));
@@ -132,66 +204,17 @@ internal static class Snapshot
         }
     }
 
-    /// <summary>The sprite scaled to <paramref name="size"/> pixels without smoothing, as PNG bytes.</summary>
-    private static byte[] Png(BitmapSource sprite, int size)
+    /// <summary>Lets layout, rendering and the markdown viewers settle.</summary>
+    private static async Task FlushAsync()
     {
-        // Nearest-neighbour by hand: each target pixel copies the source pixel it falls on, so edges stay sharp.
-        var source = new FormatConvertedBitmap(sprite, PixelFormats.Bgra32, null, 0);
-        var (w, h) = (source.PixelWidth, source.PixelHeight);
-        var input = new byte[w * h * 4];
-        source.CopyPixels(input, w * 4, 0);
-        var output = new byte[size * size * 4];
-        for (var y = 0; y < size; y++)
+        for (var i = 0; i < 5; i++)
         {
-            for (var x = 0; x < size; x++)
-            {
-                Array.Copy(input, ((y * h / size) * w + x * w / size) * 4, output, (y * size + x) * 4, 4);
-            }
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            await Task.Delay(100);
         }
-
-        var bitmap = BitmapSource.Create(size, size, 96, 96, PixelFormats.Bgra32, null, output, size * 4);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using var stream = new MemoryStream();
-        encoder.Save(stream);
-        return stream.ToArray();
     }
 
-    /// <summary>Runs the dispatcher until the task completes (the snapshot runs on the UI thread).</summary>
-    private static void Pump(Task task)
-    {
-        while (!task.IsCompleted)
-        {
-            Application.Current.Dispatcher.Invoke(DispatcherPriority.Background, () => { });
-            Thread.Sleep(10);
-        }
-
-        task.GetAwaiter().GetResult();
-    }
-
-    private static void Flush() =>
-        Application.Current.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, () => { });
-
-    private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T match)
-            {
-                return match;
-            }
-
-            if (FindChild<T>(child) is { } nested)
-            {
-                return nested;
-            }
-        }
-
-        return null;
-    }
-
-    private static void RenderSprites(PetSprites sprites, string path)
+    private static async Task RenderSpritesAsync(PetSprites sprites, string path)
     {
         var panel = new StackPanel { Background = Brushes.White };
         foreach (var mode in Enum.GetValues<ChatMode>())
@@ -201,27 +224,25 @@ internal static class Snapshot
             foreach (var frame in all.Distinct())
             {
                 var image = new Image { Source = frame, Width = 64, Height = 64, Margin = new Thickness(4) };
-                RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor);
+                RenderOptions.SetBitmapInterpolationMode(image, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
                 row.Children.Add(image);
             }
 
             panel.Children.Add(row);
         }
 
-        panel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        panel.Arrange(new Rect(panel.DesiredSize));
-        Save(panel, path);
+        var window = new Window { Content = panel, SizeToContent = SizeToContent.WidthAndHeight, WindowDecorations = WindowDecorations.None };
+        window.Show();
+        await FlushAsync();
+        Save(window, path);
+        window.Close();
     }
 
-    private static void Save(FrameworkElement element, string path)
+    private static void Save(Window window, string path)
     {
-        var width = (int)Math.Ceiling(element.ActualWidth);
-        var height = (int)Math.Ceiling(element.ActualHeight);
-        var bitmap = new RenderTargetBitmap(Math.Max(width, 1), Math.Max(height, 1), 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(element);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using var file = File.Create(path);
-        encoder.Save(file);
+        var size = window.Bounds.Size;
+        using var bitmap = new RenderTargetBitmap(new PixelSize(Math.Max(1, (int)Math.Ceiling(size.Width)), Math.Max(1, (int)Math.Ceiling(size.Height))));
+        bitmap.Render(window);
+        bitmap.Save(path, PngBitmapEncoderOptions.Default);
     }
 }

@@ -2,7 +2,7 @@
 
 # Buddy
 
-A small pixel-art desk companion for Windows, and a mentor. Click it to open a chat bubble:
+A small pixel-art desk companion for Windows and Linux, and a mentor. Click it to open a chat bubble:
 
 - **local model** (Ollama) for quick answers grounded on the notes of one Obsidian project folder (read-only);
 - **Claude** (Claude Code CLI) for real tasks, in the same thread, with permission prompts answered from the bubble;
@@ -10,15 +10,33 @@ A small pixel-art desk companion for Windows, and a mentor. Click it to open a c
 
 ## Requirements
 
-- Windows 10/11, .NET 10 SDK
+- Windows 10/11 or Linux (developed on Ubuntu with GNOME), .NET 10 SDK
 - [Ollama](https://ollama.com) running locally, with the configured model pulled (`ollama pull llama3.2:3b`)
 - Claude Code CLI logged in (`claude` then `/login` in a terminal)
 - For dictation: a Whisper ggml model, e.g. `ggml-small.bin` from `huggingface.co/ggerganov/whisper.cpp`, in
-  `%APPDATA%\Buddy\models\` (or set its path in the settings)
+  `<data>/models/` (or set its path in the settings)
 
-Windows only: the UI is WPF, and the tray icon, global shortcut, idle detection and microphone use Windows APIs.
-`Buddy.Core` (vault, context, Ollama, Claude bridge, mentor) is plain .NET and cross-platform; a Linux version would
-need a new UI layer (e.g. Avalonia) and replacements for those Windows-specific pieces.
+`<data>` below is the per-user folder: `%APPDATA%\Buddy` on Windows, `~/.config/Buddy` on Linux.
+
+The UI is [Avalonia](https://avaloniaui.net), the same on both systems. What differs per OS lives in
+`src/Buddy.App/Platform/`:
+
+| | Windows | Linux |
+|---|---|---|
+| Tray icon and notifications | WinForms `NotifyIcon` (balloons/toasts) | Avalonia tray icon (StatusNotifierItem; on GNOME it needs the AppIndicator extension, enabled by default on Ubuntu) and `notify-send` |
+| Global shortcut | Registered by the app (`Assistente → Scorciatoia globale`) | Set in the desktop: bind a shortcut to `Buddy.App --hotkey` (see below) |
+| Idle time | `GetLastInputInfo` | GNOME idle monitor over D-Bus (`gdbus`); X11 screensaver extension on X11 sessions |
+| "Do not disturb" | Microphone in use by another app, full-screen app or presentation, Windows focus assist | Microphone in use by another app (PipeWire, `pw-dump`), GNOME "do not disturb". Full-screen apps are not detected |
+| Microphone | WinMM (NAudio) | `pw-record` (PipeWire) or `arecord` |
+| Start at login | Registry `Run` key | `~/.config/autostart/buddy.desktop` |
+
+On Linux the windows run through X11 (XWayland on a Wayland session), which lets the pet place itself and stay on
+top like on Windows.
+
+**Global shortcut on Linux.** Wayland does not let apps grab keys, so the desktop does it: in GNOME, Settings →
+Keyboard → Keyboard Shortcuts → Custom Shortcuts → add one with command `/path/to/Buddy.App --hotkey` and the keys
+you like (e.g. Ctrl+Alt+B). Only one buddy runs at a time: a second launch hands its request to the running one, so
+`--hotkey` opens the chat with the clipboard attached, and launching the app again just opens the chat.
 
 ## First run
 
@@ -40,7 +58,7 @@ Impostazioni → Mentore e voce.
 | Breaks and focus | A break suggestion after long continuous activity at the PC; `/focus [min]` silences the mentor and asks how it went. |
 | Weekly retro | On the chosen day Claude writes `Retro/<year>-W<week>.md` from the diary, the vault and your commits, with one strength and one habit to work on. |
 | Trends | The buddy counts, per week, active hours at the PC, focus blocks, check-ins, pills, reviews, chats and approaches (`/andamento` shows the last 4 weeks). The retro adds a row to `Andamento.md` (average mood, hours, focus, reviews, whether last week's habit was kept) and compares the week with the previous ones. |
-| Do not disturb | The mentor stays quiet while another app uses the microphone (a call), an app is full screen or presenting, or Windows "do not disturb" is on; due messages wait until you are free. |
+| Do not disturb | The mentor stays quiet while another app uses the microphone (a call), an app is full screen or presenting, or "do not disturb" is on (see the table above for what each system detects); due messages wait until you are free. |
 
 Your answers are written by Claude (one-shot `claude -p` with a cheap model) into the journal folder only: writing
 elsewhere is denied by the CLI. Commands: `/checkin`, `/checkout`, `/pillola`, `/ripasso`, `/chiacchiera`, `/retro`,
@@ -55,15 +73,15 @@ input box to check before sending. Nothing leaves the PC.
 
 Right click on the pet → **Impostazioni…** edits everything below and restarts the buddy to apply it:
 appearance (name, font, bubble colours with light/dark presets), the character (colours, size, animation speed,
-always on top, remembered position, start with Windows, custom pixel art), models and paths, the local model's
+always on top, remembered position, start at login, custom pixel art), models and paths, the local model's
 personality (system prompt), Claude tools allowed without asking, and the chat phrases.
 
 **Custom pixel art**: a folder with one PNG per state (`idle`, `think`, `work`, `alert`, `error`), each a horizontal
 strip of square frames; `claude-<state>.png` applies only in Claude mode; missing files fall back to the built-in
 character. "Esporta modello" writes the built-in frames there as a starting point.
 
-Defaults are in `src/Buddy.App/appsettings.json`. Personal values go in `%APPDATA%\Buddy\appsettings.json` (written by
-the settings window), which overrides them. Window position is kept in `%APPDATA%\Buddy\state.json`. Minimal example:
+Defaults are in `src/Buddy.App/appsettings.json`. Personal values go in `<data>/appsettings.json` (written by
+the settings window), which overrides them. Window position is kept in `<data>/state.json`. Minimal example:
 
 ```json
 {
@@ -86,8 +104,55 @@ the settings window), which overrides them. Window position is kept in `%APPDATA
 
 ## Usage
 
-- Click the pet: open/close the bubble. Drag it to move. Right click: menu (chat, new conversation,
+- Click the pet: open/close the bubble. Drag it to move. Right click: menu (chat, project board, new conversation,
   open the project vault in Obsidian, settings, exit).
+- **Bacheca del progetto** (pet or tray menu) — the project window, read from the vault's flow notes:
+  - *Panoramica*: one number per step (with what matters: ⏰ overdue reviews, 🔥 P1, 🔓 unblocked, Claude cost),
+    what needs attention now, *Stato attuale*, last closed tasks;
+  - *Bacheca*: Appunti, Da valutare, Da fare (sorted by priority), In attesa, Da controllare;
+  - *Archivio*: Fatti (total Claude cost, reworks) and Rifiutati;
+  - *Test manuali*: the checklists in `Test manuali/` (one `.md` per task, `- [ ]` cases), with progress and cases to
+    redo; tick a case and it is written to the file as `- [x]` (refused if the note changed meanwhile). *Aggiorna con
+    Claude* sends `/test-manuali ID`; a task's side panel links to its checklist;
+  - *Test web*: the saved browser scripts of the `Test web` note (what they cover, last run ✅/❌, command) and the
+    screenshots of the `Test web` folder grouped by task (click to open);
+    **▶ Esegui** on a script runs its command (or `npx playwright test <file>`) in the scripts folder named in the
+    Scheda progetto (*Cartella degli script di test*), without Claude: live output, ■ stop, the outcome from
+    Playwright's summary, and "Ultima esecuzione: <date> ✅ (2/2)" written back in the note. A failed run can be sent
+    to Claude (🧠 *Chiedi a Claude*) with the end of its output;
+  - *Note*: every vault note, with `[[links]]` between them, editable as a whole (Ctrl+S).
+- **💡 Nuove idee** (project window side bar, Ctrl+I): describe what you would like to add; Claude (one-off
+  `claude -p` in the vault) or the local model proposes 3/5/8 ideas, given the Scheda, Stato attuale and the items
+  already planned, done or rejected. They go straight into To-do Appunti as `- <date> · 💡 idea`; *Togli queste idee*
+  takes them back, *Smista ora* sends `/smista`.
+
+  **Tags**: each item can have one, written in the note as `[tag:: bug]` (separate from the project's `[tipo:: …]`
+  categories). It shows as a coloured label next to the ID; pick it in the side panel (ticket, feature, bug, analisi,
+  miglioria, refactoring, documentazione, supporto, or any other name) and filter the board by tag from the bar above
+  the columns.
+
+  Cards show ID, date, title, the "—" remark and chips for Dataview fields (`priorita`, `stima`, `consiglio`,
+  `tipo`, `fino`/`rivedere` dates, red when past), 🔁 reworks, PR and cost. Click one for the side panel: details,
+  **Claude skill buttons** for its step — 🛠 `/lavora`, 🧭 `/guidami`, 📄 `/analisi`, 🚫 `/rifiuta` (asks the reason),
+  🤔 `/valuta`, ✅ `/chiudi` (asks the PR), 🧪 `/test-manuali`, 🌐 `/verifica-web` — sent to Claude in the chat, *Chiedi in chat*, and
+  *Modifica* / *Elimina* of the item's markdown. A skill button only appears when the skill is installed
+  (`~/.claude/skills` or the project's `.claude/skills`). The side bar adds an appunto (Ctrl+N, Enter); 🗂 Smista sends
+  `/smista`. Shortcuts: Ctrl+1…6 views, Ctrl+F search, Esc closes edit → panel → window. It refreshes by itself when
+  a note changes; an edit never overwrites a note changed meanwhile (it asks to reload instead).
+- **Hide/show**: pet menu → *Nascondi Buddy*; the tray icon (*Mostra/Nascondi Buddy*, or a click), the shortcut and
+  notifications bring it back.
+- **Projects**: pet menu → *Progetto* (or the name at the top of the project window) lists your projects; *Nuovo
+  progetto…* asks name, vault and repository (conventions copied from the current one, flow notes detected) and
+  restarts Buddy on it. Switching always saves the project you leave first. *Impostazioni → Progetti* also duplicates,
+  renames and deletes.
+- **Claude usage**: `/uso` in the chat, the header of the chat and the project window's side bar show today's cost
+  (with a Pro/Max plan it is the equivalent API price) and the plan limits Claude Code reports (5-hour and weekly
+  windows, reset time). The per-turn cost in the chat is now the turn's own (the CLI reports a running total).
+- **Accents on Linux** with a US International keyboard: Buddy composes the dead keys itself (' + e = é, ` + a = à,
+  ' + space = '), since X11 apps under Wayland do not reach IBus.
+- **Images and files in the chat**: paste a screenshot with Ctrl+V in the input (text pastes as usual), drag images
+  or files onto the chat or the pet, or use 📎. Several can be attached to one message; thumbnails show in the
+  attachment and in the sent message (click to open). Only Claude sees images: the local model does not.
 - Type and press Enter (Shift+Enter for a new line).
 - ⛶ in the bubble title (or F11, or a double click on the title): full screen on the pet's monitor, with wider
   messages for long answers; again to go back next to the pet.
@@ -116,7 +181,7 @@ working (Claude), alert (permission request), error.
 | Drafts | `/commit`, `/pr` — Claude gets the diff (and the PR template) and returns text to copy; it is told not to commit or run git. |
 | Guidelines | Questions are also matched (keyword search weighted by rarity) against `Repo.KnowledgePaths` (e.g. `docs/guidelines`, `AGENTS.md`). |
 | Attachments | Global shortcut (default Ctrl+Alt+B) opens the chat with the clipboard (text, image or files) attached; files, text or images can also be dropped on the pet. Images go only to Claude. |
-| Notifications | When a Claude answer takes longer than `NotifyAfterSeconds` and the bubble is not focused, a Windows notification appears (tray icon). |
+| Notifications | When a Claude answer takes longer than `NotifyAfterSeconds` and the bubble is not focused, a desktop notification appears (tray icon); clicking it opens the chat. |
 | Walking | When idle and the chat is closed, the pet strolls left/right along its screen row (`Personaggio` tab: on/off, speed, pause). Custom art: `walk.png`. |
 | Project presets | Right click → Progetto: switch between saved project setups (vault, repo, Claude folders, docs, groups, conventions, task buttons) or save the current one. Also in `Impostazioni → Progetti`. |
 
@@ -127,18 +192,29 @@ working (Claude), alert (permission request), error.
 - Claude runs as `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio`:
   one long-lived process per conversation; permission prompts arrive as `can_use_tool` control requests and are
   answered with a `control_response`. The session id is kept so the conversation resumes with `--resume`.
-- `Buddy.App` — WPF: `Pet/` (sprite drawn from character grids in `PetSprites.cs`), `Chat/` (bubble).
+- `Buddy.App` — Avalonia: `Pet/` (sprite drawn from character grids in `PetSprites.cs`), `Chat/` (bubble),
+  `Settings/`, `Platform/` (per-OS services), `Theme.axaml` (colours and styles shared by every window).
 
 ## Logs
 
-`%APPDATA%\Buddy\logs\buddy-<date>.log` (kept 14 days; tray icon → **Apri i log**): start-up, Claude turns and
+`<data>/logs/buddy-<date>.log` (kept 14 days; tray icon → **Apri i log**): start-up, Claude turns and
 errors, `claude -p` calls of the mentor, Ollama failures, when the mentor goes quiet. Unexpected UI errors are logged
 and shown in the chat instead of closing the app.
 
 ## Development
 
-```powershell
+```bash
 dotnet build Buddy.sln
 dotnet test Buddy.sln            # ClaudeProcessTests needs node on PATH (fake CLI)
-src\Buddy.App\bin\Debug\net10.0-windows\Buddy.App.exe --snapshot <folder>   # renders sprites and a sample chat to PNG
+dotnet run --project src/Buddy.App
+dotnet run --project src/Buddy.App -- --snapshot <folder>   # renders sprites, chat, settings and wizard to PNG
 ```
+
+The target framework follows the OS that builds it: `net10.0-windows` on Windows (adds WinForms for the tray icon),
+`net10.0` elsewhere. `dotnet build src/Buddy.App -p:BuddyWindows=true` compiles the Windows flavour from Linux, as a
+check (it does not run there).
+
+**Changing the look.** Colours, fonts and form styles are in `src/Buddy.App/Theme.axaml`; each window has its
+`.axaml`. With the *Avalonia for VS Code* extension (or JetBrains Rider) the `.axaml` files have a live preview,
+filled with sample messages from `DesignData.cs`; build the project once first. The pet's look needs no code: see
+*Custom pixel art* above.

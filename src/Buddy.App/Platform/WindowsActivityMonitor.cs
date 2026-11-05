@@ -3,10 +3,10 @@ using System.Runtime.InteropServices;
 using Buddy.Core.Mentor;
 using Microsoft.Win32;
 
-namespace Buddy.App.Input;
+namespace Buddy.App.Platform;
 
 /// <summary>
-/// Activity at the PC for the mentor:
+/// Activity at the PC for the mentor, on Windows:
 /// <list type="bullet">
 /// <item>continuous activity from the time of the last keyboard/mouse input (GetLastInputInfo); an idle gap of
 /// <see cref="IdleGap"/> or more starts a new period;</item>
@@ -14,7 +14,8 @@ namespace Buddy.App.Input;
 /// or Windows "do not disturb" (SHQueryUserNotificationState).</item>
 /// </list>
 /// </summary>
-public sealed class ActivityMonitor : IActivityMonitor
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+public sealed class WindowsActivityMonitor : IActivityMonitor
 {
     private static readonly TimeSpan IdleGap = TimeSpan.FromMinutes(5);
 

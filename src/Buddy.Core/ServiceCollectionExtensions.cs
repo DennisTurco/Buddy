@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<KnowledgeIndex>();
         services.AddSingleton<AssistantCommands>();
         services.AddSingleton<LocalAssistant>();
+        services.AddSingleton<Claude.ClaudeUsage>();
         services.AddSingleton<Claude.ClaudeAuth>();
         services.AddSingleton<Claude.ClaudeOneShot>();
         services.AddSingleton<Mentor.MentorService>();

@@ -1,7 +1,8 @@
-using System.IO;
-using System.Windows;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Buddy.Core;
 using Buddy.Core.Chat;
 
@@ -46,17 +47,21 @@ public sealed class PetSprites
     private static readonly string[] StepRight = With(Open, (13, "...KKBBBBBBKK..."), (14, ".....KK..KK....."));
     private static readonly string[] Joy = With(Open, (7, ".KBBDDBBBBDDBBK."), (8, ".KBDBBDBBDBBDBK."), (10, ".KBBBKBBBBKBBBK."), (11, ".KBBBBKKKKBBBBK."));
 
+    private static readonly Color DefaultLocal = Color.FromRgb(0x7F, 0xD1, 0xAE);
+    private static readonly Color DefaultClaude = Color.FromRgb(0xB9, 0x9B, 0xF5);
+
     private readonly PetSettings _settings;
-    private readonly Dictionary<(PetState, ChatMode), IReadOnlyList<BitmapSource>> _cache = [];
+    private readonly Dictionary<(PetState, ChatMode), IReadOnlyList<IImage>> _cache = [];
+    private readonly Dictionary<ChatMode, IReadOnlyList<IImage>> _walkCache = [];
 
     public PetSprites(PetSettings settings) => _settings = settings;
 
     /// <summary>Frames of the animation loop for a state; the window cycles through them.</summary>
-    public IReadOnlyList<BitmapSource> Frames(PetState state, ChatMode mode)
+    public IReadOnlyList<IImage> Frames(PetState state, ChatMode mode)
     {
         if (!_cache.TryGetValue((state, mode), out var frames))
         {
-            frames = LoadCustom(state, mode) ?? BuiltIn(state, mode);
+            frames = LoadCustom(state, mode) ?? Bitmaps(BuiltIn(state, mode));
             _cache[(state, mode)] = frames;
         }
 
@@ -64,32 +69,49 @@ public sealed class PetSprites
     }
 
     /// <summary>Walking loop: "walk.png" (or "claude-walk.png") from the custom folder, else the built-in steps.</summary>
-    public IReadOnlyList<BitmapSource> WalkFrames(ChatMode mode)
+    public IReadOnlyList<IImage> WalkFrames(ChatMode mode)
     {
         if (!_walkCache.TryGetValue(mode, out var frames))
         {
             frames = LoadCustomFile(mode == ChatMode.Claude ? "claude-walk.png" : "walk.png")
                 ?? (mode == ChatMode.Claude ? LoadCustomFile("walk.png") : null)
-                ?? (HasCustomFolder ? Frames(PetState.Idle, mode) : BuiltInWalk(mode));
+                ?? (HasCustomFolder ? Frames(PetState.Idle, mode) : Bitmaps(BuiltInWalk(mode)));
             _walkCache[mode] = frames;
         }
 
         return frames;
     }
 
-    private readonly Dictionary<ChatMode, IReadOnlyList<BitmapSource>> _walkCache = [];
+    /// <summary>The built-in idle character scaled to <paramref name="size"/> pixels without smoothing, as PNG (icons).</summary>
+    public byte[] IconPng(int size)
+    {
+        var frame = BuiltIn(PetState.Idle, ChatMode.Local)[0];
+        var scaled = new byte[size * size * 4];
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                Array.Copy(frame, ((y * BuiltInSize / size) * BuiltInSize + x * BuiltInSize / size) * 4, scaled, (y * size + x) * 4, 4);
+            }
+        }
+
+        return Png(scaled, size, size);
+    }
 
     private bool HasCustomFolder => !string.IsNullOrWhiteSpace(_settings.SpriteFolder) && Directory.Exists(_settings.SpriteFolder);
 
-    private IReadOnlyList<BitmapSource>? LoadCustomFile(string name) =>
+    private IReadOnlyList<IImage>? LoadCustomFile(string name) =>
         HasCustomFolder && File.Exists(Path.Combine(_settings.SpriteFolder, name)) ? TryLoadStrip(Path.Combine(_settings.SpriteFolder, name)) : null;
 
-    private IReadOnlyList<BitmapSource> BuiltInWalk(ChatMode mode)
+    private IReadOnlyList<byte[]> BuiltInWalk(ChatMode mode)
     {
-        var body = ParseColor(mode == ChatMode.Claude ? _settings.ClaudeColor : _settings.LocalColor,
-            mode == ChatMode.Claude ? Color.FromRgb(0xB9, 0x9B, 0xF5) : Color.FromRgb(0x7F, 0xD1, 0xAE));
+        var body = BodyColor(mode);
         return [Render(StepLeft, body), Render(Open, body), Render(StepRight, body), Render(Open, body)];
     }
+
+    private Color BodyColor(ChatMode mode) => mode == ChatMode.Claude
+        ? ParseColor(_settings.ClaudeColor, DefaultClaude)
+        : ParseColor(_settings.LocalColor, DefaultLocal);
 
     /// <summary>Text shown above the head for each state (thought dots, alarm...).</summary>
     public static string Badge(PetState state, int tick) => state switch
@@ -116,18 +138,17 @@ public sealed class PetSprites
                          .Select(s => (FileName(s, mode), BuiltIn(s, mode)))
                          .Append(((mode == ChatMode.Claude ? "claude-" : "") + "walk.png", BuiltInWalk(mode))))
             {
-                var strip = new WriteableBitmap(BuiltInSize * frames.Count, BuiltInSize, 96, 96, PixelFormats.Bgra32, null);
-                var pixels = new byte[BuiltInSize * BuiltInSize * 4];
+                var width = BuiltInSize * frames.Count;
+                var strip = new byte[width * BuiltInSize * 4];
                 for (var i = 0; i < frames.Count; i++)
                 {
-                    frames[i].CopyPixels(pixels, BuiltInSize * 4, 0);
-                    strip.WritePixels(new Int32Rect(i * BuiltInSize, 0, BuiltInSize, BuiltInSize), pixels, BuiltInSize * 4, 0);
+                    for (var y = 0; y < BuiltInSize; y++)
+                    {
+                        Array.Copy(frames[i], y * BuiltInSize * 4, strip, (y * width + i * BuiltInSize) * 4, BuiltInSize * 4);
+                    }
                 }
 
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(strip));
-                using var file = File.Create(Path.Combine(folder, name));
-                encoder.Save(file);
+                File.WriteAllBytes(Path.Combine(folder, name), Png(strip, width, BuiltInSize));
             }
         }
     }
@@ -135,10 +156,9 @@ public sealed class PetSprites
     public static string FileName(PetState state, ChatMode mode) =>
         (mode == ChatMode.Claude ? "claude-" : "") + state.ToString().ToLowerInvariant() + ".png";
 
-    private IReadOnlyList<BitmapSource>? LoadCustom(PetState state, ChatMode mode)
+    private IReadOnlyList<IImage>? LoadCustom(PetState state, ChatMode mode)
     {
-        var folder = _settings.SpriteFolder;
-        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        if (!HasCustomFolder)
         {
             return null;
         }
@@ -154,7 +174,7 @@ public sealed class PetSprites
 
         foreach (var name in candidates.Distinct())
         {
-            var path = Path.Combine(folder, name);
+            var path = Path.Combine(_settings.SpriteFolder, name);
             if (File.Exists(path) && TryLoadStrip(path) is { Count: > 0 } frames)
             {
                 return frames;
@@ -164,41 +184,32 @@ public sealed class PetSprites
         return null;
     }
 
-    private static List<BitmapSource>? TryLoadStrip(string path)
+    private static List<IImage>? TryLoadStrip(string path)
     {
         try
         {
-            var image = new BitmapImage();
-            image.BeginInit();
-            image.UriSource = new Uri(path);
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.EndInit();
-            image.Freeze();
-
-            var size = image.PixelHeight;
-            var count = Math.Max(1, image.PixelWidth / size);
-            var frames = new List<BitmapSource>(count);
+            var image = new Bitmap(path);
+            var size = image.PixelSize.Height;
+            var count = Math.Max(1, image.PixelSize.Width / size);
+            var frames = new List<IImage>(count);
             for (var i = 0; i < count; i++)
             {
-                var frame = new CroppedBitmap(image, new Int32Rect(i * size, 0, size, size));
-                frame.Freeze();
-                frames.Add(frame);
+                frames.Add(new CroppedBitmap(image, new PixelRect(i * size, 0, size, size)));
             }
 
             return frames;
         }
-        catch (Exception ex) when (ex is IOException or NotSupportedException or ArgumentException or UriFormatException)
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
         {
             return null;
         }
     }
 
-    private IReadOnlyList<BitmapSource> BuiltIn(PetState state, ChatMode mode)
+    private IReadOnlyList<byte[]> BuiltIn(PetState state, ChatMode mode)
     {
-        var body = ParseColor(mode == ChatMode.Claude ? _settings.ClaudeColor : _settings.LocalColor,
-            mode == ChatMode.Claude ? Color.FromRgb(0xB9, 0x9B, 0xF5) : Color.FromRgb(0x7F, 0xD1, 0xAE));
+        var body = BodyColor(mode);
 
-        BitmapSource R(string[] grid) => Render(grid, body);
+        byte[] R(string[] grid) => Render(grid, body);
 
         return state switch
         {
@@ -208,23 +219,15 @@ public sealed class PetSprites
             PetState.Error => [R(Sad)],
             PetState.Happy => [R(Joy)],
             PetState.Speak => [R(Open), R(Open), R(Surprised)],
-            _ => [.. Enumerable.Repeat(R(Open), 11), R(Blink)],
+            _ => [.. Enumerable.Repeat(R(Open), 11), R(Blink)], // one array repeated: one bitmap
         };
     }
 
-    public static Color ParseColor(string? value, Color fallback)
-    {
-        try
-        {
-            return string.IsNullOrWhiteSpace(value) ? fallback : (Color)ColorConverter.ConvertFromString(value.Trim());
-        }
-        catch (FormatException)
-        {
-            return fallback;
-        }
-    }
+    public static Color ParseColor(string? value, Color fallback) =>
+        !string.IsNullOrWhiteSpace(value) && Color.TryParse(value.Trim(), out var color) ? color : fallback;
 
-    private static BitmapSource Render(string[] grid, Color body)
+    /// <summary>One built-in frame as BGRA pixels (straight alpha).</summary>
+    private static byte[] Render(string[] grid, Color body)
     {
         // Highlight: the body colour mixed halfway towards white.
         var light = Color.FromRgb((byte)((body.R + 255) / 2), (byte)((body.G + 255) / 2), (byte)((body.B + 255) / 2));
@@ -256,9 +259,34 @@ public sealed class PetSprites
             }
         }
 
-        var bitmap = BitmapSource.Create(BuiltInSize, BuiltInSize, 96, 96, PixelFormats.Bgra32, null, pixels, BuiltInSize * 4);
-        bitmap.Freeze();
+        return pixels;
+    }
+
+    /// <summary>Bitmaps for built-in frames; a frame repeated in the loop (e.g. eleven "open" for one blink) is one bitmap.</summary>
+    private static List<IImage> Bitmaps(IReadOnlyList<byte[]> frames)
+    {
+        var made = new Dictionary<byte[], IImage>(ReferenceEqualityComparer.Instance);
+        return frames.Select(f => made.TryGetValue(f, out var bitmap) ? bitmap : made[f] = ToBitmap(f, BuiltInSize, BuiltInSize)).ToList();
+    }
+
+    private static WriteableBitmap ToBitmap(byte[] pixels, int width, int height)
+    {
+        var bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
+        using var buffer = bitmap.Lock();
+        for (var y = 0; y < height; y++)
+        {
+            Marshal.Copy(pixels, y * width * 4, buffer.Address + y * buffer.RowBytes, width * 4);
+        }
+
         return bitmap;
+    }
+
+    private static byte[] Png(byte[] pixels, int width, int height)
+    {
+        using var bitmap = ToBitmap(pixels, width, height);
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+        return stream.ToArray();
     }
 
     private static string[] With(string[] source, params (int Row, string Line)[] changes)

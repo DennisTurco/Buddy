@@ -1,0 +1,70 @@
+<!--
+    Markdown colours from the window's theme brushes (Ink, Muted, Paper, UserBubble, ClaudeAccent), so text stays
+    readable on dark and light themes alike. Markdown.Avalonia's own style is meant for a light background (dark blue
+    code on grey, black table lines) and is unreadable on a dark one. Added after it, so these win.
+    Its inline rules (code, links) carry a trigger, which outranks a plain style whatever the order: the ":not(.x)"
+    below gives ours the same rank, so the order decides.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctxt="clr-namespace:ColorTextBlock.Avalonia;assembly=ColorTextBlock.Avalonia">
+    <Style Selector="ctxt|CTextBlock:not(.x)">
+        <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+    </Style>
+    <Style Selector="ctxt|CCode:not(.x)">
+        <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+        <Setter Property="Background" Value="{DynamicResource CodeBack}" />
+        <Setter Property="MonospaceFontFamily" Value="{StaticResource MonoFont}" />
+    </Style>
+    <Style Selector="ctxt|CHyperlink:not(.x)">
+        <Setter Property="Foreground" Value="{DynamicResource LinkInk}" />
+    </Style>
+    <Style Selector="ctxt|CHyperlink:not(.x):pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+    </Style>
+
+    <!-- Code blocks -->
+    <Style Selector="Border.CodeBlock">
+        <Setter Property="Background" Value="{DynamicResource CodeBack}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="8,6" />
+    </Style>
+    <Style Selector="TextBlock.CodeBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+        <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+    </Style>
+
+    <!-- Tables -->
+    <Style Selector="Border.Table">
+        <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
+    </Style>
+    <Style Selector="Grid.Table > Border">
+        <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
+    </Style>
+    <Style Selector="Border.TableHeader">
+        <Setter Property="Background" Value="{DynamicResource CodeBack}" />
+    </Style>
+    <Style Selector="Border.TableHeader ctxt|CTextBlock">
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.EvenTableRow">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.OddTableRow">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- Quotes and notes -->
+    <Style Selector="Border.Blockquote">
+        <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
+    </Style>
+    <Style Selector="Border.Blockquote ctxt|CTextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+    </Style>
+    <Style Selector="Border.Note">
+        <Setter Property="Background" Value="{DynamicResource CodeBack}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
+    </Style>
+</Styles>

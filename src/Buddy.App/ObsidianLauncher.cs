@@ -1,13 +1,10 @@
-using System.ComponentModel;
-using System.Diagnostics;
-using System.IO;
 using Buddy.Core;
 
 namespace Buddy.App;
 
 /// <summary>
 /// Opens the project's vault in Obsidian through the obsidian:// URI, landing on the project's first
-/// always-included note (e.g. "Stato attuale.md"). Falls back to Explorer if Obsidian is not registered.
+/// always-included note (e.g. "Stato attuale.md"). Falls back to the file manager if Obsidian is not registered.
 /// </summary>
 public static class ObsidianLauncher
 {
@@ -25,24 +22,11 @@ public static class ObsidianLauncher
             .FirstOrDefault(File.Exists)
             ?? Directory.EnumerateFiles(folder, "*.md").FirstOrDefault();
 
-        if (target is not null && TryStart($"obsidian://open?path={Uri.EscapeDataString(target)}"))
+        if (target is not null && Shell.Open($"obsidian://open?path={Uri.EscapeDataString(target)}"))
         {
             return;
         }
 
-        TryStart(folder);
-    }
-
-    private static bool TryStart(string target)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })?.Dispose();
-            return true;
-        }
-        catch (Win32Exception)
-        {
-            return false;
-        }
+        Shell.Open(folder);
     }
 }

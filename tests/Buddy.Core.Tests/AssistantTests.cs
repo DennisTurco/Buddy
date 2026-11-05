@@ -165,3 +165,22 @@ public class AssistantTests
         Repo = new RepoSettings { Path = _repo, KnowledgePaths = ["docs/guidelines"] },
     });
 }
+
+public class AttachmentCombineTests
+{
+    [Test]
+    public void Combine_keeps_what_was_already_attached()
+    {
+        var first = Buddy.Core.Chat.Attachment.FromImage([1, 2], "immagine dagli appunti");
+        var second = Buddy.Core.Chat.Attachment.FromImage([3], "immagine dagli appunti");
+
+        var both = Buddy.Core.Chat.Attachment.Combine(first, second);
+        Assert.That(both.Images, Has.Count.EqualTo(2));
+        Assert.That(both.Label, Is.EqualTo("2 immagini"));
+
+        var withText = Buddy.Core.Chat.Attachment.Combine(both, Buddy.Core.Chat.Attachment.FromText("errore", "appunti"));
+        Assert.That(withText.Images, Has.Count.EqualTo(2));
+        Assert.That(withText.Text, Is.EqualTo("errore"));
+        Assert.That(Buddy.Core.Chat.Attachment.Combine(null, second), Is.SameAs(second));
+    }
+}

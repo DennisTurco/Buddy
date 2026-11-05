@@ -25,6 +25,24 @@ public sealed record Attachment(string Label, string? Text, IReadOnlyList<string
 
     public static Attachment FromText(string text, string label = "testo") => new(label, text, [], []);
 
+    /// <summary>
+    /// Adds <paramref name="added"/> to what is already attached (pasting a second screenshot keeps the first):
+    /// texts are joined, files and images listed together.
+    /// </summary>
+    public static Attachment Combine(Attachment? existing, Attachment added)
+    {
+        if (existing is null)
+        {
+            return added;
+        }
+
+        var text = string.Join("\n\n", new[] { existing.Text, added.Text }.Where(t => !string.IsNullOrEmpty(t)));
+        var images = existing.Images.Concat(added.Images).ToList();
+        var files = existing.Files.Concat(added.Files).Distinct().ToList();
+        var label = images.Count > 1 && files.Count == 0 && text.Length == 0 ? $"{images.Count} immagini" : $"{existing.Label} + {added.Label}";
+        return new Attachment(label, text.Length > 0 ? text : null, files, images);
+    }
+
     public static Attachment FromImage(byte[] png, string label = "immagine") =>
         new(label, null, [], [new AttachedImage("image/png", Convert.ToBase64String(png))]);
 

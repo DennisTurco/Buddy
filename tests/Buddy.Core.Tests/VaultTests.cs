@@ -81,6 +81,17 @@ public class VaultTests
         Assert.That(context.Text.Length, Is.LessThan(1_200));
     }
 
+    [Test]
+    public void ContextBuilder_says_when_no_note_matches()
+    {
+        var settings = Options.Create(new BuddySettings { ProjectPath = _root, MaxContextChars = 12_000 });
+        using var vault = new VaultIndex(settings);
+        var builder = new ContextBuilder(vault, settings, TimeProvider.System);
+
+        Assert.That(builder.Build("ho delle attività da completare?").Text, Does.Contain(ContextBuilder.NoNotes));
+        Assert.That(builder.Build("a che punto è NUSR-22?").Text, Does.Not.Contain(ContextBuilder.NoNotes));
+    }
+
     private IOptions<BuddySettings> Settings(int maxChars = 12_000) =>
         Options.Create(new BuddySettings { ProjectPath = _root, MaxContextChars = maxChars, AlwaysIncludedNotes = ["Stato attuale.md"] });
 }

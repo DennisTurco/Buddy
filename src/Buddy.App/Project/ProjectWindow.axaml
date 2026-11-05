@@ -1,0 +1,922 @@
+<!--
+    The project window. Side bar: views, quick "new appunto", Obsidian. Views:
+    - Panoramica: numbers per step, what needs attention, Stato attuale, last closed tasks;
+    - Bacheca: the active steps of the flow as columns (Appunti, Da valutare, Da fare, In attesa, Da controllare);
+    - Archivio: Fatti and Rifiutati, with totals;
+    - Note: every vault note, readable and editable.
+    Clicking an item opens the side panel on the right: everything about it, the Claude skills that act on it
+    (/lavora, /chiudi, /rifiuta…), editing. The window follows the vault and refreshes by itself.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:p="clr-namespace:Buddy.App.Project"
+        xmlns:chat="clr-namespace:Buddy.App.Chat"
+        x:Class="Buddy.App.Project.ProjectWindow"
+        Title="Progetto"
+        Width="1360" Height="820" MinWidth="900" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Paper}"
+        UseLayoutRounding="True">
+
+    <Window.Resources>
+        <x:Double x:Key="ColumnWidth">230</x:Double>
+        <DataTemplate x:Key="ChipTemplate" x:DataType="p:Chip">
+            <Border Classes="chip" Classes.good="{Binding IsGood}" Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}">
+                <TextBlock Text="{Binding Text}" FontSize="11" />
+            </Border>
+        </DataTemplate>
+
+        <!-- A compact card: board columns, archive, attention list. Click opens the side panel. -->
+        <DataTemplate x:Key="CardTemplate" x:DataType="p:CardView">
+            <Border Classes="card" Classes.closed="{Binding IsClosed}" Classes.selected="{Binding IsSelected}"
+                    BorderBrush="{Binding Accent}" PointerReleased="OnCardPointerReleased">
+                <StackPanel>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding Id}" Classes="id" Foreground="{Binding Accent}" IsVisible="{Binding HasId}" Margin="0,0,8,0" />
+                        <Border DockPanel.Dock="Left" Classes="tag" Background="{Binding TagBrush}" IsVisible="{Binding HasTag}">
+                            <TextBlock Text="{Binding Tag}" />
+                        </Border>
+                        <TextBlock Text="{Binding DateText}" Classes="muted" FontSize="11" VerticalAlignment="Center"
+                                   HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <TextBlock Classes="title" Text="{Binding Title}" TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis"
+                               FontWeight="SemiBold" Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" TextWrapping="Wrap" MaxLines="2"
+                               TextTrimming="CharacterEllipsis" Classes="muted" FontSize="12" Margin="0,3,0,0" />
+                    <ItemsControl ItemsSource="{Binding Chips}" IsVisible="{Binding HasChips}" ItemTemplate="{StaticResource ChipTemplate}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        </Style>
+        <Style Selector="TextBlock.id">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="11.5" />
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style Selector="Border.panel">
+            <Setter Property="Background" Value="{DynamicResource InputBack}" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14,12" />
+        </Style>
+
+        <!-- Chips -->
+        <Style Selector="Border.chip">
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Padding" Value="7,1" />
+            <Setter Property="Margin" Value="0,5,4,0" />
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+        <Style Selector="Border.chip.good">
+            <Setter Property="Background" Value="#2E5B44" />
+        </Style>
+        <Style Selector="Border.chip.warm">
+            <Setter Property="Background" Value="#F2B544" />
+        </Style>
+        <Style Selector="Border.chip.hot">
+            <Setter Property="Background" Value="#E57373" />
+        </Style>
+        <Style Selector="Border.chip.warm TextBlock, Border.chip.hot TextBlock">
+            <Setter Property="Foreground" Value="#1F1C2C" />
+        </Style>
+        <Style Selector="Border.chip.good TextBlock">
+            <Setter Property="Foreground" Value="#E3F6EC" />
+        </Style>
+
+        <!-- Cards -->
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource Paper}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="3,0,0,0" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.card:pointerover">
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+        <Style Selector="Border.card.selected">
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+            <Setter Property="BoxShadow" Value="0 0 0 1 #8A84A3" />
+        </Style>
+        <Style Selector="Border.card.closed TextBlock.title">
+            <Setter Property="Opacity" Value="0.8" />
+        </Style>
+
+        <!-- Buttons -->
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.small">
+            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Button.action">
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="{DynamicResource ClaudeBubble}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ClaudeAccent}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.tile">
+            <Setter Property="Background" Value="{DynamicResource InputBack}" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <Style Selector="Border.usage">
+            <Setter Property="Background" Value="{DynamicResource Paper}" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,10" />
+        </Style>
+        <Style Selector="ProgressBar.limit">
+            <Setter Property="MinHeight" Value="5" />
+            <Setter Property="Height" Value="5" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Foreground" Value="{DynamicResource LocalAccent}" />
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+        <Style Selector="ProgressBar.limit.warning">
+            <Setter Property="Foreground" Value="#F2B544" />
+        </Style>
+        <Style Selector="TextBlock.current">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+        </Style>
+        <Style Selector="Button.switcher">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="RenderTransform" Value="translateY(0px)" />
+        </Style>
+        <Style Selector="Border.card:pointerover">
+            <Setter Property="RenderTransform" Value="translateY(-2px)" />
+            <Setter Property="BoxShadow" Value="0 4 12 0 #33000000" />
+        </Style>
+        <Style Selector="Button.tile">
+            <Setter Property="RenderTransform" Value="translateY(0px)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.tile:pointerover">
+            <Setter Property="RenderTransform" Value="translateY(-2px)" />
+        </Style>
+
+        <Style Selector="ProgressBar.limit.done">
+            <Setter Property="Foreground" Value="#5FBF77" />
+        </Style>
+        <Style Selector="ProgressBar.big">
+            <Setter Property="Height" Value="8" />
+            <Setter Property="MinHeight" Value="8" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="CheckBox.redo TextBlock">
+            <Setter Property="Foreground" Value="#F2B544" />
+        </Style>
+        <Style Selector="CheckBox.struck TextBlock">
+            <Setter Property="TextDecorations" Value="Strikethrough" />
+            <Setter Property="Opacity" Value="0.6" />
+        </Style>
+        <Style Selector="CheckBox:checked TextBlock">
+            <Setter Property="Opacity" Value="0.7" />
+        </Style>
+        <Style Selector="Button.shot">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <Style Selector="Border.tag">
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.tag TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#1F1C2C" />
+        </Style>
+        <Style Selector="Button.tagfilter, Button.tagpick">
+            <Setter Property="Background" Value="{DynamicResource InputBack}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.tagpick">
+            <Setter Property="Background" Value="{DynamicResource Paper}" />
+            <Setter Property="Padding" Value="8,2" />
+        </Style>
+        <Style Selector="Button.tagfilter.on, Button.tagpick.on">
+            <Setter Property="BorderBrush" Value="{DynamicResource ClaudeAccent}" />
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+
+        <!-- Side bar navigation -->
+        <Style Selector="ListBox#Nav ListBoxItem">
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="Margin" Value="0,0,0,2" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+        <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+    </Window.Styles>
+
+    <Grid ColumnDefinitions="220,*,Auto">
+
+        <!-- ============ Side bar ============ -->
+        <Border Background="{DynamicResource InputBack}" Padding="12,16,12,12">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="2,0,0,18">
+                    <Image x:Name="Mascot" DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,8,0" VerticalAlignment="Center"
+                           RenderOptions.BitmapInterpolationMode="None" />
+                    <Button x:Name="ProjectSwitcher" Classes="switcher" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                            ToolTip.Tip="Cambia progetto o creane uno nuovo">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="▾" Classes="muted" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                <TextBlock x:Name="ProjectName" FontSize="18" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                            <TextBlock x:Name="ProjectPath" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                        </StackPanel>
+                    </Button>
+                </DockPanel>
+
+                <StackPanel DockPanel.Dock="Bottom" Spacing="8">
+                    <Border x:Name="UsageCard" Classes="usage" Margin="0,0,0,8">
+                        <StackPanel Spacing="6">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" x:Name="UsageTurns" Classes="muted" FontSize="11" VerticalAlignment="Bottom" />
+                                <TextBlock Text="💳 Claude oggi" FontSize="11" FontWeight="SemiBold" Classes="muted" />
+                            </DockPanel>
+                            <TextBlock x:Name="UsageCost" FontSize="22" FontWeight="Bold" />
+                            <ItemsControl x:Name="UsageLimits">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="p:LimitView">
+                                        <StackPanel Margin="0,2,0,4">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" FontSize="10.5" Classes="muted" />
+                                                <TextBlock Text="{Binding Label}" FontSize="11" />
+                                            </DockPanel>
+                                            <ProgressBar Classes="limit" Classes.warning="{Binding IsWarning}" Value="{Binding Percent}"
+                                                         IsVisible="{Binding HasPercent}" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock x:Name="UsageNoLimits" Classes="muted" FontSize="10.5" TextWrapping="Wrap"
+                                       Text="I limiti del piano compaiono dopo la prima risposta di Claude." />
+                        </StackPanel>
+                    </Border>
+                    <Button Classes="action" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,0,4"
+                            Content="💡 Nuove idee…" Click="OnIdeasClick"
+                            ToolTip.Tip="Descrivi cosa vorresti aggiungere: l'AI propone idee che finiscono negli appunti (Ctrl+I)" />
+                    <TextBlock Text="Nuovo appunto" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0" />
+                    <TextBox x:Name="QuickNote" PlaceholderText="✍ Scrivi e premi Invio (Ctrl+N)" TextWrapping="Wrap" MaxHeight="120"
+                             KeyDown="OnQuickNoteKeyDown" />
+                    <TextBlock x:Name="QuickNoteDone" Classes="muted" FontSize="11" Margin="4,0,0,0" IsVisible="False" Text="✓ Aggiunto agli appunti" />
+                    <Grid ColumnDefinitions="*,6,Auto" Margin="0,6,0,0">
+                        <Button Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                Content="Apri in Obsidian" Click="OnOpenVaultClick" />
+                        <Button Grid.Column="2" Classes="small" Content="⟳" Click="OnRefreshClick"
+                                ToolTip.Tip="Rileggi le note (si aggiorna anche da sola)" />
+                    </Grid>
+                </StackPanel>
+
+                <ListBox x:Name="Nav" Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="p:NavItem">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Right" IsVisible="{Binding HasBadge}" CornerRadius="9" Padding="7,0"
+                                        Background="{DynamicResource Paper}" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="SemiBold" />
+                                </Border>
+                                <TextBlock Text="{Binding Label}" FontSize="14" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- ============ Content ============ -->
+        <DockPanel Grid.Column="1" Margin="22,16,22,16">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+                <TextBox x:Name="Filter" DockPanel.Dock="Right" Width="280" VerticalAlignment="Center"
+                         PlaceholderText="🔍 Cerca ID, titolo, testo… (Ctrl+F)" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="ViewTitle" FontSize="22" FontWeight="Bold" />
+                    <TextBlock x:Name="ViewSubtitle" Classes="muted" FontSize="12" Margin="0,2,16,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </DockPanel>
+
+            <Panel>
+                <!-- ====== Panoramica ====== -->
+                <ScrollViewer x:Name="OverviewView" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="16">
+                        <ItemsControl x:Name="Tiles">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="p:TileView">
+                                    <Button Classes="tile" Click="OnTileClick">
+                                        <StackPanel>
+                                            <Border Height="3" CornerRadius="2" Background="{Binding Accent}" Margin="0,0,0,8" Width="28" HorizontalAlignment="Left" />
+                                            <TextBlock Text="{Binding Label}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Value}" FontSize="30" FontWeight="Bold" Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding Sub}" IsVisible="{Binding HasSub}" FontSize="11.5" Foreground="{Binding Accent}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Grid ColumnDefinitions="3*,16,2*">
+                            <Border Classes="panel">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" x:Name="CompletionText" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                                        <TextBlock Classes="section" Text="🧭 Il flusso" />
+                                    </DockPanel>
+                                    <Border CornerRadius="7" ClipToBounds="True" Margin="0,2,0,10">
+                                        <Grid x:Name="FlowBar" Height="14" />
+                                    </Border>
+                                    <ItemsControl x:Name="FlowLegend">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="p:SegmentView">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,14,4">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding Accent}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                                                    <TextBlock Text="{Binding Text}" FontSize="12" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Classes="panel">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <Border Width="9" Height="9" CornerRadius="2" Background="#B99BF5" VerticalAlignment="Center" />
+                                                <TextBlock Text="nuove" FontSize="11" Classes="muted" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <Border Width="9" Height="9" CornerRadius="2" Background="#5FBF77" VerticalAlignment="Center" />
+                                                <TextBlock Text="chiusi" FontSize="11" Classes="muted" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <TextBlock Classes="section" Text="📈 Ultime 8 settimane" />
+                                    </DockPanel>
+                                    <ItemsControl x:Name="WeeksChart" Height="118">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Rows="1" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="p:WeekView">
+                                                <DockPanel Background="Transparent" ToolTip.Tip="{Binding Tip}">
+                                                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding Label}" FontSize="9.5" Classes="muted"
+                                                               Classes.current="{Binding IsCurrent}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Spacing="2">
+                                                        <Border Width="9" Height="{Binding AddedHeight}" CornerRadius="3,3,0,0" Background="#B99BF5" VerticalAlignment="Bottom" />
+                                                        <Border Width="9" Height="{Binding ClosedHeight}" CornerRadius="3,3,0,0" Background="#5FBF77" VerticalAlignment="Bottom" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="3*,16,2*">
+                            <Border Classes="panel" VerticalAlignment="Top">
+                                <StackPanel>
+                                    <TextBlock Classes="section" Text="⚡ Richiede attenzione" />
+                                    <TextBlock x:Name="NothingUrgent" Classes="muted" FontStyle="Italic" Text="Niente di urgente: tutto sotto controllo 👌" />
+                                    <ItemsControl x:Name="AttentionList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="p:AttentionView">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Reason}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding Card.Accent}" Margin="2,0,0,3" />
+                                                    <ContentControl Content="{Binding Card}" ContentTemplate="{StaticResource CardTemplate}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button x:Name="SortInboxButton" Classes="action" Margin="0,6,0,0" Click="OnSortInboxClick" />
+                                </StackPanel>
+                            </Border>
+
+                            <StackPanel Grid.Column="2" Spacing="16">
+                                <Border x:Name="StatusPanel" Classes="panel" Background="{DynamicResource MentorBubble}"
+                                        BorderBrush="{DynamicResource MentorAccent}" BorderThickness="3,0,0,0">
+                                    <StackPanel>
+                                        <Button Classes="link" Click="OnStatusTitleClick" ToolTip.Tip="Apri la nota">
+                                            <TextBlock Classes="section" Text="📌 Stato attuale" />
+                                        </Button>
+                                        <ItemsControl x:Name="StatusList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="p:StatusView">
+                                                    <StackPanel Margin="0,0,0,8">
+                                                        <TextBlock Text="{Binding Label}" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                                                        <chat:MarkdownView Markdown="{Binding Markdown}" Loaded="OnMarkdownLoaded" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="RecentPanel" Classes="panel">
+                                    <StackPanel>
+                                        <TextBlock Classes="section" Text="✅ Chiusi di recente" />
+                                        <ItemsControl x:Name="RecentList" ItemTemplate="{StaticResource CardTemplate}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ====== Bacheca ====== -->
+                <!-- Columns share the width; below ColumnMinWidth each they scroll sideways (e.g. with the side panel open). -->
+                <DockPanel x:Name="BoardPage" IsVisible="False">
+                <!-- Filter by tag: "Tutti" plus every tag used on the board, with how many items have it. -->
+                <ItemsControl x:Name="TagBar" DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="p:TagOption">
+                            <Button Classes="tagfilter" Classes.on="{Binding IsSelected}" Click="OnTagFilterClick">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="8" Height="8" Fill="{Binding Brush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Label}" FontSize="12" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ScrollViewer x:Name="BoardView" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="BoardColumns">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="p:ColumnView">
+                            <Border Width="{DynamicResource ColumnWidth}" CornerRadius="12" Padding="8" Margin="0,0,10,0" Background="{DynamicResource InputBack}">
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Top" Height="3" CornerRadius="2" Margin="2,0,2,10" Background="{Binding Accent}" />
+                                    <DockPanel DockPanel.Dock="Top" Margin="4,0,4,8">
+                                        <Border DockPanel.Dock="Right" CornerRadius="9" Padding="7,0" Background="{DynamicResource Paper}" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Count}" FontSize="11.5" FontWeight="SemiBold" />
+                                        </Border>
+                                        <Button Classes="link" Click="OnColumnTitleClick" ToolTip.Tip="{Binding NoteTip}">
+                                            <TextBlock Text="{Binding Header}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                        </Button>
+                                    </DockPanel>
+                                    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}" Margin="2,0,0,4">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="p:FlowAction">
+                                                <Button Classes="action" Content="{Binding Label}" ToolTip.Tip="{Binding Tip}" Click="OnColumnActionClick" FontSize="12" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock DockPanel.Dock="Top" Text="{Binding EmptyText}" IsVisible="{Binding IsEmpty}"
+                                               Classes="muted" FontStyle="Italic" Margin="4,4" TextWrapping="Wrap" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding Cards}" ItemTemplate="{StaticResource CardTemplate}" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </ScrollViewer>
+                </DockPanel>
+
+                <!-- ====== Archivio ====== -->
+                <Grid x:Name="ArchiveView" ColumnDefinitions="*,16,*" IsVisible="False">
+                    <Border Classes="panel">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                                <TextBlock Classes="section" Text="✅ Fatti" Margin="0" />
+                                <TextBlock x:Name="DoneSummary" Classes="muted" FontSize="12" />
+                            </StackPanel>
+                            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="DoneList" ItemTemplate="{StaticResource CardTemplate}" />
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                    <Border Grid.Column="2" Classes="panel">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                                <TextBlock Classes="section" Text="🚫 Rifiutati" Margin="0" />
+                                <TextBlock x:Name="RejectedSummary" Classes="muted" FontSize="12" />
+                            </StackPanel>
+                            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="RejectedList" ItemTemplate="{StaticResource CardTemplate}" />
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <!-- ====== Test manuali ====== -->
+                <Grid x:Name="ManualTestsView" ColumnDefinitions="300,14,*" IsVisible="False">
+                    <Border Classes="panel" Padding="4">
+                        <ListBox x:Name="ManualDocsList" Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="p:ManualDocView">
+                                    <StackPanel Margin="4,4">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <ProgressBar Classes="limit" Classes.done="{Binding IsComplete}" Value="{Binding Percent}" Margin="0,6,0,4" />
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Updated}" Classes="muted" FontSize="10.5" />
+                                            <TextBlock Text="{Binding Progress}" FontSize="11.5" Classes="muted" />
+                                        </DockPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                    <TextBlock x:Name="NoManualTests" Grid.ColumnSpan="3" Classes="muted" TextWrapping="Wrap" FontSize="14" Margin="8"
+                               IsVisible="False"
+                               Text="Ancora nessun documento di test manuali. Li scrivono /lavora e /guidami mentre lavorano, oppure crealo per un task con 🧪 Test manuali nel suo pannello (o /test-manuali ID in chat). Finiscono in «Test manuali/Test manuali ID.md» e qui puoi spuntare i casi." />
+                    <Border x:Name="ManualDocPanel" Grid.Column="2" Classes="panel" Padding="22,14">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+                                        <Button x:Name="ManualUpdateButton" Classes="action" Content="🧪 Aggiorna con Claude" Margin="0" Click="OnManualUpdateClick"
+                                                ToolTip.Tip="/test-manuali ID: Claude aggiunge i casi nuovi senza togliere le spunte" />
+                                        <Button Classes="small" Content="✏ Modifica" Click="OnManualEditClick" ToolTip.Tip="Apri il testo nella vista Note" />
+                                        <Button Classes="small" Content="Obsidian" Click="OnManualObsidianClick" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="ManualTitle" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                                </DockPanel>
+                                <DockPanel Margin="0,10,0,0">
+                                    <TextBlock x:Name="ManualProgress" DockPanel.Dock="Right" Classes="muted" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                    <ProgressBar x:Name="ManualBar" Classes="limit big" />
+                                </DockPanel>
+                            </StackPanel>
+                            <ScrollViewer x:Name="ManualScroller" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel>
+                                    <chat:MarkdownView x:Name="ManualIntro" Loaded="OnMarkdownLoaded" Margin="0,0,0,8" />
+                                    <ItemsControl x:Name="ManualSections">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="p:ManualSectionView">
+                                                <StackPanel Margin="0,8,0,6">
+                                                    <DockPanel IsVisible="{Binding HasTitle}" Margin="0,0,0,4">
+                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Progress}" Classes="muted" FontSize="11.5" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
+                                                    </DockPanel>
+                                                    <ItemsControl ItemsSource="{Binding Items}">
+                                                        <ItemsControl.DataTemplates>
+                                                            <DataTemplate DataType="p:CheckView">
+                                                                <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" Margin="{Binding Indent}"
+                                                                          Classes.redo="{Binding IsRedo}" Classes.struck="{Binding IsStruck}">
+                                                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                                                </CheckBox>
+                                                            </DataTemplate>
+                                                            <DataTemplate DataType="p:ManualTextView">
+                                                                <chat:MarkdownView Markdown="{Binding Markdown}" Loaded="OnMarkdownLoaded" Margin="0,4" />
+                                                            </DataTemplate>
+                                                        </ItemsControl.DataTemplates>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <!-- ====== Test web ====== -->
+                <ScrollViewer x:Name="WebTestsView" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="16">
+                        <!-- The script being run (or the last one): live output, outcome, stop. -->
+                        <Border x:Name="RunPanel" Classes="panel" IsVisible="False" BorderThickness="3,0,0,0" BorderBrush="#8AB4F8">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                                        <Button x:Name="RunStopButton" Classes="small" Content="■ Ferma" Click="OnStopRunClick" />
+                                        <Button x:Name="RunAskButton" Classes="action" Margin="0" Content="🧠 Chiedi a Claude" Click="OnAskAboutRunClick"
+                                                IsVisible="False" ToolTip.Tip="Manda a Claude l'output del test fallito" />
+                                        <Button x:Name="RunCloseButton" Classes="small" Content="✕" Click="OnCloseRunClick" ToolTip.Tip="Chiudi il pannello" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock x:Name="RunTitle" FontSize="15" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="RunStatus" Classes="muted" FontSize="12" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <TextBox x:Name="RunOutput" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" Height="240"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="panel">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,4">
+                                    <Button DockPanel.Dock="Right" Classes="small" Content="Apri la nota" Click="OnWebNoteClick" />
+                                    <TextBlock Classes="section" Text="🤖 Script salvati" />
+                                </DockPanel>
+                                <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"
+                                           Text="Con uno script il test web costa poco: lo rilancia /verifica-web invece di far guidare il browser a Claude." />
+                                <TextBlock x:Name="NoScripts" Classes="muted" FontStyle="Italic"
+                                           Text="Nessuno script ancora: /verifica-web propone di salvarne uno dopo ogni esplorazione." />
+                                <ItemsControl x:Name="ScriptsList">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="p:ScriptView">
+                                            <Border Classes="card" Width="400" Margin="0,0,10,10" BorderBrush="#8AB4F8" Cursor="Arrow">
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <Button DockPanel.Dock="Right" Classes="action" Margin="8,0,0,0" Padding="10,3" Content="▶ Esegui"
+                                                                Click="OnRunScriptClick" ToolTip.Tip="{Binding RunTip}" />
+                                                        <TextBlock Text="{Binding Name}" Classes="id" FontSize="13.5" Foreground="#8AB4F8" VerticalAlignment="Center" />
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Covers}" IsVisible="{Binding HasCovers}" TextWrapping="Wrap" FontSize="12.5" Margin="0,4,0,0" />
+                                                    <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <WrapPanel />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="panel">
+                            <StackPanel>
+                                <TextBlock Classes="section" Text="📸 Screenshot delle verifiche" />
+                                <TextBlock x:Name="NoShots" Classes="muted" FontStyle="Italic"
+                                           Text="Nessuno screenshot: li salva /verifica-web nella cartella «Test web» del vault." />
+                                <ItemsControl x:Name="ShotGroups">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="p:ShotGroupView">
+                                            <StackPanel Margin="0,4,0,10">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                                <ItemsControl ItemsSource="{Binding Shots}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="p:ShotView">
+                                                            <Button Classes="shot" Click="OnShotClick" ToolTip.Tip="{Binding Tip}">
+                                                                <StackPanel>
+                                                                    <Border CornerRadius="6" ClipToBounds="True" Width="230" Height="140" Background="{DynamicResource Paper}">
+                                                                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                                                                    </Border>
+                                                                    <TextBlock Text="{Binding Caption}" FontSize="11.5" Margin="2,6,0,0" TextTrimming="CharacterEllipsis" Width="226" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ====== Note ====== -->
+                <Grid x:Name="NotesView" ColumnDefinitions="250,14,*" IsVisible="False">
+                    <Border Classes="panel" Padding="4">
+                        <ListBox x:Name="NotesList" Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="p:NoteView">
+                                    <StackPanel Margin="2,1">
+                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Folder}" IsVisible="{Binding HasFolder}" Classes="muted" FontSize="11"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                    <Border Grid.Column="2" Classes="panel" Padding="22,14">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Button x:Name="EditNoteButton" Classes="small" Content="✏ Modifica" Click="OnEditNoteClick" />
+                                    <Button x:Name="SaveNoteButton" Classes="small" Content="Salva" Click="OnSaveNoteClick" IsVisible="False" ToolTip.Tip="Ctrl+S" />
+                                    <Button x:Name="CancelNoteButton" Classes="small" Content="Annulla" Click="OnCancelNoteClick" IsVisible="False" ToolTip.Tip="Esc" />
+                                    <Button Classes="small" Content="Obsidian" Click="OnOpenSelectedNoteClick" ToolTip.Tip="Apri la nota in Obsidian" />
+                                </StackPanel>
+                                <TextBlock x:Name="NoteTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                            <Panel>
+                                <ScrollViewer x:Name="NoteScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel>
+                                        <chat:MarkdownView x:Name="NoteViewer" />
+                                        <StackPanel x:Name="BacklinksPanel" Margin="0,22,0,0" IsVisible="False">
+                                            <Border Height="1" Background="{DynamicResource UserBubble}" Margin="0,0,0,10" />
+                                            <TextBlock Text="🔗 Citata in" Classes="muted" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <ItemsControl x:Name="Backlinks">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="p:NoteView">
+                                                        <Button Classes="small" Content="{Binding Title}" Click="OnBacklinkClick" Margin="0,0,6,6" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
+                                <TextBox x:Name="NoteEditor" IsVisible="False" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="13"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+                            </Panel>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Panel>
+        </DockPanel>
+
+        <!-- ============ Detail panel ============ -->
+        <Border x:Name="Detail" Grid.Column="2" Width="400" IsVisible="False" Background="{DynamicResource InputBack}"
+                BorderBrush="{DynamicResource UserBubble}" BorderThickness="1,0,0,0">
+            <DockPanel Margin="20,16,20,16" x:DataType="p:CardView">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Classes="link" Content="✕" FontSize="15" Click="OnCloseDetailClick" ToolTip.Tip="Chiudi (Esc)" />
+                    <Border CornerRadius="9" Padding="9,2" Background="{Binding Accent}" HorizontalAlignment="Left">
+                        <TextBlock Text="{Binding ColumnLabel}" FontSize="11.5" FontWeight="SemiBold" Foreground="#1F1C2C" />
+                    </Border>
+                </DockPanel>
+
+                <!-- Edit mode -->
+                <DockPanel x:Name="DetailEdit" IsVisible="False">
+                    <TextBlock DockPanel.Dock="Top" Text="Testo della voce nella nota (markdown)" Classes="muted" FontSize="11.5" Margin="0,0,0,6" />
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
+                        <Button Classes="small" Content="Salva" Click="OnSaveCardClick" ToolTip.Tip="Ctrl+Invio" />
+                        <Button Classes="small" Content="Annulla" Click="OnCancelCardClick" ToolTip.Tip="Esc" />
+                    </StackPanel>
+                    <TextBox x:Name="CardEditor" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top"
+                             FontFamily="{StaticResource MonoFont}" FontSize="12.5" KeyDown="OnCardEditorKeyDown" />
+                </DockPanel>
+
+                <!-- Read mode -->
+                <ScrollViewer x:Name="DetailRead" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding DateText}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Id}" IsVisible="{Binding HasId}" Classes="id" FontSize="14" Foreground="{Binding Accent}" />
+                        </DockPanel>
+                        <SelectableTextBlock Text="{Binding Title}" FontSize="19" FontWeight="Bold" TextWrapping="Wrap" Margin="0,4,0,0" />
+                        <Border IsVisible="{Binding HasNote}" Margin="0,10,0,0" Padding="10,8" CornerRadius="8" Background="{DynamicResource Paper}">
+                            <chat:MarkdownView Markdown="{Binding NoteMarkdown}" Loaded="OnMarkdownLoaded" />
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding Chips}" IsVisible="{Binding HasChips}" Margin="0,6,0,0" ItemTemplate="{StaticResource ChipTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <StackPanel IsVisible="{Binding HasDetails}" Margin="0,14,0,0">
+                            <TextBlock Text="Dettagli" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,2" />
+                            <chat:MarkdownView Markdown="{Binding DetailsMarkdown}" Loaded="OnMarkdownLoaded" />
+                        </StackPanel>
+
+                        <StackPanel x:Name="TagPanel" Margin="0,18,0,0">
+                            <TextBlock Text="Tag" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <WrapPanel>
+                                <ItemsControl x:Name="DetailTags">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="p:TagOption">
+                                            <Button Classes="tagpick" Classes.on="{Binding IsSelected}" Click="OnTagPickClick"
+                                                    ToolTip.Tip="Scrive [tag:: …] nella voce">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding Brush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding Name}" FontSize="11.5" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Classes="tagpick" Content="＋ altro…" FontSize="11.5" Click="OnTagOtherClick" />
+                                <Button x:Name="TagRemoveButton" Classes="tagpick" Content="✕ togli" FontSize="11.5" Click="OnTagRemoveClick" />
+                            </WrapPanel>
+                        </StackPanel>
+
+                        <StackPanel x:Name="ClaudeActionsPanel" Margin="0,18,0,0">
+                            <TextBlock Text="Con Claude" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <ItemsControl x:Name="ClaudeActions">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="p:FlowAction">
+                                        <Button Classes="action" Content="{Binding Label}" ToolTip.Tip="{Binding Tip}" Click="OnCardActionClick" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <TextBlock Text="Voce" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,14,0,6" />
+                        <WrapPanel>
+                            <Button Classes="small" Content="✏ Modifica" Click="OnEditCardClick" Margin="0,0,6,6" />
+                            <Button x:Name="CardManualTestsButton" Classes="small" Click="OnCardManualTestsClick" Margin="0,0,6,6" IsVisible="False" />
+                            <Button Classes="small" Content="Apri in Obsidian" Click="OnOpenCardNoteClick" Margin="0,0,6,6" />
+                            <Button Classes="small" Content="🗑 Elimina" Click="OnDeleteCardClick" Margin="0,0,6,6" />
+                        </WrapPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>
