@@ -1,0 +1,204 @@
+<Window x:Class="Buddy.App.Chat.BubbleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chat="clr-namespace:Buddy.App.Chat"
+        xmlns:core="clr-namespace:Buddy.Core.Chat;assembly=Buddy.Core"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="Buddy chat"
+        Width="380" Height="480"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        FontFamily="Segoe UI" FontSize="13"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <!-- Theme brushes: defaults here, replaced at startup from the Appearance settings (see ApplyAppearance). -->
+        <SolidColorBrush x:Key="Ink" Color="#241F36" />
+        <SolidColorBrush x:Key="Muted" Color="#6B6680" />
+        <SolidColorBrush x:Key="Paper" Color="#FFFDF7" />
+        <SolidColorBrush x:Key="Frame" Color="#241F36" />
+        <SolidColorBrush x:Key="UserBubble" Color="#E9E6F2" />
+        <SolidColorBrush x:Key="LocalBubble" Color="#E3F6EC" />
+        <SolidColorBrush x:Key="LocalAccent" Color="#7FD1AE" />
+        <SolidColorBrush x:Key="ClaudeBubble" Color="#EFE8FF" />
+        <SolidColorBrush x:Key="ClaudeAccent" Color="#B99BF5" />
+        <SolidColorBrush x:Key="InputBack" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="MentorBubble" Color="#FFF4DC" />
+        <SolidColorBrush x:Key="MentorAccent" Color="#F2B544" />
+        <!-- Message widths: replaced when the chat is maximized (see SetMaximized). -->
+        <sys:Double x:Key="UserMaxWidth">290</sys:Double>
+        <sys:Double x:Key="AssistantMaxWidth">320</sys:Double>
+
+        <DataTemplate x:Key="UserTemplate" DataType="core:ChatEntry">
+            <Border HorizontalAlignment="Right" MaxWidth="{DynamicResource UserMaxWidth}" Margin="40,4,0,4" Padding="10,6"
+                    CornerRadius="10,10,2,10" Background="{DynamicResource UserBubble}">
+                <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                         BorderThickness="0" Background="Transparent" Foreground="{DynamicResource Ink}" />
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssistantTemplate" DataType="core:ChatEntry">
+            <Border x:Name="Card" HorizontalAlignment="Left" MaxWidth="{DynamicResource AssistantMaxWidth}" Margin="0,4,30,4" Padding="10,6"
+                    CornerRadius="10,10,10,2" Background="{DynamicResource LocalBubble}"
+                    BorderThickness="2,0,0,0" BorderBrush="{DynamicResource LocalAccent}">
+                <StackPanel>
+                    <chat:MarkdownBox Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                                      Foreground="{DynamicResource Ink}" />
+                    <Button x:Name="Escalate" Content="Chiedi a Claude ↗" Click="OnEscalateClick" Visibility="Collapsed"
+                            HorizontalAlignment="Left" Margin="0,4,0,0" Padding="6,1" FontSize="11"
+                            ToolTip="Manda la stessa domanda a Claude" />
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding CanEscalate}" Value="True">
+                    <Setter TargetName="Escalate" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Speaker}" Value="Claude">
+                    <Setter TargetName="Card" Property="Background" Value="{DynamicResource ClaudeBubble}" />
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource ClaudeAccent}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Speaker}" Value="Mentor">
+                    <Setter TargetName="Card" Property="Background" Value="{DynamicResource MentorBubble}" />
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource MentorAccent}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SystemTemplate" DataType="core:ChatEntry">
+            <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                     BorderThickness="0" Background="Transparent"
+                     Margin="4,2" FontSize="11" Foreground="{DynamicResource Muted}" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="PermissionTemplate" DataType="core:PermissionEntry">
+            <Border Margin="0,6" Padding="10,8" CornerRadius="8" Background="#FFF4D6" BorderBrush="#E8B931" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Claude chiede il permesso:" FontWeight="SemiBold" Foreground="#241F36" />
+                    <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4"
+                             BorderThickness="0" Background="Transparent" Foreground="#241F36" FontFamily="Consolas" FontSize="12" />
+                    <StackPanel x:Name="Buttons" Orientation="Horizontal">
+                        <Button Content="Sì" Width="64" Margin="0,0,6,0" Click="OnAllowClick" />
+                        <Button Content="No" Width="64" Click="OnDenyClick" />
+                    </StackPanel>
+                    <TextBlock x:Name="Outcome" Text="{Binding Outcome}" Visibility="Collapsed" Foreground="#6B6680" />
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsPending}" Value="False">
+                    <Setter TargetName="Buttons" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Outcome" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <chat:EntryTemplateSelector x:Key="EntrySelector"
+                                    User="{StaticResource UserTemplate}"
+                                    Assistant="{StaticResource AssistantTemplate}"
+                                    System="{StaticResource SystemTemplate}"
+                                    Permission="{StaticResource PermissionTemplate}" />
+    </Window.Resources>
+
+    <!-- Margin leaves room for the drop shadow and the tail pointing at the pet. -->
+    <Grid Margin="10,10,10,4">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="14" />
+        </Grid.RowDefinitions>
+
+        <Border CornerRadius="16" Background="{DynamicResource Paper}" BorderBrush="{DynamicResource Frame}" BorderThickness="2">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.25" />
+            </Border.Effect>
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Margin="2,0,0,6" MouseLeftButtonDown="OnHeaderMouseDown" Background="Transparent">
+                    <Button DockPanel.Dock="Right" Content="✕" Width="24" Height="22" Padding="0"
+                            Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Ink}"
+                            Click="OnCloseClick" ToolTip="Chiudi (Esc)" />
+                    <Button x:Name="MaximizeButton" DockPanel.Dock="Right" Content="⛶" Width="24" Height="22" Padding="0" Margin="0,0,2,0"
+                            Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Ink}"
+                            Click="OnMaximizeClick" ToolTip="Schermo intero (F11 o doppio click sul titolo)" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="ModeDot" Width="10" Height="10" Margin="0,0,6,0" Stroke="{DynamicResource Ink}" StrokeThickness="1.5" />
+                        <TextBlock x:Name="ModeText" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" />
+                    </StackPanel>
+                </DockPanel>
+
+                <!-- Current task (from the git branch) and its quick actions. -->
+                <StackPanel x:Name="TaskStrip" Grid.Row="1" Margin="2,0,0,6" Visibility="Collapsed">
+                    <TextBlock x:Name="TaskText" FontSize="11.5" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" />
+                    <ItemsControl x:Name="TaskActionsList" Margin="0,3,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding}" Click="OnTaskActionClick" Margin="0,0,4,2" Padding="6,1" FontSize="11"
+                                        Background="{DynamicResource ClaudeBubble}" Foreground="{DynamicResource Ink}"
+                                        BorderBrush="{DynamicResource ClaudeAccent}" Cursor="Hand" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <ScrollViewer x:Name="Scroller" Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="EntriesList" ItemTemplateSelector="{StaticResource EntrySelector}" />
+                </ScrollViewer>
+
+                <!-- Pending attachment (clipboard, dropped files/images) with ready-made questions. -->
+                <Border x:Name="AttachmentPanel" Grid.Row="3" Margin="0,8,0,0" Padding="8,6" CornerRadius="8"
+                        Background="{DynamicResource UserBubble}" Visibility="Collapsed">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="✕" Padding="4,0" Background="Transparent" BorderThickness="0"
+                                    Foreground="{DynamicResource Ink}" Click="OnRemoveAttachmentClick" ToolTip="Togli l'allegato" />
+                            <TextBlock x:Name="AttachmentText" Foreground="{DynamicResource Ink}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                        <WrapPanel Margin="0,4,0,0">
+                            <Button Content="Spiega (locale)" Tag="/l Spiega brevemente questo." Click="OnAttachmentActionClick" Margin="0,0,4,0" Padding="6,1" FontSize="11" />
+                            <Button Content="Spiega (Claude)" Tag="/c Spiega questo e, se è un errore, la causa probabile." Click="OnAttachmentActionClick" Margin="0,0,4,0" Padding="6,1" FontSize="11" />
+                            <Button Content="Trova nel codice" Tag="/c Trova nel repository il codice collegato a questo e dimmi dove intervenire." Click="OnAttachmentActionClick" Padding="6,1" FontSize="11" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="4" Margin="0,8,0,0" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource Muted}"
+                        Background="{DynamicResource InputBack}">
+                    <DockPanel>
+                        <Button x:Name="MicButton" DockPanel.Dock="Right" Content="🎤" Width="30" Padding="0" Margin="0,0,2,0"
+                                Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Ink}"
+                                VerticalAlignment="Bottom" Height="28" Click="OnMicClick"
+                                ToolTip="Detta (click per iniziare, click per finire). Trascrizione locale con Whisper." />
+                    <Grid>
+                        <TextBox x:Name="Input" Padding="6,5" BorderThickness="0" Background="Transparent"
+                                 Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}"
+                                 TextWrapping="Wrap" AcceptsReturn="False" MaxHeight="90"
+                                 VerticalScrollBarVisibility="Auto"
+                                 PreviewKeyDown="OnInputKeyDown" />
+                        <TextBlock x:Name="Placeholder" Margin="9,5" IsHitTestVisible="False"
+                                   Foreground="{DynamicResource Muted}" Text="Scrivi… (/aiuto per i comandi)" />
+                    </Grid>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Tail of the speech bubble towards the pet: an open path, so only the two slanted sides are stroked
+             and the fill hides the bubble's border underneath. -->
+        <Path x:Name="Tail" Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,44,0"
+              Data="M0,0 L14,14 L20,0" Fill="{DynamicResource Paper}" Stroke="{DynamicResource Frame}" StrokeThickness="2"
+              StrokeLineJoin="Round" />
+    </Grid>
+</Window>
