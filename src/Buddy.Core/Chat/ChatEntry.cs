@@ -65,6 +65,11 @@ public class ChatEntry(Speaker speaker, string text = "") : INotifyPropertyChang
 
     public Attachment? QuestionAttachment { get; init; }
 
+    /// <summary>Images sent with a user message, shown as thumbnails under it.</summary>
+    public IReadOnlyList<AttachedImage> Images { get; init; } = [];
+
+    public bool HasImages => Images.Count > 0;
+
     /// <summary>The "Chiedi a Claude" button is shown (local answer, finished, not yet escalated).</summary>
     public bool CanEscalate
     {

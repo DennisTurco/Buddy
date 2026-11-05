@@ -6,7 +6,7 @@ namespace Buddy.Core.Vault;
 
 /// <summary>
 /// Read-only view of the markdown notes of the active project folder.
-/// Notes are re-read lazily when the folder changes; the buddy never writes to the vault.
+/// Notes are re-read lazily when the folder changes. Writes go through <see cref="VaultWriter"/> (project board only).
 /// </summary>
 public sealed class VaultIndex : IDisposable
 {
@@ -49,7 +49,9 @@ public sealed class VaultIndex : IDisposable
     }
 
     public VaultNote? Find(string relativePath) =>
-        Notes.FirstOrDefault(n => string.Equals(n.RelativePath, relativePath.Replace('/', '\\'), StringComparison.OrdinalIgnoreCase));
+        Notes.FirstOrDefault(n => string.Equals(NormalizeSeparators(n.RelativePath), NormalizeSeparators(relativePath), StringComparison.OrdinalIgnoreCase));
+
+    private static string NormalizeSeparators(string path) => path.Replace('\\', '/');
 
     /// <summary>
     /// Returns every block that mentions <paramref name="id"/>: a top-level list item or heading whose
@@ -69,12 +71,17 @@ public sealed class VaultIndex : IDisposable
         return result;
     }
 
+    /// <summary>A note was added, changed, renamed or deleted. Raised on a background thread.</summary>
+    public event Action? Changed;
+
     private void Invalidate()
     {
         lock (_gate)
         {
             _notes = null;
         }
+
+        Changed?.Invoke();
     }
 
     private List<VaultNote> Load()

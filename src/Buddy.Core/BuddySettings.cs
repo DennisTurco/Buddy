@@ -14,8 +14,8 @@ public sealed class BuddySettings
     /// <summary>Notes always added to the local model context, relative to <see cref="ProjectPath"/>.</summary>
     public List<string> AlwaysIncludedNotes { get; set; } = [];
 
-    /// <summary>Regex that recognises task IDs inside a question (e.g. NUSR-1234).</summary>
-    public string TaskIdPattern { get; set; } = @"\b[A-Z]{2,10}-\d+\b";
+    /// <summary>Regex that recognises task IDs inside a question (e.g. NUSR-1234, or T-001 for tasks without a tracker card).</summary>
+    public string TaskIdPattern { get; set; } = @"\b[A-Z]{1,10}-\d+\b";
 
     /// <summary>
     /// Upper bound for the vault text passed to the local model. Keep it well below the model's context window
@@ -56,7 +56,7 @@ public sealed class VoiceSettings
 {
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Whisper ggml model file; empty uses %APPDATA%\Buddy\models\ggml-small.bin.</summary>
+    /// <summary>Whisper ggml model file; empty uses &lt;app data&gt;/Buddy/models/ggml-small.bin.</summary>
     public string ModelPath { get; set; } = "";
 
     public string Language { get; set; } = "it";
@@ -219,6 +219,77 @@ public sealed class ProjectPreset
         settings.Assistant.TaskActions = [.. TaskActions];
         settings.ActivePreset = Name;
     }
+
+    /// <summary>Notes of the flow template included in the local model's context when they exist in the vault.</summary>
+    public static readonly string[] FlowNotes = ["Stato attuale.md", "To-Do.md", "Da controllare.md"];
+
+    /// <summary>
+    /// A new project: its own vault and repository, the conventions (ID format, commit and PR instructions) taken from
+    /// the current settings, and the flow notes the vault has as always-included notes.
+    /// </summary>
+    public static ProjectPreset New(string name, string vault, string repo, BuddySettings current) => new()
+    {
+        Name = name.Trim(),
+        ProjectPath = vault,
+        AlwaysIncludedNotes = FlowNotes.Where(n => File.Exists(System.IO.Path.Combine(vault, n))).ToList(),
+        TaskIdPattern = current.TaskIdPattern,
+        ClaudeWorkingDirectory = repo,
+        Repo = new RepoSettings
+        {
+            Path = repo,
+            CommitInstructions = current.Repo.CommitInstructions,
+            PullRequestInstructions = current.Repo.PullRequestInstructions,
+            PullRequestTemplatePattern = current.Repo.PullRequestTemplatePattern,
+        },
+    };
+}
+
+public static class ProjectSwitching
+{
+    /// <summary>
+    /// Makes <paramref name="preset"/> the current project. The project being left is saved first into its own preset
+    /// (created from the folder name when it had none), so switching back restores it as it was.
+    /// </summary>
+    public static void SwitchTo(this BuddySettings settings, ProjectPreset preset)
+    {
+        if (string.Equals(preset.Name, settings.ActivePreset, StringComparison.OrdinalIgnoreCase))
+        {
+            preset.ApplyTo(settings);
+            return;
+        }
+
+        var leaving = settings.ActivePreset;
+        if (string.IsNullOrWhiteSpace(leaving) && !string.IsNullOrWhiteSpace(settings.ProjectPath))
+        {
+            leaving = Path.GetFileName(settings.ProjectPath.TrimEnd('/', '\\'));
+        }
+
+        if (!string.IsNullOrWhiteSpace(leaving) && !string.Equals(leaving, preset.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            var saved = ProjectPreset.From(settings, leaving);
+            var index = settings.Presets.FindIndex(p => string.Equals(p.Name, leaving, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+            {
+                settings.Presets[index] = saved;
+            }
+            else
+            {
+                settings.Presets.Add(saved);
+            }
+        }
+
+        var existing = settings.Presets.FindIndex(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase));
+        if (existing >= 0)
+        {
+            settings.Presets[existing] = preset;
+        }
+        else
+        {
+            settings.Presets.Add(preset);
+        }
+
+        preset.ApplyTo(settings);
+    }
 }
 
 /// <summary>The code repository the buddy watches (read-only: it never commits or changes files).</summary>
@@ -285,8 +356,8 @@ public sealed class OllamaSettings
 
 public sealed class ClaudeSettings
 {
-    /// <summary>Claude Code CLI executable (claude.exe, or claude.cmd from npm).</summary>
-    public string Executable { get; set; } = "claude.cmd";
+    /// <summary>Claude Code CLI executable: claude.cmd (npm) or claude.exe on Windows, claude elsewhere.</summary>
+    public string Executable { get; set; } = OperatingSystem.IsWindows() ? "claude.cmd" : "claude";
 
     /// <summary>Folder Claude Code runs in, so its CLAUDE.md, skills and settings apply.</summary>
     public string WorkingDirectory { get; set; } = "";
@@ -302,6 +373,13 @@ public sealed class ClaudeSettings
     /// Everything else still goes through the permission prompt in the bubble.
     /// </summary>
     public List<string> AutoAllowTools { get; set; } = [];
+
+    /// <summary>
+    /// Claude Code's permission mode (--permission-mode): "default" asks for every tool not in
+    /// <see cref="AutoAllowTools"/>; "acceptEdits" also lets it edit files without asking (commands still ask);
+    /// "auto" lets Claude Code's classifier decide, asking only for risky actions; "bypassPermissions" never asks.
+    /// </summary>
+    public string PermissionMode { get; set; } = "default";
 }
 
 public sealed class AppearanceSettings

@@ -41,7 +41,7 @@ public sealed class ClaudeSession : IAsyncDisposable
         }
 
         var claude = _settings.Claude;
-        var startInfo = new ProcessStartInfo(claude.Executable)
+        var startInfo = new ProcessStartInfo(ClaudeExecutable.Resolve(claude.Executable))
         {
             WorkingDirectory = string.IsNullOrWhiteSpace(claude.WorkingDirectory) ? _settings.ProjectPath : claude.WorkingDirectory,
             RedirectStandardInput = true,
@@ -149,6 +149,12 @@ public sealed class ClaudeSession : IAsyncDisposable
             yield return tool.Trim();
         }
 
+        if (!string.IsNullOrWhiteSpace(claude.PermissionMode) && claude.PermissionMode != "default")
+        {
+            yield return "--permission-mode";
+            yield return claude.PermissionMode.Trim();
+        }
+
         if (!string.IsNullOrWhiteSpace(claude.Model))
         {
             yield return "--model";
@@ -237,6 +243,10 @@ public sealed class ClaudeSession : IAsyncDisposable
                     root.GetString("result"),
                     root.TryGetProperty("total_cost_usd", out var cost) && cost.ValueKind == JsonValueKind.Number ? cost.GetDecimal() : null,
                     SessionId));
+                break;
+
+            case "rate_limit_event" when root.TryGetProperty("rate_limit_info", out var info) && ClaudeRateLimit.Parse(info) is { } limit:
+                Raise(new ClaudeRateLimitChanged(limit));
                 break;
 
             case "control_request":

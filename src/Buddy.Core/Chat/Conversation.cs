@@ -32,6 +32,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         /stop — interrompe la risposta di Claude
         /nuova — chiude la conversazione con Claude e ne apre una nuova
         /mentore — comandi del mentore (/checkin, /checkout, /pillola, /ripasso, /chiacchiera, /retro, /focus, /andamento)
+        /uso — quanto hai usato Claude oggi e i limiti del piano
         /aiuto — questo elenco
         Ctrl+Alt+B (o la scorciatoia impostata) apre la chat con gli appunti allegati; puoi anche trascinare file,
         testo o immagini sul personaggio.
@@ -43,6 +44,8 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     private readonly AssistantCommands _commands;
     private readonly GitRepo _repo;
     private readonly IOptions<BuddySettings> _options;
+    private readonly ClaudeUsage _usage;
+    private decimal _sessionCost;
     private readonly SynchronizationContext? _ui;
     private ClaudeSession? _claude;
     private ChatEntry? _claudeAnswer;
@@ -61,7 +64,8 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         AssistantCommands commands,
         GitRepo repo,
         IOptions<BuddySettings> options,
-        ILogger<Conversation>? logger = null)
+        ILogger<Conversation>? logger = null,
+        ClaudeUsage? usage = null)
     {
         _log = logger ?? NullLogger<Conversation>.Instance;
         _local = local;
@@ -69,6 +73,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         _commands = commands;
         _repo = repo;
         _options = options;
+        _usage = usage ?? new ClaudeUsage();
         _ui = SynchronizationContext.Current;
     }
 
@@ -300,6 +305,10 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 AddSystem(Phrases.NewConversation);
                 return;
 
+            case "/uso":
+                Instant(input, _usage.Describe());
+                return;
+
             case "/aiuto":
                 AddSystem(HelpText);
                 return;
@@ -382,7 +391,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     }
 
     private ChatEntry UserEntry(string text, Attachment? attachment) =>
-        new(Speaker.User, attachment is null ? text : $"{text}\n📎 {attachment.Preview}".Trim());
+        new(Speaker.User, attachment is null ? text : $"{text}\n📎 {attachment.Preview}".Trim()) { Images = attachment?.Images ?? [] };
 
     private async Task AskLocalAsync(string question, Attachment? attachment)
     {
@@ -421,7 +430,13 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
         {
             _log.LogWarning(ex, "Ollama non risponde");
-            OnUi(() => answer.Text = $"Non riesco a parlare con Ollama ({ex.Message}). È avviato?");
+            // 404: Ollama is running but the configured model is not installed.
+            var model = _options.Value.Ollama.Model;
+            var message = ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound }
+                ? $"Ollama è avviato ma il modello `{model}` non è installato: scaricalo con `ollama pull {model}` "
+                  + "oppure scegline uno installato in Impostazioni → Modelli e percorsi."
+                : $"Non riesco a parlare con Ollama ({ex.Message}). È avviato?";
+            OnUi(() => answer.Text = message);
             PetState = PetState.Error;
         }
         finally
@@ -471,7 +486,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         {
             _claudeBusy = false;
             _log.LogError(ex, "Claude Code non si avvia ({Exe})", _options.Value.Claude.Executable);
-            AddSystem($"Non riesco ad avviare Claude Code: {ex.Message}");
+            AddSystem($"Non riesco ad avviare Claude Code: {Claude.ClaudeExecutable.Describe(ex, _options.Value.Claude.Executable)}");
             PetState = PetState.Error;
         }
     }
@@ -510,6 +525,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
 
         var previousSession = _claude?.SessionId;
         _claude = new ClaudeSession(_options, AskPermissionAsync);
+        _sessionCost = 0; // the CLI's total_cost_usd counts from the start of each process
         _claude.EventReceived += evt => OnUi(() => HandleClaudeEvent(evt));
         _claude.Start(previousSession);
     }
@@ -550,6 +566,16 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 Entries.Add(new ChatEntry(Speaker.System, $"🔧 {tool.Summary}"));
                 break;
 
+            case ClaudeRateLimitChanged changed:
+                var before = _usage.Limits.FirstOrDefault(l => l.Type == changed.Limit.Type);
+                _usage.Update(changed.Limit);
+                if ((changed.Limit.IsWarning || changed.Limit.IsBlocked) && before?.Status != changed.Limit.Status)
+                {
+                    Entries.Add(new ChatEntry(Speaker.System, $"⚠ {changed.Limit.Label}: {changed.Limit.LongStatus}"));
+                }
+
+                break;
+
             case ClaudeTurnCompleted done:
                 var lastAnswer = Entries.LastOrDefault(e => e.Speaker == Speaker.Claude && e is not PermissionEntry)?.Text;
                 CloseClaudeAnswer();
@@ -575,9 +601,13 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                     Entries.Add(new ChatEntry(Speaker.System, $"⚠ {done.Result}"));
                 }
 
-                if (done.CostUsd is { } cost)
+                if (done.CostUsd is { } total)
                 {
-                    Entries.Add(new ChatEntry(Speaker.System, $"costo turno: ${cost:0.000}"));
+                    // total_cost_usd is the running total of the CLI process, not of this turn.
+                    var cost = total >= _sessionCost ? total - _sessionCost : total;
+                    _sessionCost = total;
+                    _usage.AddTurn(cost);
+                    Entries.Add(new ChatEntry(Speaker.System, $"costo turno: ${cost:0.000} · {_usage.ShortText()}"));
                 }
 
                 if (done.IsError)

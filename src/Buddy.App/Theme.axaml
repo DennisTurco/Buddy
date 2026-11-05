@@ -1,0 +1,73 @@
+<!--
+    The look of every window in one place. Colours of the chat bubble are defaults: the bubble replaces them at
+    startup with the Appearance settings (see BubbleWindow.ApplyAppearance).
+    Classes: TextBlock.label (form label), TextBlock.hint (grey help text), TextBlock.heading (section title).
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Styles.Resources>
+        <SolidColorBrush x:Key="Ink" Color="#241F36" />
+        <SolidColorBrush x:Key="Muted" Color="#6B6680" />
+        <SolidColorBrush x:Key="Paper" Color="#FFFDF7" />
+        <SolidColorBrush x:Key="Frame" Color="#241F36" />
+        <SolidColorBrush x:Key="UserBubble" Color="#E9E6F2" />
+        <SolidColorBrush x:Key="LocalBubble" Color="#E3F6EC" />
+        <SolidColorBrush x:Key="LocalAccent" Color="#7FD1AE" />
+        <SolidColorBrush x:Key="ClaudeBubble" Color="#EFE8FF" />
+        <SolidColorBrush x:Key="ClaudeAccent" Color="#B99BF5" />
+        <SolidColorBrush x:Key="InputBack" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="MentorBubble" Color="#FFF4DC" />
+        <SolidColorBrush x:Key="MentorAccent" Color="#F2B544" />
+        <SolidColorBrush x:Key="WindowBack" Color="#FAF9FC" />
+        <SolidColorBrush x:Key="PermissionBack" Color="#FFF4D6" />
+        <SolidColorBrush x:Key="PermissionBorder" Color="#E8B931" />
+        <!-- Markdown: code background and links (replaced per window from the Appearance colours). -->
+        <SolidColorBrush x:Key="CodeBack" Color="#EDEAF3" />
+        <SolidColorBrush x:Key="LinkInk" Color="#6B4FC4" />
+        <!-- A list: the first font installed wins (Windows, macOS, then common Linux ones). -->
+        <FontFamily x:Key="MonoFont">Consolas, Menlo, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
+    </Styles.Resources>
+
+    <!-- Form windows (settings, first run, prompts) -->
+    <Style Selector="Window.form">
+        <Setter Property="Background" Value="{DynamicResource WindowBack}" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="Window.form TextBlock.label">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,6,12,6" />
+    </Style>
+    <Style Selector="Window.form TextBlock.hint">
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="Window.form TextBlock.heading">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,12,0,2" />
+    </Style>
+    <Style Selector="Window.form TextBox">
+        <Setter Property="Margin" Value="0,4" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Window.form TextBox.multiline">
+        <Setter Property="AcceptsReturn" Value="True" />
+        <Setter Property="VerticalContentAlignment" Value="Top" />
+    </Style>
+    <Style Selector="Window.form CheckBox">
+        <Setter Property="Margin" Value="0,2" />
+    </Style>
+    <Style Selector="Window.form Button">
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Margin" Value="6,4,0,4" />
+    </Style>
+    <Style Selector="Window.form ComboBox">
+        <Setter Property="Margin" Value="0,4" />
+    </Style>
+    <Style Selector="Window.form TabItem">
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="8,0" />
+    </Style>
+</Styles>

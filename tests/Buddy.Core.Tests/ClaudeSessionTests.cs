@@ -48,6 +48,18 @@ public class ClaudeSessionTests
         Assert.That(args, Is.SupersetOf(new[] { "-p", "stream-json", "--permission-prompt-tool", "stdio", "--resume", "abc" }));
     }
 
+    [Test]
+    public void Arguments_pass_the_permission_mode_unless_default()
+    {
+        List<string> Args(string mode) =>
+            new ClaudeSession(Options.Create(new BuddySettings { Claude = { PermissionMode = mode } }), _ => Task.FromResult(PermissionDecision.Allowed))
+                .BuildArguments(null).ToList();
+
+        Assert.That(Args("default"), Does.Not.Contain("--permission-mode"));
+        var args = Args("bypassPermissions");
+        Assert.That(args[args.IndexOf("--permission-mode") + 1], Is.EqualTo("bypassPermissions"));
+    }
+
     [TestCase("ciao", null, "ciao")]
     [TestCase("/c", "/c", "")]
     [TestCase("/C  fai una cosa ", "/c", "fai una cosa")]

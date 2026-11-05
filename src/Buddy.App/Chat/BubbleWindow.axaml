@@ -1,0 +1,235 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chat="clr-namespace:Buddy.App.Chat"
+        xmlns:core="clr-namespace:Buddy.Core.Chat;assembly=Buddy.Core"
+        xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        x:Class="Buddy.App.Chat.BubbleWindow"
+        Title="Buddy chat"
+        Width="380" Height="480"
+        WindowDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False"
+        FontSize="13"
+        DragDrop.AllowDrop="True"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <!-- Message widths: replaced when the chat is maximized (see SetMaximized). -->
+        <sys:Double x:Key="UserMaxWidth">290</sys:Double>
+        <sys:Double x:Key="AssistantMaxWidth">320</sys:Double>
+        <sys:Double x:Key="ImageHeight">110</sys:Double>
+        <chat:SpeakerIs x:Key="SpeakerIs" />
+        <chat:ImageThumbnail x:Key="ImageThumbnail" />
+
+        <!-- An image thumbnail (attachment or sent message): click opens it full size. -->
+        <DataTemplate x:Key="ImageTemplate" x:DataType="core:AttachedImage">
+            <Button Classes="flat" Padding="0" Margin="0,4,4,0" Click="OnImageClick" Cursor="Hand" ToolTip.Tip="Apri l'immagine">
+                <Border CornerRadius="6" ClipToBounds="True" BorderBrush="{DynamicResource Muted}" BorderThickness="1">
+                    <Image Source="{Binding Converter={StaticResource ImageThumbnail}}" MaxHeight="{DynamicResource ImageHeight}" MaxWidth="240"
+                           Stretch="Uniform" />
+                </Border>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="UserTemplate" x:DataType="core:ChatEntry">
+            <Border HorizontalAlignment="Right" MaxWidth="{DynamicResource UserMaxWidth}" Margin="40,4,0,4" Padding="10,6"
+                    CornerRadius="10,10,2,10" Background="{DynamicResource UserBubble}">
+                <StackPanel>
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{DynamicResource Ink}" />
+                    <ItemsControl ItemsSource="{Binding Images}" IsVisible="{Binding HasImages}" ItemTemplate="{StaticResource ImageTemplate}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssistantTemplate" x:DataType="core:ChatEntry">
+            <Border Classes="card"
+                    Classes.claude="{Binding Speaker, Converter={StaticResource SpeakerIs}, ConverterParameter=Claude}"
+                    Classes.mentor="{Binding Speaker, Converter={StaticResource SpeakerIs}, ConverterParameter=Mentor}"
+                    HorizontalAlignment="Left" MaxWidth="{DynamicResource AssistantMaxWidth}" Margin="0,4,30,4" Padding="10,6"
+                    CornerRadius="10,10,10,2" BorderThickness="2,0,0,0">
+                <StackPanel>
+                    <!-- While streaming the text is shown plain (cheap on every chunk); markdown once complete. -->
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{DynamicResource Ink}"
+                                         IsVisible="{Binding IsStreaming}" />
+                    <chat:MarkdownView Markdown="{Binding Text}" IsVisible="{Binding !IsStreaming}" />
+                    <Button Content="Chiedi a Claude ↗" Click="OnEscalateClick" IsVisible="{Binding CanEscalate}"
+                            HorizontalAlignment="Left" Margin="0,4,0,0" Padding="6,1" FontSize="11"
+                            ToolTip.Tip="Manda la stessa domanda a Claude" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SystemTemplate" x:DataType="core:ChatEntry">
+            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                 Margin="4,2" FontSize="11" Foreground="{DynamicResource Muted}" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="PermissionTemplate" x:DataType="core:PermissionEntry">
+            <!-- Always a light box (yellow), so its buttons use the light theme even in a dark chat. -->
+            <ThemeVariantScope RequestedThemeVariant="Light">
+            <Border Margin="0,6" Padding="10,8" CornerRadius="8" Background="{DynamicResource PermissionBack}"
+                    BorderBrush="{DynamicResource PermissionBorder}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Claude chiede il permesso:" FontWeight="SemiBold" Foreground="#241F36" />
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,4"
+                                         Foreground="#241F36" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPending}">
+                        <Button Content="Sì" Width="64" HorizontalContentAlignment="Center" Click="OnAllowClick" />
+                        <Button Content="No" Width="64" HorizontalContentAlignment="Center" Click="OnDenyClick" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Outcome}" IsVisible="{Binding !IsPending}" Foreground="#6B6680" />
+                </StackPanel>
+            </Border>
+            </ThemeVariantScope>
+        </DataTemplate>
+
+        <chat:EntryTemplateSelector x:Key="EntrySelector"
+                                    User="{StaticResource UserTemplate}"
+                                    Assistant="{StaticResource AssistantTemplate}"
+                                    System="{StaticResource SystemTemplate}"
+                                    Permission="{StaticResource PermissionTemplate}" />
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource LocalBubble}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LocalAccent}" />
+        </Style>
+        <Style Selector="Border.card.claude">
+            <Setter Property="Background" Value="{DynamicResource ClaudeBubble}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ClaudeAccent}" />
+        </Style>
+        <Style Selector="Border.card.mentor">
+            <Setter Property="Background" Value="{DynamicResource MentorBubble}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MentorAccent}" />
+        </Style>
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.small">
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Margin leaves room for the drop shadow and the tail pointing at the pet. -->
+    <Grid Margin="10,10,10,4" RowDefinitions="*,14">
+        <Border CornerRadius="16" Background="{DynamicResource Paper}" BorderBrush="{DynamicResource Frame}" BorderThickness="2"
+                BoxShadow="0 2 12 0 #40000000">
+            <Grid Margin="10" RowDefinitions="Auto,Auto,*,Auto,Auto">
+
+                <DockPanel x:Name="Header" Margin="2,0,0,6" Background="Transparent">
+                    <Button DockPanel.Dock="Right" Classes="flat" Content="✕" Width="24" Height="22"
+                            Click="OnCloseClick" ToolTip.Tip="Chiudi (Esc)" />
+                    <Button x:Name="MaximizeButton" DockPanel.Dock="Right" Classes="flat" Content="⛶" Width="24" Height="22" Margin="0,0,2,0"
+                            Click="OnMaximizeClick" ToolTip.Tip="Schermo intero (F11 o doppio click sul titolo)" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="ModeDot" Width="10" Height="10" Margin="0,0,6,0" Stroke="{DynamicResource Ink}" StrokeThickness="1.5" />
+                        <TextBlock x:Name="ModeText" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" />
+                        <TextBlock x:Name="UsageText" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource Muted}" IsVisible="False" />
+                    </StackPanel>
+                </DockPanel>
+
+                <!-- Current task (from the git branch) and its quick actions. -->
+                <StackPanel x:Name="TaskStrip" Grid.Row="1" Margin="2,0,0,6" IsVisible="False">
+                    <TextBlock x:Name="TaskText" FontSize="11.5" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" />
+                    <ItemsControl x:Name="TaskActionsList" Margin="0,3,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="sys:String">
+                                <Button Content="{Binding}" Click="OnTaskActionClick" Classes="small" Margin="0,0,4,2"
+                                        Background="{DynamicResource ClaudeBubble}" Foreground="{DynamicResource Ink}"
+                                        BorderBrush="{DynamicResource ClaudeAccent}" BorderThickness="1" Cursor="Hand" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <ScrollViewer x:Name="Scroller" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl x:Name="EntriesList" ItemTemplate="{StaticResource EntrySelector}" />
+                </ScrollViewer>
+
+                <!-- Pending attachment (clipboard, dropped files/images) with ready-made questions. -->
+                <Border x:Name="AttachmentPanel" Grid.Row="3" Margin="0,8,0,0" Padding="8,6" CornerRadius="8"
+                        Background="{DynamicResource UserBubble}" IsVisible="False">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Classes="flat" Content="✕" Padding="4,0"
+                                    Click="OnRemoveAttachmentClick" ToolTip.Tip="Togli l'allegato" />
+                            <TextBlock x:Name="AttachmentText" Foreground="{DynamicResource Ink}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                        <ItemsControl x:Name="AttachmentImages" ItemTemplate="{StaticResource ImageTemplate}" Margin="0,2,0,0">
+                            <ItemsControl.Resources>
+                                <sys:Double x:Key="ImageHeight">60</sys:Double>
+                            </ItemsControl.Resources>
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <WrapPanel Margin="0,4,0,0">
+                            <Button Classes="small" Content="Spiega (locale)" Tag="/l Spiega brevemente questo." Click="OnAttachmentActionClick" Margin="0,0,4,0" />
+                            <Button Classes="small" Content="Spiega (Claude)" Tag="/c Spiega questo e, se è un errore, la causa probabile." Click="OnAttachmentActionClick" Margin="0,0,4,0" />
+                            <Button Classes="small" Content="Trova nel codice" Tag="/c Trova nel repository il codice collegato a questo e dimmi dove intervenire." Click="OnAttachmentActionClick" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="4" Margin="0,8,0,0" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource Muted}"
+                        Background="{DynamicResource InputBack}">
+                    <DockPanel>
+                        <Button x:Name="AttachButton" DockPanel.Dock="Right" Classes="flat" Content="📎" Width="28" Height="28"
+                                VerticalAlignment="Bottom" Click="OnAttachClick"
+                                ToolTip.Tip="Allega immagini o file (o incolla con Ctrl+V, o trascinali sulla chat)" />
+                        <Button x:Name="MicButton" DockPanel.Dock="Right" Classes="flat" Content="🎤" Width="30" Margin="0,0,2,0"
+                                VerticalAlignment="Bottom" Height="28" Click="OnMicClick"
+                                ToolTip.Tip="Detta (click per iniziare, click per finire). Trascrizione locale con Whisper." />
+                        <TextBox x:Name="Input" Padding="6,5" MinHeight="0" FocusAdorner="{x:Null}"
+                                 Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}"
+                                 TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="90"
+                                 PlaceholderText="Scrivi… (/aiuto per i comandi)"
+                                 PlaceholderForeground="{DynamicResource Muted}">
+                            <!-- Fluent's text box draws its own frame and background: the bubble draws them instead. -->
+                            <TextBox.Resources>
+                                <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                                <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                            </TextBox.Resources>
+                        </TextBox>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Tail of the speech bubble towards the pet: an open path, so only the two slanted sides are stroked
+             and the fill hides the bubble's border underneath. -->
+        <Path x:Name="Tail" Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,44,0"
+              Data="M0,0 L14,14 L20,0" Fill="{DynamicResource Paper}" Stroke="{DynamicResource Frame}" StrokeThickness="2"
+              StrokeJoin="Round" />
+    </Grid>
+</Window>

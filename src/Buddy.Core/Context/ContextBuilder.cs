@@ -53,7 +53,7 @@ public sealed class ContextBuilder(
         if (!vault.IsAvailable)
         {
             sb.AppendLine($"(Cartella del progetto non trovata: {_settings.ProjectPath})");
-            return new BuiltContext(sb.ToString(), sources, budget.Truncated);
+            return Finish(sb, sources, budget);
         }
 
         var ids = FindIds(question).ToList();
@@ -93,8 +93,26 @@ public sealed class ContextBuilder(
             }
         }
 
+        return Finish(sb, sources, budget);
+    }
+
+    /// <summary>
+    /// With nothing from the notes, small models fill the gap with generic encouragement: say plainly that the
+    /// context is empty, so the answer is "not in the notes" instead.
+    /// </summary>
+    private static BuiltContext Finish(StringBuilder sb, List<ContextSource> sources, Budget budget)
+    {
+        if (sources.Count == 0)
+        {
+            sb.AppendLine(NoNotes);
+        }
+
         return new BuiltContext(sb.ToString(), sources, budget.Truncated);
     }
+
+    public const string NoNotes =
+        "(Nessuna nota del progetto riguarda questa domanda: rispondi che nelle note non trovi niente e suggerisci "
+        + "di nominare un task per ID o di chiedere a Claude con /c. Non dare consigli generici.)";
 
     private IEnumerable<string> FindIds(string question) =>
         Regex.Matches(question, _settings.TaskIdPattern, RegexOptions.IgnoreCase)

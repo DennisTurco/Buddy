@@ -1,5 +1,4 @@
-using System.IO;
-using NAudio.Wave;
+using Buddy.App.Platform;
 using Whisper.net;
 
 namespace Buddy.App.Voice;
@@ -10,71 +9,41 @@ namespace Buddy.App.Voice;
 /// </summary>
 public sealed class VoiceInput : IDisposable
 {
+    private const int SampleRate = 16_000;
+
     private readonly string _modelPath;
     private readonly string _language;
+    private readonly IAudioCapture _capture;
     private readonly SemaphoreSlim _modelLock = new(1, 1);
     private WhisperFactory? _factory;
-    private WaveInEvent? _recorder;
-    private MemoryStream? _audio;
-    private WaveFileWriter? _writer;
 
-    public VoiceInput(string modelPath, string language)
+    public VoiceInput(string modelPath, string language, IAudioCapture capture)
     {
         _modelPath = modelPath;
         _language = string.IsNullOrWhiteSpace(language) ? "it" : language;
+        _capture = capture;
     }
 
     public bool IsModelAvailable => File.Exists(_modelPath);
 
-    public bool IsRecording => _recorder is not null;
+    public bool IsRecording => _capture.IsRecording;
 
     public string ModelPath => _modelPath;
 
-    public void StartRecording()
-    {
-        if (IsRecording)
-        {
-            return;
-        }
-
-        if (WaveInEvent.DeviceCount == 0)
-        {
-            throw new InvalidOperationException("Nessun microfono trovato.");
-        }
-
-        _audio = new MemoryStream();
-        var format = new WaveFormat(16_000, 16, 1);
-        _writer = new WaveFileWriter(new NonClosingStream(_audio), format);
-        _recorder = new WaveInEvent { WaveFormat = format, BufferMilliseconds = 100 };
-        _recorder.DataAvailable += (_, e) => _writer?.Write(e.Buffer, 0, e.BytesRecorded);
-        _recorder.StartRecording();
-    }
+    public void StartRecording() => _capture.Start();
 
     /// <summary>Stops recording and returns the transcription (empty if nothing intelligible was said).</summary>
     public async Task<string> StopAndTranscribeAsync(CancellationToken cancellationToken = default)
     {
-        if (_recorder is not { } recorder || _writer is not { } writer || _audio is not { } audio)
-        {
-            return "";
-        }
-
-        var stopped = new TaskCompletionSource();
-        recorder.RecordingStopped += (_, _) => stopped.TrySetResult();
-        recorder.StopRecording();
-        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken).ConfigureAwait(false);
-        recorder.Dispose();
-        writer.Dispose(); // writes the WAV header lengths; the underlying stream stays open
-        _recorder = null;
-        _writer = null;
-        _audio = null;
+        var pcm = await _capture.StopAsync().ConfigureAwait(false);
 
         // Less than ~0.3 s of audio: a click, not speech.
-        if (audio.Length < 16_000 * 2 * 0.3)
+        if (pcm.Length < SampleRate * 2 * 0.3)
         {
             return "";
         }
 
-        audio.Position = 0;
+        await using var audio = new MemoryStream(Wav(pcm));
         await _modelLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -91,8 +60,30 @@ public sealed class VoiceInput : IDisposable
         finally
         {
             _modelLock.Release();
-            await audio.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    /// <summary>Wraps 16 kHz mono 16-bit PCM in a WAV header.</summary>
+    internal static byte[] Wav(byte[] pcm)
+    {
+        using var stream = new MemoryStream(44 + pcm.Length);
+        using var writer = new BinaryWriter(stream);
+        writer.Write("RIFF"u8);
+        writer.Write(36 + pcm.Length);
+        writer.Write("WAVE"u8);
+        writer.Write("fmt "u8);
+        writer.Write(16);
+        writer.Write((short)1); // PCM
+        writer.Write((short)1); // mono
+        writer.Write(SampleRate);
+        writer.Write(SampleRate * 2); // bytes per second
+        writer.Write((short)2); // block align
+        writer.Write((short)16); // bits per sample
+        writer.Write("data"u8);
+        writer.Write(pcm.Length);
+        writer.Write(pcm);
+        writer.Flush();
+        return stream.ToArray();
     }
 
     /// <summary>Drops Whisper's silence markers such as "[BLANK_AUDIO]" or "(musica)".</summary>
@@ -101,26 +92,8 @@ public sealed class VoiceInput : IDisposable
 
     public void Dispose()
     {
-        _recorder?.Dispose();
-        _writer?.Dispose();
-        _audio?.Dispose();
+        _capture.Dispose();
         _factory?.Dispose();
         _modelLock.Dispose();
-    }
-
-    /// <summary>Lets WaveFileWriter finalize the header without closing our MemoryStream.</summary>
-    private sealed class NonClosingStream(Stream inner) : Stream
-    {
-        public override bool CanRead => inner.CanRead;
-        public override bool CanSeek => inner.CanSeek;
-        public override bool CanWrite => inner.CanWrite;
-        public override long Length => inner.Length;
-        public override long Position { get => inner.Position; set => inner.Position = value; }
-        public override void Flush() => inner.Flush();
-        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
-        public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
-        public override void SetLength(long value) => inner.SetLength(value);
-        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
-        protected override void Dispose(bool disposing) => Flush();
     }
 }

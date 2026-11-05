@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Buddy.App.Pet.PetWindow"
+        Title="Buddy"
+        SizeToContent="WidthAndHeight"
+        WindowDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        CanResize="False"
+        DragDrop.AllowDrop="True"
+        UseLayoutRounding="True">
+    <Window.ContextMenu>
+        <ContextMenu x:Name="Menu">
+            <MenuItem Header="Chat" Click="OnChatClick" />
+            <MenuItem Header="Nascondi Buddy" Click="OnHideClick" />
+            <MenuItem Header="Bacheca del progetto" Click="OnProjectBoardClick" />
+            <MenuItem x:Name="ProjectsMenu" Header="Progetto" />
+            <MenuItem Header="Nuova conversazione" Click="OnNewConversationClick" />
+            <MenuItem Header="Apri vault del progetto" Click="OnOpenVaultClick" />
+            <Separator />
+            <MenuItem Header="Impostazioni…" Click="OnSettingsClick" />
+            <MenuItem Header="Esci" Click="OnExitClick" />
+        </ContextMenu>
+    </Window.ContextMenu>
+    <Grid Margin="8,0,8,0" RowDefinitions="28,Auto">
+        <TextBlock x:Name="BadgeText"
+                   HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                   FontFamily="{StaticResource MonoFont}" FontWeight="Bold" FontSize="20"
+                   Foreground="#241F36">
+            <TextBlock.Effect>
+                <DropShadowEffect Color="White" BlurRadius="4" OffsetX="0" OffsetY="0" Opacity="1" />
+            </TextBlock.Effect>
+        </TextBlock>
+        <!-- No interpolation keeps pixel art sharp at any size; the bottom margin leaves room for the bob. -->
+        <Image x:Name="Sprite" Grid.Row="1"
+               Width="96" Height="96" Margin="0,0,0,8"
+               VerticalAlignment="Top"
+               RenderOptions.BitmapInterpolationMode="None"
+               RenderTransformOrigin="50%,50%"
+               Cursor="Hand" />
+    </Grid>
+</Window>

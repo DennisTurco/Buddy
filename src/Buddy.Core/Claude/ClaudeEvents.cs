@@ -16,6 +16,9 @@ public sealed record ClaudeToolUse(string ToolName, string Summary) : ClaudeEven
 public sealed record ClaudeTurnCompleted(bool IsError, string? Result, decimal? CostUsd, string? SessionId) : ClaudeEvent;
 
 /// <summary>The CLI process wrote something to stderr or exited.</summary>
+/// <summary>A plan limit reported by the CLI (rate_limit_event).</summary>
+public sealed record ClaudeRateLimitChanged(ClaudeRateLimit Limit) : ClaudeEvent;
+
 public sealed record ClaudeProcessMessage(string Text, bool Exited) : ClaudeEvent;
 
 /// <summary>Claude asks permission to run a tool; the host answers with a <see cref="PermissionDecision"/>.</summary>

@@ -1,29 +1,49 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    One Avalonia UI for every OS. The target framework follows the OS that builds it:
+    - Windows: net10.0-windows, which adds WinForms only for the notification-area icon and its balloon notifications;
+    - Linux/macOS: net10.0.
+    `dotnet build -p:BuddyWindows=true` builds the Windows flavour from Linux too (compile check only).
+  -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT' Or '$(BuddyWindows)' == 'true'">
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>buddy.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == ''">
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Buddy.Core\Buddy.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MdXaml" Version="1.27.0" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Markdown.Avalonia.Tight" Version="12.0.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
-    <PackageReference Include="NAudio.WinMM" Version="3.3.0" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
   </ItemGroup>
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationIcon>buddy.ico</ApplicationIcon>
-  </PropertyGroup>
+  <ItemGroup Condition="'$(UseWindowsForms)' == 'true'">
+    <PackageReference Include="NAudio.WinMM" Version="3.3.0" />
+  </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="buddy.ico" />
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
   <ItemGroup>
+    <!-- WinForms is only for the tray icon: keep its types out of the global usings, they clash with Avalonia's. -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
   </ItemGroup>

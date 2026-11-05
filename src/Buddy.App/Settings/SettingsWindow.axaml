@@ -1,0 +1,436 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="clr-namespace:Buddy.Core;assembly=Buddy.Core"
+        x:Class="Buddy.App.Settings.SettingsWindow"
+        Classes="form"
+        Title="Impostazioni di Buddy"
+        Width="860" Height="660" MinWidth="560" MinHeight="460"
+        WindowStartupLocation="CenterScreen">
+    <Window.Styles>
+        <Style Selector="ScrollViewer.page">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+    </Window.Styles>
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="12">
+            <TextBlock Text="Le modifiche si applicano riavviando Buddy." Classes="hint" VerticalAlignment="Center" Margin="0,0,12,0" />
+            <Button Content="Annulla" IsCancel="True" Click="OnCancelClick" />
+            <Button Content="Salva e riavvia" IsDefault="True" Click="OnSaveClick" FontWeight="SemiBold" />
+        </StackPanel>
+
+        <TabControl Margin="12,12,12,0">
+            <!-- ============ Progetti ============ -->
+            <TabItem Header="Progetti">
+                <DockPanel Margin="14,10">
+                    <TextBlock DockPanel.Dock="Top" Classes="hint"
+                               Text="Ogni progetto ha il suo vault, il suo codice e le sue regole (note sempre incluse, cartelle di Claude, formato degli ID, documenti di riferimento, gruppi, commit e PR, pulsanti del task). Aspetto e modelli sono comuni. Si cambia progetto anche dal menu del tasto destro → Progetto e dalla bacheca." />
+                    <TextBlock x:Name="PresetHint" DockPanel.Dock="Bottom" Classes="hint" FontWeight="SemiBold" Margin="0,8,0,0" IsVisible="False" />
+                    <StackPanel DockPanel.Dock="Right" Margin="10,0,0,0" Spacing="4" Width="170">
+                        <Button Content="＋ Nuovo progetto…" Click="OnPresetNewClick" HorizontalAlignment="Stretch" />
+                        <Button Content="Passa a questo" Click="OnPresetLoadClick" HorizontalAlignment="Stretch"
+                                ToolTip.Tip="Mostra il progetto nelle altre schede; con Salva Buddy si riavvia su di lui" />
+                        <Button Content="Duplica…" Click="OnPresetSaveCurrentClick" HorizontalAlignment="Stretch"
+                                ToolTip.Tip="Copia il progetto attuale con un altro nome (es. stesso codice, altro vault)" />
+                        <Button Content="Rinomina…" Click="OnPresetRenameClick" HorizontalAlignment="Stretch" />
+                        <Button Content="Elimina" Click="OnPresetDeleteClick" HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                    <ListBox x:Name="PresetList" DoubleTapped="OnPresetLoadClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="core:ProjectPreset">
+                                <StackPanel Margin="2,2">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding ProjectPath}" Classes="hint" Margin="0" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Repo.Path}" Classes="hint" Margin="0" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+
+            <!-- ============ Aspetto ============ -->
+            <TabItem Header="Aspetto">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Nome del buddy" Classes="label" />
+                            <TextBox Grid.Column="1" Text="{Binding Appearance.Name}" />
+                            <TextBlock Grid.Row="1" Text="Carattere" Classes="label" />
+                            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="FontCombo" IsEditable="True" HorizontalAlignment="Stretch" Margin="0,4"
+                                      Text="{Binding Appearance.FontFamily}" />
+                            <TextBlock Grid.Row="2" Text="Dimensione testo" Classes="label" />
+                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
+                                <Slider Width="200" Minimum="9" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding Appearance.FontSize}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Appearance.FontSize}" Margin="10,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+
+                        <DockPanel Margin="0,14,0,4">
+                            <TextBlock Text="Colori della nuvoletta" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="Tema chiaro" Click="OnLightThemeClick" />
+                                <Button Content="Tema scuro" Click="OnDarkThemeClick" />
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock Text="Colori in formato #RRGGBB." Classes="hint" />
+                        <Grid x:Name="ThemeColors">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ Personaggio ============ -->
+            <TabItem Header="Personaggio">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <Grid x:Name="PetColors">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Dimensione (px)" Classes="label" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Slider Width="200" Minimum="48" Maximum="256" TickFrequency="16" IsSnapToTickEnabled="True"
+                                        Value="{Binding Pet.DisplaySize}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Pet.DisplaySize}" Margin="10,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Text="Durata fotogramma (ms)" Classes="label" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                                <Slider Width="200" Minimum="80" Maximum="800" TickFrequency="20" IsSnapToTickEnabled="True"
+                                        Value="{Binding Pet.FrameMilliseconds}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Pet.FrameMilliseconds}" Margin="10,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                        <CheckBox Content="Cammina per lo schermo (in orizzontale, quando è inattivo e la chat è chiusa)" IsChecked="{Binding Pet.Walk}" />
+                        <Grid Margin="20,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Velocità (px/s)" Classes="label" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Slider Width="200" Minimum="10" Maximum="200" TickFrequency="10" IsSnapToTickEnabled="True"
+                                        Value="{Binding Pet.WalkSpeed}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Pet.WalkSpeed}" Margin="10,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Text="Pausa media (s)" Classes="label" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                                <Slider Width="200" Minimum="5" Maximum="300" TickFrequency="5" IsSnapToTickEnabled="True"
+                                        Value="{Binding Pet.WalkPauseSeconds}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Pet.WalkPauseSeconds}" Margin="10,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                        <CheckBox Content="Sempre in primo piano" IsChecked="{Binding Pet.AlwaysOnTop}" />
+                        <CheckBox Content="Ricorda la posizione sullo schermo" IsChecked="{Binding Pet.RememberPosition}" />
+                        <CheckBox x:Name="StartAtLoginBox" Content="Avvia all'accesso" IsChecked="{Binding Pet.StartWithWindows}" />
+
+                        <TextBlock Text="Pixel art personalizzata" FontWeight="SemiBold" Margin="0,14,0,4" />
+                        <TextBlock Classes="hint"
+                                   Text="Una cartella con un PNG per stato: idle, think, work, alert, error, happy, walk (.png). Ogni file è una striscia orizzontale di fotogrammi quadrati. Con il prefisso claude- (es. claude-idle.png) vale solo in modalità Claude. I file mancanti usano il personaggio predefinito. 'Esporta modello' scrive quelli predefiniti nella cartella, da modificare con un editor di pixel art." />
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="Sfoglia…" Click="OnBrowseSpriteFolderClick" />
+                                <Button Content="Esporta modello" Click="OnExportSpritesClick" />
+                            </StackPanel>
+                            <TextBox Text="{Binding Pet.SpriteFolder}" />
+                        </DockPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ Modelli e percorsi ============ -->
+            <TabItem Header="Modelli e percorsi">
+                <ScrollViewer Classes="page">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.ColumnSpan="3" Text="Vault" FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <TextBlock Grid.Row="1" Text="Cartella del progetto" Classes="label" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ProjectPath}" />
+                        <Button Grid.Row="1" Grid.Column="2" Content="Sfoglia…" Click="OnBrowseProjectClick" />
+                        <TextBlock Grid.Row="2" Text="Note sempre incluse" Classes="label" VerticalAlignment="Top" />
+                        <TextBox Classes="multiline" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" x:Name="AlwaysIncludedNotes" 
+                                 Height="52" ToolTip.Tip="Una nota per riga, relativa alla cartella del progetto" />
+
+                        <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="Modello locale (Ollama)" FontWeight="SemiBold" Margin="0,12,0,4" />
+                        <TextBlock Grid.Row="4" Text="Indirizzo" Classes="label" />
+                        <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Ollama.BaseUrl}" />
+                        <TextBlock Grid.Row="5" Text="Modello" Classes="label" />
+                        <ComboBox Grid.Row="5" Grid.Column="1" x:Name="OllamaModels" IsEditable="True" HorizontalAlignment="Stretch" Margin="0,4"
+                                  Text="{Binding Ollama.Model}" />
+                        <Button Grid.Row="5" Grid.Column="2" Content="Aggiorna" Click="OnRefreshModelsClick" />
+                        <TextBlock Grid.Row="6" Text="Contesto max (caratteri)" Classes="label" />
+                        <TextBox Grid.Row="6" Grid.Column="1" Width="100" HorizontalAlignment="Left"
+                                 Text="{Binding MaxContextChars}"
+                                 ToolTip.Tip="Più testo = risposte più informate ma primo token più lento" />
+
+                        <TextBlock Grid.Row="7" Grid.ColumnSpan="3" Text="Claude Code" FontWeight="SemiBold" Margin="0,12,0,4" />
+                        <TextBlock Grid.Row="8" Text="Eseguibile" Classes="label" />
+                        <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding Claude.Executable}" />
+                        <Button Grid.Row="8" Grid.Column="2" Content="Sfoglia…" Click="OnBrowseClaudeExeClick" />
+                        <TextBlock Grid.Row="9" Text="Cartella di lavoro" Classes="label" />
+                        <TextBox Grid.Row="9" Grid.Column="1" Text="{Binding Claude.WorkingDirectory}" />
+                        <Button Grid.Row="9" Grid.Column="2" Content="Sfoglia…" Click="OnBrowseClaudeDirClick" />
+                        <TextBlock Grid.Row="10" Text="Modello" Classes="label" ToolTip.Tip="Vuoto = modello predefinito del CLI" />
+                        <ComboBox Grid.Row="10" Grid.Column="1" IsEditable="True" HorizontalAlignment="Stretch" Margin="0,4"
+                                  Text="{Binding Claude.Model}">
+                            <ComboBoxItem Content=" " />
+                            <ComboBoxItem Content="haiku" />
+                            <ComboBoxItem Content="sonnet" />
+                            <ComboBoxItem Content="opus" />
+                        </ComboBox>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ Modello locale ============ -->
+            <TabItem Header="Personalità">
+                <DockPanel Margin="14,10">
+                    <TextBlock DockPanel.Dock="Top" Classes="hint"
+                               Text="Istruzioni per il modello locale: tono, lingua, lunghezza delle risposte. Il contesto del vault viene aggiunto dopo questo testo." />
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Ripristina predefinito" Click="OnResetPromptClick" />
+                    </StackPanel>
+                    <TextBox Classes="multiline" x:Name="SystemPrompt"  TextWrapping="Wrap"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- ============ Permessi Claude ============ -->
+            <TabItem Header="Permessi Claude">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <TextBlock Text="Quando chiedere il permesso" FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <ComboBox x:Name="PermissionModeCombo" HorizontalAlignment="Stretch" />
+                        <TextBlock x:Name="PermissionModeHint" Classes="hint" Margin="0,4,0,12" />
+                        <TextBlock Classes="hint"
+                                   Text="Strumenti che Claude può usare senza chiedere (con la prima modalità). Tutto il resto passa dalla richiesta di permesso nella nuvoletta." />
+                        <CheckBox x:Name="AllowRead" Content="Read — leggere file" />
+                        <CheckBox x:Name="AllowGlob" Content="Glob — cercare file per nome" />
+                        <CheckBox x:Name="AllowGrep" Content="Grep — cercare testo nei file" />
+                        <CheckBox x:Name="AllowWebSearch" Content="WebSearch — ricerche sul web" />
+                        <CheckBox x:Name="AllowWebFetch" Content="WebFetch — leggere pagine web" />
+                        <TextBlock Text="Altre regole (una per riga)" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBlock Classes="hint" Text="Stessa sintassi di --allowedTools, per esempio: Bash(git status:*)" />
+                        <TextBox Classes="multiline" x:Name="ExtraAllowedTools"  Height="90" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ Assistente ============ -->
+            <TabItem Header="Assistente">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <TextBlock Text="Repository" FontWeight="SemiBold" Margin="0,0,0,2" />
+                        <TextBlock Classes="hint" Text="Cartella del codice (sola lettura). Vuoto = cartella di lavoro di Claude. Il task corrente si ricava dal nome del ramo git." />
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Sfoglia…" Click="OnBrowseRepoClick" />
+                            <TextBox Text="{Binding Repo.Path}" />
+                        </DockPanel>
+
+                        <TextBlock Text="Pulsanti del task" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBlock Classes="hint" Text="Uno per riga; {id} diventa l'ID del task. Vengono mandati a Claude (es. /lavora {id})." />
+                        <TextBox Classes="multiline" x:Name="TaskActions"  Height="64" />
+
+                        <TextBlock Text="Documenti di riferimento" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBlock Classes="hint" Text="File o cartelle .md del repository usati per rispondere a domande sulle convenzioni (es. docs/guidelines). Uno per riga." />
+                        <TextBox Classes="multiline" x:Name="KnowledgePaths"  Height="64" />
+
+                        <TextBlock Text="Gruppi per /modifiche" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBlock Classes="hint" Text="Uno per riga: Nome=prefisso1;prefisso2 (percorsi relativi al repository)." />
+                        <TextBox Classes="multiline" x:Name="Groups"  Height="90" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+
+                        <TextBlock Text="Istruzioni per /commit" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBox Classes="multiline" Text="{Binding Repo.CommitInstructions}"  TextWrapping="Wrap" Height="56" />
+                        <TextBlock Text="Istruzioni per /pr" FontWeight="SemiBold" Margin="0,8,0,2" />
+                        <TextBox Classes="multiline" Text="{Binding Repo.PullRequestInstructions}"  TextWrapping="Wrap" Height="56" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Scorciatoia globale" Classes="label" />
+                            <TextBox Grid.Column="1" Width="140" HorizontalAlignment="Left" Text="{Binding Assistant.Hotkey}"
+                                     ToolTip.Tip="Apre la chat con gli appunti allegati. Es. Ctrl+Alt+B; vuoto per disattivarla" />
+                            <TextBlock Grid.Row="1" Text="Notifica se Claude impiega più di (s)" Classes="label" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Width="60" HorizontalAlignment="Left" Text="{Binding Assistant.NotifyAfterSeconds}" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ Mentore e voce ============ -->
+            <TabItem Header="Mentore e voce">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <CheckBox Content="Mentore attivo" IsChecked="{Binding Mentor.Enabled}" FontWeight="SemiBold" />
+                        <TextBlock Classes="hint"
+                                   Text="Il mentore ti fa crescere: check-in e check-out, pause, retrospettiva del venerdì, pillole di conoscenza, domande personali, e ti chiede come affronteresti un task prima di delegarlo. Le risposte le scrive Claude nella cartella del diario." />
+
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Il tuo nome" Classes="label" />
+                            <TextBox Grid.Column="1" Text="{Binding Mentor.UserName}" />
+                            <TextBlock Grid.Row="1" Text="Personalità del buddy" Classes="label" />
+                            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="PersonalityCombo" Margin="0,4" HorizontalAlignment="Stretch"
+                                      DisplayMemberBinding="{Binding Label}" />
+                            <TextBlock Grid.Row="2" Text="Personalità personalizzata" Classes="label" VerticalAlignment="Top" />
+                            <TextBox Classes="multiline" Grid.Row="2" Grid.Column="1" Text="{Binding Mentor.CustomPersonality}"
+                                     TextWrapping="Wrap"  Height="44"
+                                     ToolTip.Tip="Usata quando la personalità è 'Personalizzata'" />
+                        </Grid>
+                        <TextBlock Text="Interessi (per le chiacchierate fuori tema)" FontWeight="SemiBold" Margin="0,8,0,2" />
+                        <TextBox x:Name="Interests" ToolTip.Tip="Separati da virgola: musica, film, scacchi…" />
+                        <Button Content="Rifai la configurazione iniziale…" HorizontalAlignment="Left" Click="OnRedoFirstRunClick" />
+
+                        <TextBlock Text="Cartella del diario" FontWeight="SemiBold" Margin="0,6,0,2" />
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Sfoglia…" Click="OnBrowseJournalClick" />
+                            <TextBox Text="{Binding Mentor.JournalPath}" />
+                        </DockPanel>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Giorni lavorativi" Classes="label" />
+                            <TextBox Grid.Column="1" Text="{Binding Mentor.WorkDays}" ToolTip.Tip="In inglese, separati da virgola (Monday,Tuesday,…)" />
+                            <TextBlock Grid.Row="1" Text="Check-in (HH:mm, vuoto = off)" Classes="label" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Text="{Binding Mentor.CheckInTime}" />
+                            <TextBlock Grid.Row="2" Text="Check-out (HH:mm, vuoto = off)" Classes="label" />
+                            <TextBox Grid.Row="2" Grid.Column="1" Width="80" HorizontalAlignment="Left" Text="{Binding Mentor.CheckOutTime}" />
+                            <TextBlock Grid.Row="3" Text="Pausa dopo (minuti, 0 = off)" Classes="label" />
+                            <TextBox Grid.Row="3" Grid.Column="1" Width="80" HorizontalAlignment="Left" Text="{Binding Mentor.BreakAfterMinutes}" />
+                            <TextBlock Grid.Row="4" Text="Durata /focus (minuti)" Classes="label" />
+                            <TextBox Grid.Row="4" Grid.Column="1" Width="80" HorizontalAlignment="Left" Text="{Binding Mentor.FocusMinutes}" />
+                            <TextBlock Grid.Row="5" Text="Retrospettiva (giorno, ora)" Classes="label" />
+                            <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal">
+                                <ComboBox x:Name="RetroDayCombo" Width="120" Margin="0,4,6,4" />
+                                <TextBox Width="80" Text="{Binding Mentor.RetroTime}" ToolTip.Tip="Vuoto = niente retrospettiva" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="6" Text="Pillole al giorno" Classes="label" />
+                            <TextBox Grid.Row="6" Grid.Column="1" Width="80" HorizontalAlignment="Left" Text="{Binding Mentor.PillsPerDay}" />
+                            <TextBlock Grid.Row="7" Text="Chiacchierate al giorno" Classes="label" />
+                            <TextBox Grid.Row="7" Grid.Column="1" Width="80" HorizontalAlignment="Left" Text="{Binding Mentor.ChatsPerDay}" />
+                            <TextBlock Grid.Row="8" Text="Ripassi al giorno" Classes="label" />
+                            <TextBox Grid.Row="8" Grid.Column="1" Width="80" HorizontalAlignment="Left" Text="{Binding Mentor.ReviewsPerDay}"
+                                     ToolTip.Tip="Domande su pillole già viste, dopo 2, 7, 21 e 60 giorni" />
+                            <TextBlock Grid.Row="9" Text="Modello Claude del mentore" Classes="label" />
+                            <ComboBox Grid.Row="9" Grid.Column="1" Width="140" HorizontalAlignment="Left" IsEditable="True" Margin="0,4"
+                                      Text="{Binding Mentor.Model}">
+                                <ComboBoxItem Content="haiku" />
+                                <ComboBoxItem Content="sonnet" />
+                            </ComboBox>
+                        </Grid>
+                        <CheckBox Content="Prima di delegare un task a Claude, chiedimi come lo affronterei io" IsChecked="{Binding Mentor.AskApproachBeforeDelegating}" />
+                        <StackPanel Orientation="Horizontal" Margin="22,2,0,0">
+                            <TextBlock Text="Solo per i comandi:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox Width="220" Text="{Binding Mentor.ApproachCommands}"
+                                     ToolTip.Tip="Separati da virgola, es. /lavora, /guidami. Gli altri pulsanti (/contesto, /analisi…) vanno subito a Claude." />
+                        </StackPanel>
+                        <CheckBox Content="Non disturbarmi in chiamata, a schermo intero o con &quot;non disturbare&quot; attivo" IsChecked="{Binding Mentor.QuietWhenBusy}" Margin="0,4,0,0" />
+
+                        <TextBlock Text="Argomenti delle pillole" FontWeight="SemiBold" Margin="0,10,0,2" />
+                        <TextBlock Classes="hint" Text="Uno per riga. Vuoto = elenco predefinito (reti, database, .NET, architettura, sicurezza, stime, comunicazione…)." />
+                        <TextBox Classes="multiline" x:Name="Topics"  Height="80" />
+
+                        <TextBlock Text="Voce" FontWeight="SemiBold" Margin="0,14,0,2" />
+                        <CheckBox Content="Dettatura con il microfono (Whisper, sul PC)" IsChecked="{Binding Voice.Enabled}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Modello (vuoto = ggml-small)" Classes="label" />
+                            <TextBox Grid.Column="1" Text="{Binding Voice.ModelPath}" />
+                            <Button Grid.Column="2" Content="Sfoglia…" Click="OnBrowseWhisperClick" />
+                            <TextBlock Grid.Row="1" Text="Lingua" Classes="label" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Width="60" HorizontalAlignment="Left" Text="{Binding Voice.Language}" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ Frasi ============ -->
+            <TabItem Header="Frasi">
+                <ScrollViewer Classes="page">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.ColumnSpan="2" Classes="hint" Text="Messaggi che il buddy scrive in chat. Lascia vuoto per non mostrarli." />
+                        <TextBlock Grid.Row="1" Text="Saluto all'avvio" Classes="label" />
+                        <TextBox Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Text="{Binding Phrases.Greeting}" />
+                        <TextBlock Grid.Row="2" Text="Passaggio a Claude" Classes="label" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Phrases.SwitchedToClaude}" />
+                        <TextBlock Grid.Row="3" Text="Passaggio al locale" Classes="label" />
+                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Phrases.SwitchedToLocal}" />
+                        <TextBlock Grid.Row="4" Text="Nuova conversazione" Classes="label" />
+                        <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Phrases.NewConversation}" />
+                        <TextBlock Grid.Row="5" Text="Claude occupato" Classes="label" />
+                        <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding Phrases.ClaudeBusy}" />
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

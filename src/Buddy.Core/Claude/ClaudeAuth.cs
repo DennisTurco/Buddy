@@ -24,7 +24,7 @@ public sealed class ClaudeAuth(IOptions<BuddySettings> options)
 
     public async Task<ClaudeLoginState> CheckAsync(CancellationToken cancellationToken = default)
     {
-        var startInfo = new ProcessStartInfo(options.Value.Claude.Executable)
+        var startInfo = new ProcessStartInfo(ClaudeExecutable.Resolve(options.Value.Claude.Executable))
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,

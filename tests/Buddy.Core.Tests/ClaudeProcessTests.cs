@@ -19,7 +19,7 @@ public class ClaudeProcessTests
         var settings = Options.Create(new BuddySettings
         {
             ProjectPath = TestContext.CurrentContext.WorkDirectory,
-            Claude = new ClaudeSettings { Executable = Path.Combine(TestContext.CurrentContext.TestDirectory, "Fakes", "fake-claude.cmd") },
+            Claude = new ClaudeSettings { Executable = Path.Combine(TestContext.CurrentContext.TestDirectory, "Fakes", OperatingSystem.IsWindows() ? "fake-claude.cmd" : "fake-claude.sh") },
         });
 
         await using var session = new ClaudeSession(settings, request =>
