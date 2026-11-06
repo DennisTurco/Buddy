@@ -28,6 +28,13 @@ public sealed class WeekStats
     public int Approaches { get; set; }
     public int Answers { get; set; }
     public int BreakReminders { get; set; }
+
+    /// <summary>Tasks handed to Claude (/lavora) and done with a guide (/guidami).</summary>
+    public int Delegated { get; set; }
+    public int Guided { get; set; }
+
+    /// <summary>The "try /guidami" nudge was given this week.</summary>
+    public bool GuideSuggested { get; set; }
 }
 
 /// <summary>What has already happened, persisted between runs (dates in local time).</summary>
@@ -44,6 +51,20 @@ public sealed class MentorState
     public List<TimeOnly> ReviewSlots { get; set; } = [];
 
     public DateTime? LastBreakReminder { get; set; }
+
+    /// <summary>Active minutes at the PC on <see cref="ActiveDay"/> (for the check-out draft).</summary>
+    public int TodayActiveMinutes { get; set; }
+
+    public DateOnly? ActiveDay { get; set; }
+
+    /// <summary>Tasks seen in "Da controllare" (null until the first look: those are not asked about).</summary>
+    public List<string>? InReview { get; set; }
+
+    /// <summary>Card reminders already brought back, by item (its id or first line) and the day of the reminder.</summary>
+    public Dictionary<string, DateOnly> Reminded { get; set; } = [];
+
+    /// <summary>Tasks just gone to review, waiting for a quiet moment to ask what was learned.</summary>
+    public List<string> PendingTaskRetros { get; set; } = [];
 
     /// <summary>Counters per week ("2026-W45"), the last <see cref="KeptWeeks"/> kept.</summary>
     public Dictionary<string, WeekStats> Weeks { get; set; } = [];

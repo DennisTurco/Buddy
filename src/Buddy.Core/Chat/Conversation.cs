@@ -29,10 +29,11 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         /modifiche — file modificati, raggruppati per area
         /commit — bozza del messaggio di commit (Claude)
         /pr — bozza di titolo e descrizione della PR (Claude)
-        /stop — interrompe la risposta di Claude
+        /stop — interrompe la risposta in corso (anche il pulsante ■ Ferma)
         /nuova — chiude la conversazione con Claude e ne apre una nuova
         /mentore — comandi del mentore (/checkin, /checkout, /pillola, /ripasso, /chiacchiera, /retro, /focus, /andamento)
         /uso — quanto hai usato Claude oggi e i limiti del piano
+        /modello [opus|sonnet|haiku|locale <nome>] — mostra o cambia il modello (anche dal nome in alto)
         /aiuto — questo elenco
         Ctrl+Alt+B (o la scorciatoia impostata) apre la chat con gli appunti allegati; puoi anche trascinare file,
         testo o immagini sul personaggio.
@@ -88,6 +89,9 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     /// <summary>Raised when the user described their approach before delegating (task action, approach).</summary>
     public event Action<string, string>? ApproachGiven;
 
+    /// <summary>A task button was pressed (e.g. "/lavora NUSR-1"): the mentor counts what is delegated.</summary>
+    public event Action<string>? TaskActionRun;
+
     /// <summary>Extra "/" commands handled outside the conversation (the mentor's); returns true when handled.</summary>
     public Func<string, string, Task<bool>>? CommandHandler { get; set; }
 
@@ -99,16 +103,153 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     /// <summary>Claude or the local model is working: the mentor waits.</summary>
     public bool IsBusy => _claudeBusy || _petState is PetState.Think or PetState.Work or PetState.Alert;
 
+    private bool ClaudeBusy
+    {
+        set
+        {
+            if (_claudeBusy == value)
+            {
+                return;
+            }
+
+            _claudeBusy = value;
+            AnswerStarted = value ? DateTimeOffset.Now : _localAnswer is null ? null : AnswerStarted;
+            MarkWorkActivity();
+            Notify(nameof(IsAnswering));
+        }
+    }
+
+    private CancellationTokenSource? _localAnswer;
+
+    /// <summary>A model is answering (Claude working or the local model streaming): the bubble offers to stop it.</summary>
+    public bool IsAnswering => _claudeBusy || _localAnswer is not null;
+
+    /// <summary>
+    /// Last time the user worked in the chat with a model (a message to Claude or the local model, or an answer
+    /// finishing). The mentor's off-topic messages wait a while after it.
+    /// </summary>
+    public DateTimeOffset? LastWorkActivity { get; private set; }
+
+    private void MarkWorkActivity() => LastWorkActivity = DateTimeOffset.Now;
+
+    /// <summary>When the current answer started, for the elapsed time shown while waiting.</summary>
+    public DateTimeOffset? AnswerStarted { get; private set; }
+
+    /// <summary>Who is answering right now (for the "working" strip).</summary>
+    public Speaker? Answering => _claudeBusy ? Speaker.Claude : _localAnswer is not null ? Speaker.Local : null;
+
+    /// <summary>Claude Code model aliases offered in the bubble ("" = the CLI's default).</summary>
+    public static readonly IReadOnlyList<(string Alias, string Label)> ClaudeModels =
+    [
+        ("", "Predefinito"),
+        ("opus", "Opus"),
+        ("sonnet", "Sonnet"),
+        ("haiku", "Haiku"),
+    ];
+
+    /// <summary>The Claude model in use ("" = the CLI's default).</summary>
+    public string ClaudeModel => _options.Value.Claude.Model;
+
+    /// <summary>The Ollama model the local answers use.</summary>
+    public string LocalModel => _options.Value.Ollama.Model;
+
+    /// <summary>Claude usage and average turn costs, for the hints next to the input.</summary>
+    public ClaudeUsage Usage => _usage;
+
+    public static string ClaudeModelLabel(string alias) =>
+        ClaudeModels.FirstOrDefault(m => m.Alias.Equals(alias.Trim(), StringComparison.OrdinalIgnoreCase)).Label ?? alias.Trim();
+
+    /// <summary>
+    /// Switches Claude's model and Claude mode. A running CLI is stopped and restarted on the next message with the
+    /// same session (--resume), so the conversation goes on with the new model. Refused while Claude is working.
+    /// </summary>
+    public async Task<bool> SetClaudeModelAsync(string model)
+    {
+        model = model.Trim();
+        if (model.Equals("predefinito", StringComparison.OrdinalIgnoreCase) || model.Equals("default", StringComparison.OrdinalIgnoreCase))
+        {
+            model = "";
+        }
+
+        if (_claudeBusy)
+        {
+            AddSystem("Claude sta lavorando: cambia il modello quando ha finito (o premi ■ Ferma).");
+            return false;
+        }
+
+        var changed = !string.Equals(_options.Value.Claude.Model, model, StringComparison.OrdinalIgnoreCase);
+        _options.Value.Claude.Model = model;
+        if (changed)
+        {
+            await StopClaudeProcessAsync();
+        }
+
+        Mode = ChatMode.Claude;
+        AddSystem($"Ora parli con Claude · modello {ClaudeModelLabel(model).ToLowerInvariant()}"
+                  + (changed && _claude is not null ? " (la conversazione continua)" : "")
+                  + (_usage.AverageTurnCost(model) is not null ? $" · di solito costa {_usage.AverageText(model)}" : "")
+                  + (_usage.AverageTurnCost(model) is >= 0.30m ? " 💸 Per domande veloci basta un modello più leggero." : "."));
+        Notify(nameof(ClaudeModel));
+        return true;
+    }
+
+    /// <summary>The automatic choice of Claude's model per message (saved with the settings, like the model).</summary>
+    public bool AutoModel => _options.Value.Claude.AutoModel;
+
+    public void SetAutoModel(bool on)
+    {
+        _options.Value.Claude.AutoModel = on;
+        AddSystem(on
+            ? "🤖 Scelta automatica del modello: Haiku per le domande brevi, Opus per /lavora e /analisi, "
+              + $"{ClaudeModelLabel(ClaudeModel).ToLowerInvariant()} per il resto."
+            : $"Scelta automatica spenta: Claude usa sempre {ClaudeModelLabel(ClaudeModel).ToLowerInvariant()}.");
+        Notify(nameof(ClaudeModel));
+    }
+
+    /// <summary>Switches the Ollama model (and local mode); the local chat history is kept.</summary>
+    public void SetLocalModel(string model)
+    {
+        model = model.Trim();
+        if (model.Length == 0)
+        {
+            return;
+        }
+
+        _options.Value.Ollama.Model = model;
+        Mode = ChatMode.Local;
+        AddSystem($"Ora parli con il modello locale · {model}.");
+        Notify(nameof(LocalModel));
+    }
+
+    /// <summary>Stops the answer in progress: the local stream is cancelled, Claude is interrupted (the session stays).</summary>
+    public async Task StopAsync()
+    {
+        try
+        {
+            _localAnswer?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // the local answer just finished
+        }
+
+        if (_claude is { IsRunning: true } && _claudeBusy)
+        {
+            await _claude.InterruptAsync();
+        }
+    }
+
     /// <summary>
     /// Posts a message of the mentor. With <paramref name="onReply"/> the next message the user writes
     /// (not a command) is passed to it instead of the models.
     /// </summary>
-    public void PostMentor(string markdown, Func<string, Task>? onReply = null)
+    public void PostMentor(string markdown, Func<string, Task>? onReply = null, IReadOnlyList<ChatAction>? actions = null)
     {
         OnUi(() =>
         {
+            ClearAwaitingReply();
             _pendingReply = onReply;
-            Entries.Add(new ChatEntry(Speaker.Mentor, markdown));
+            Entries.Add(new ChatEntry(Speaker.Mentor, markdown) { AwaitsReply = onReply is not null, Actions = actions ?? [] });
             Notify(nameof(HasPendingReply));
             if (_petState == PetState.Idle)
             {
@@ -116,7 +257,115 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             }
 
             MentorPosted?.Invoke(markdown);
+            SaveToArchive();
         });
+    }
+
+    /// <summary>Set by the app when a newer build is ready: "/aggiorna" restarts on it.</summary>
+    public Action? UpdateRequested { get; set; }
+
+    /// <summary>Tells in the chat that a newer build of the buddy is ready.</summary>
+    public void AnnounceNewerBuild(DateTime built) =>
+        AddSystem($"🆕 È pronta una versione più nuova del Buddy (compilata alle {built:HH:mm}): scrivi /aggiorna per riavviare con quella.");
+
+    // ---- Saved conversations ----------------------------------------------------------------------------------
+
+    /// <summary>Where conversations are kept (set by the app); null keeps nothing.</summary>
+    public ConversationArchive? Archive { get; set; }
+
+    private string _conversationId = ConversationArchive.NewId();
+
+    /// <summary>The Claude session of a reopened conversation, resumed by the next message to Claude.</summary>
+    private string? _resumeSession;
+
+    private void SaveToArchive() => OnUi(() => Archive?.Save(_conversationId, Entries.ToList(), _claude?.SessionId ?? _resumeSession));
+
+    /// <summary>Saves the current conversation and starts an empty one (new Claude session, local history cleared).</summary>
+    private async Task StartNewConversationAsync()
+    {
+        SaveToArchive();
+        await CloseClaudeAsync();
+        _local.Reset();
+        _resumeSession = null;
+        _conversationId = ConversationArchive.NewId();
+    }
+
+    /// <summary>
+    /// Reopens a saved conversation: its messages come back and the next message to Claude resumes its session
+    /// (the local model starts from a clean history). Refused while a model is answering.
+    /// </summary>
+    public async Task<bool> OpenSavedAsync(SavedConversation saved)
+    {
+        if (IsAnswering)
+        {
+            AddSystem("Aspetta che finisca la risposta in corso (o premi ■ Ferma) prima di riaprire un'altra conversazione.");
+            return false;
+        }
+
+        await StartNewConversationAsync();
+        _conversationId = saved.Id;
+        _resumeSession = saved.ClaudeSessionId;
+        OnUi(() =>
+        {
+            _pendingReply = null;
+            Entries.Clear();
+            foreach (var entry in saved.Entries)
+            {
+                Entries.Add(new ChatEntry(entry.Speaker, entry.Text) { Timestamp = entry.Timestamp, IsPinned = entry.Pinned });
+            }
+
+            Entries.Add(new ChatEntry(Speaker.System, saved.ClaudeSessionId is null
+                ? "Conversazione riaperta."
+                : "Conversazione riaperta: il prossimo messaggio a Claude riprende da dove eravate rimasti."));
+            Notify(nameof(HasPendingReply));
+        });
+        return true;
+    }
+
+    private void ClearAwaitingReply() => OnUi(() =>
+    {
+        foreach (var entry in Entries.Where(e => e.AwaitsReply))
+        {
+            entry.AwaitsReply = false;
+        }
+    });
+
+    /// <summary>The answer to a mentor's question when the user does not know: the mentor explains instead.</summary>
+    public const string ExplainItReply = "Non lo so: spiegamelo tu, con un esempio.";
+
+    /// <summary>"Spiegamelo tu" under the mentor's open question.</summary>
+    public Task ExplainItAsync() => HasPendingReply ? SendAsync(ExplainItReply) : Task.CompletedTask;
+
+    /// <summary>Quick follow-ups under a model's answer: the request, sent to the same model.</summary>
+    public static readonly IReadOnlyList<(string Label, string Request)> FollowUps =
+    [
+        ("Più semplice", "Rispiegami la tua ultima risposta in modo più semplice, come a chi non conosce l'argomento."),
+        ("Un esempio", "Fammi un esempio concreto di quello che hai appena spiegato, possibilmente legato al mio progetto."),
+        ("Riassumi", "Riassumi la tua ultima risposta in 3 righe."),
+    ];
+
+    /// <summary>Sends a quick follow-up about <paramref name="answer"/> to the model that wrote it.</summary>
+    public async Task FollowUpAsync(ChatEntry answer, string request)
+    {
+        // An older answer: say which one, by its beginning.
+        if (Entries.LastOrDefault(e => e.Speaker == answer.Speaker && e is not PermissionEntry) != answer)
+        {
+            var start = answer.Text.ReplaceLineEndings(" ").Trim();
+            request = request.Replace("la tua ultima risposta", "la tua risposta", StringComparison.Ordinal)
+                .Replace("quello che hai appena spiegato", "quello che hai spiegato", StringComparison.Ordinal)
+                + $" (la risposta che inizia con «{(start.Length > 120 ? start[..120] + "…" : start)}»)";
+        }
+
+        if (answer.Speaker == Speaker.Claude)
+        {
+            Mode = ChatMode.Claude;
+            await AskClaudeAsync(request, attachment: null);
+        }
+        else
+        {
+            Mode = ChatMode.Local;
+            await AskLocalAsync(request, attachment: null);
+        }
     }
 
     /// <summary>The user opened the chat: the pet stops waving.</summary>
@@ -210,6 +459,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         if (_pendingReply is { } reply && (command is null || command == "/salta"))
         {
             _pendingReply = null;
+            ClearAwaitingReply();
             Notify(nameof(HasPendingReply));
             Add(new ChatEntry(Speaker.User, input));
             if (command != "/salta" && !input.Equals("salta", StringComparison.OrdinalIgnoreCase))
@@ -288,20 +538,26 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                     return;
                 }
 
+                // Local config and the like must stay out of the commit: say so, and tell Claude too.
+                if (await _commands.DoNotCommitChangesAsync() is { Count: > 0 } excluded)
+                {
+                    var list = string.Join(", ", excluded.Select(p => $"`{p}`"));
+                    AddSystem($"⚠ Tra le modifiche ci sono file da non committare: {string.Join(", ", excluded)}. "
+                              + $"Lasciali fuori dal commit (per annullarli: git checkout -- {string.Join(' ', excluded)}).");
+                    prompt += $"\n\nQuesti file NON vanno nel commit (configurazione locale): {list}. Non descriverli e "
+                              + "ricordami in una riga di escluderli.";
+                }
+
                 Mode = ChatMode.Claude;
                 await AskClaudeAsync(input, attachment: null, promptOverride: prompt);
                 return;
 
             case "/stop":
-                if (_claude is { IsRunning: true } && _claudeBusy)
-                {
-                    await _claude.InterruptAsync();
-                }
+                await StopAsync();
                 return;
 
             case "/nuova":
-                await CloseClaudeAsync();
-                _local.Reset();
+                await StartNewConversationAsync();
                 AddSystem(Phrases.NewConversation);
                 return;
 
@@ -309,12 +565,81 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 Instant(input, _usage.Describe());
                 return;
 
+            case "/modelli":
+                TemplatesCommand(input, rest);
+                return;
+
+            case "/riprendi":
+                await ResumeAsync(input);
+                return;
+
+            case "/riapri":
+                if (Archive?.List(ConversationArchive.MaxConversations).FirstOrDefault(c => c.Id == rest) is { } toOpen)
+                {
+                    await OpenSavedAsync(toOpen);
+                }
+                else
+                {
+                    Instant(input, "Non trovo quella conversazione (🕘 per l'elenco).");
+                }
+
+                return;
+
+            case "/appunto":
+                Instant(input, _commands.AddQuickNote(rest));
+                return;
+
+            case "/log":
+                Instant(input, RecentLog(rest.Equals("tutto", StringComparison.OrdinalIgnoreCase)));
+                return;
+
+            case "/aggiorna":
+                if (UpdateRequested is { } update)
+                {
+                    Add(new ChatEntry(Speaker.User, input));
+                    AddSystem("Riavvio con la versione nuova: ricompilo e riparto tra qualche secondo…");
+                    SaveToArchive();
+                    update();
+                }
+                else
+                {
+                    Instant(input, "Non c'è una versione nuova da usare (o il Buddy non gira dai sorgenti).");
+                }
+                return;
+
+            case "/modello":
+                await ModelCommandAsync(input, rest);
+                return;
+
             case "/aiuto":
                 AddSystem(HelpText);
                 return;
         }
 
+        // One of your request templates: its text goes to the model in use, like a typed message.
+        if (command is not null && ExpandTemplate(command, rest) is { } expanded)
+        {
+            if (Mode == ChatMode.Claude)
+            {
+                await AskClaudeAsync(expanded, attachment);
+            }
+            else
+            {
+                await AskLocalAsync(expanded, attachment);
+            }
+
+            return;
+        }
+
         // Any other "/" command is a Claude Code command or skill (e.g. /lavora), which only Claude understands.
+        // A typo of a known command ("/chiacchera") is caught here instead of costing a Claude turn.
+        var known = Claude.ClaudeSkills.Installed(_options.Value).Concat(Templates.Select(t => t.Name));
+        if (command is not null && ChatCommands.Closest(command, known) is { } meant)
+        {
+            Instant(input, $"Non conosco `{command}`: forse intendevi `{meant}`? (Scrivi `/` per vedere i comandi.)");
+            return;
+        }
+
         if (command is not null)
         {
             Mode = ChatMode.Claude;
@@ -330,9 +655,47 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// "/modello" shows the models in use; "/modello sonnet" (or "claude sonnet") picks Claude's, "/modello locale
+    /// qwen2.5:7b" the local one.
+    /// </summary>
+    private async Task ModelCommandAsync(string input, string argument)
+    {
+        var parts = argument.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            Instant(input, $"""
+                **Modelli in uso**
+                - Claude: **{ClaudeModelLabel(ClaudeModel)}**
+                - Locale (Ollama): **{LocalModel}**
+
+                Per cambiarli: click sul nome del modello in alto, oppure `/modello opus|sonnet|haiku|predefinito`
+                (Claude) e `/modello locale <nome>` (un modello installato in Ollama).
+                """);
+            return;
+        }
+
+        Add(new ChatEntry(Speaker.User, input));
+        var target = parts[0].ToLowerInvariant();
+        if (target is "locale" or "l" or "ollama")
+        {
+            if (parts.Length < 2)
+            {
+                AddSystem("Scrivi il nome del modello: `/modello locale llama3.2:3b`.");
+                return;
+            }
+
+            SetLocalModel(parts[1]);
+            return;
+        }
+
+        await SetClaudeModelAsync(target is "claude" or "c" ? (parts.Length > 1 ? parts[1] : "") : argument);
+    }
+
     /// <summary>Sends one of the <see cref="TaskActions"/> (e.g. "/lavora NUSR-1") to Claude.</summary>
     public async Task RunTaskActionAsync(string action)
     {
+        TaskActionRun?.Invoke(action);
         if (!_options.Value.Mentor.AsksApproachFor(action))
         {
             Mode = ChatMode.Claude;
@@ -388,6 +751,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     {
         Add(new ChatEntry(Speaker.User, request));
         Add(new ChatEntry(Speaker.Local, markdown));
+        SaveToArchive();
     }
 
     private ChatEntry UserEntry(string text, Attachment? attachment) =>
@@ -411,10 +775,15 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             AddSystem("Il modello locale non vede le immagini: per quelle usa Claude (/c).");
         }
 
+        var stop = new CancellationTokenSource();
+        _localAnswer = stop;
+        AnswerStarted = DateTimeOffset.Now;
+        MarkWorkActivity();
+        Notify(nameof(IsAnswering));
         try
         {
             var attachmentText = attachment?.ToPromptText(_options.Value.Assistant.MaxAttachmentChars);
-            await foreach (var delta in _local.AskAsync(question, _currentTask?.Id, attachmentText))
+            await foreach (var delta in _local.AskAsync(question, _currentTask?.Id, attachmentText, stop.Token))
             {
                 OnUi(() => answer.Text += delta);
             }
@@ -425,6 +794,15 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             }
 
             OnUi(() => answer.CanEscalate = true);
+            PetState = PetState.Idle;
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        {
+            OnUi(() =>
+            {
+                answer.Text = answer.Text.Length == 0 ? "_(interrotto)_" : answer.Text + " …\n\n_(interrotto)_";
+                answer.CanEscalate = true;
+            });
             PetState = PetState.Idle;
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
@@ -442,6 +820,16 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         finally
         {
             OnUi(() => answer.IsStreaming = false);
+            _localAnswer = null;
+            stop.Dispose();
+            if (!_claudeBusy)
+            {
+                AnswerStarted = null;
+            }
+
+            MarkWorkActivity();
+            Notify(nameof(IsAnswering));
+            SaveToArchive();
         }
     }
 
@@ -473,10 +861,23 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             prompt += "\n\n" + attachment.ToPromptText(_options.Value.Assistant.MaxAttachmentChars);
         }
 
+        // Automatic choice: a short question goes to a light model, a task skill to the strongest; the CLI restarts on
+        // the same session when the model changes.
+        var model = ChooseModel(text, attachment, promptOverride);
+        if (_claude is { IsRunning: true } running && !string.Equals(running.ModelOverride, model, StringComparison.OrdinalIgnoreCase))
+        {
+            await StopClaudeProcessAsync();
+        }
+
+        if (model is not null && _claude?.ModelOverride != model)
+        {
+            AddSystem($"🤖 modello automatico: {ClaudeModelLabel(model).ToLowerInvariant()}");
+        }
+
         try
         {
-            EnsureClaudeStarted();
-            _claudeBusy = true;
+            EnsureClaudeStarted(model);
+            ClaudeBusy = true;
             _turnStarted = Stopwatch.GetTimestamp();
             _turnRequest = text;
             PetState = PetState.Work;
@@ -484,7 +885,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
-            _claudeBusy = false;
+            ClaudeBusy = false;
             _log.LogError(ex, "Claude Code non si avvia ({Exe})", _options.Value.Claude.Executable);
             AddSystem($"Non riesco ad avviare Claude Code: {Claude.ClaudeExecutable.Describe(ex, _options.Value.Claude.Executable)}");
             PetState = PetState.Error;
@@ -516,15 +917,15 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         return true;
     }
 
-    private void EnsureClaudeStarted()
+    private void EnsureClaudeStarted(string? model = null)
     {
         if (_claude is { IsRunning: true })
         {
             return;
         }
 
-        var previousSession = _claude?.SessionId;
-        _claude = new ClaudeSession(_options, AskPermissionAsync);
+        var previousSession = _claude?.SessionId ?? _resumeSession;
+        _claude = new ClaudeSession(_options, AskPermissionAsync) { ModelOverride = model };
         _sessionCost = 0; // the CLI's total_cost_usd counts from the start of each process
         _claude.EventReceived += evt => OnUi(() => HandleClaudeEvent(evt));
         _claude.Start(previousSession);
@@ -579,7 +980,8 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             case ClaudeTurnCompleted done:
                 var lastAnswer = Entries.LastOrDefault(e => e.Speaker == Speaker.Claude && e is not PermissionEntry)?.Text;
                 CloseClaudeAnswer();
-                _claudeBusy = false;
+                ClaudeBusy = false;
+                SaveToArchive();
                 if (done.IsError)
                 {
                     _log.LogWarning("Turno Claude finito con errore: {Result}", done.Result);
@@ -606,8 +1008,9 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                     // total_cost_usd is the running total of the CLI process, not of this turn.
                     var cost = total >= _sessionCost ? total - _sessionCost : total;
                     _sessionCost = total;
-                    _usage.AddTurn(cost);
+                    _usage.AddTurn(cost, _claude?.ModelOverride ?? _options.Value.Claude.Model);
                     Entries.Add(new ChatEntry(Speaker.System, $"costo turno: ${cost:0.000} · {_usage.ShortText()}"));
+                    CheckBudget();
                 }
 
                 if (done.IsError)
@@ -631,7 +1034,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 CloseClaudeAnswer();
                 if (_claudeBusy)
                 {
-                    _claudeBusy = false;
+                    ClaudeBusy = false;
                     Entries.Add(new ChatEntry(Speaker.System, exited.Text));
                     PetState = PetState.Error;
                 }
@@ -691,7 +1094,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             _claude = null;
         }
 
-        _claudeBusy = false;
+        ClaudeBusy = false;
         PetState = PetState.Idle;
     }
 
@@ -707,8 +1110,272 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The model for one message when the automatic choice is on: the strongest for the flow's task skills, a light one
+    /// for a short plain question, otherwise null (the configured model).
+    /// </summary>
+    internal string? ChooseModel(string text, Attachment? attachment, string? promptOverride)
+    {
+        var claude = _options.Value.Claude;
+        if (!claude.AutoModel)
+        {
+            return null;
+        }
+
+        var heavy = claude.HeavyCommands.Count > 0 ? claude.HeavyCommands : [.. ClaudeSettings.DefaultHeavyCommands];
+        var (command, _) = SplitCommand(text.Trim());
+        if (command is not null && heavy.Contains(command, StringComparer.OrdinalIgnoreCase))
+        {
+            return "opus";
+        }
+
+        var plainQuestion = command is null && attachment is null && promptOverride is null && text.Length <= 200 && !text.Contains('\n');
+        return plainQuestion ? "haiku" : null;
+    }
+
+    private DateOnly? _budgetWarned;
+
+    /// <summary>Once a day, past the budget: says so and offers a lighter model (unless already on the lightest).</summary>
+    private void CheckBudget()
+    {
+        var budget = _options.Value.Claude.DailyBudgetUsd;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (budget <= 0 || _usage.TodayCost < budget || _budgetWarned == today)
+        {
+            return;
+        }
+
+        _budgetWarned = today;
+        var actions = new List<ChatAction>();
+        if (!ClaudeModel.Equals("sonnet", StringComparison.OrdinalIgnoreCase) && !ClaudeModel.Equals("haiku", StringComparison.OrdinalIgnoreCase))
+        {
+            actions.Add(new ChatAction("Passa a Sonnet", "/modello sonnet", "Più economico, va bene per quasi tutto"));
+        }
+
+        if (!ClaudeModel.Equals("haiku", StringComparison.OrdinalIgnoreCase))
+        {
+            actions.Add(new ChatAction("Passa a Haiku", "/modello haiku", "Il più economico, per domande veloci"));
+        }
+
+        Suggest($"💸 Oggi hai speso {_usage.TodayCost:0.00} $ con Claude, oltre il budget di {budget:0.##} $ "
+                + "(Impostazioni → Modelli e percorsi). Per il resto della giornata conviene un modello più leggero?", [.. actions]);
+    }
+
+    /// <summary>Where the log files are (set by the app), for /log.</summary>
+    public string? LogFolder { get; set; }
+
+    /// <summary>"/log": the latest warnings and errors of today's log; "/log tutto" the last lines whatever they are.</summary>
+    private string RecentLog(bool everything)
+    {
+        var file = LogFolder is null || !Directory.Exists(LogFolder)
+            ? null
+            : new DirectoryInfo(LogFolder).EnumerateFiles("*.log").OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault();
+        if (file is null)
+        {
+            return "Nessun file di log trovato.";
+        }
+
+        List<string> lines;
+        try
+        {
+            using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream);
+            lines = reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToList();
+        }
+        catch (IOException ex)
+        {
+            return $"Non riesco a leggere il log: {ex.Message}";
+        }
+
+        var shown = everything
+            ? lines.TakeLast(30).ToList()
+            : lines.Where(l => l.Contains(" WRN ", StringComparison.Ordinal) || l.Contains(" ERR ", StringComparison.Ordinal)
+                               || l.Contains(" CRT ", StringComparison.Ordinal)).TakeLast(15).ToList();
+        if (shown.Count == 0)
+        {
+            return $"Nessun avviso o errore in `{file.Name}` 👍 (`/log tutto` per le ultime righe).";
+        }
+
+        var text = string.Join('\n', shown.Select(l => l.Length > 300 ? l[..300] + "…" : l));
+        return $"**{(everything ? "Ultime righe" : "Ultimi avvisi ed errori")}** di `{file.Name}`:\n\n```\n{text}\n```";
+    }
+
+    // ---- Pins, notes from answers, request templates ---------------------------------------------------------
+
+    /// <summary>Pins or unpins a message (kept in the strip at the top); saved with the conversation.</summary>
+    public void TogglePin(ChatEntry entry)
+    {
+        entry.IsPinned = !entry.IsPinned;
+        Notify(nameof(Pinned));
+        SaveToArchive();
+    }
+
+    /// <summary>The pinned messages, oldest first.</summary>
+    public IReadOnlyList<ChatEntry> Pinned => Entries.Where(e => e.IsPinned).ToList();
+
+    /// <summary>The page a saved answer goes to by default (Pagine/Da Claude).</summary>
+    public const string AnswersPage = "Da Claude";
+
+    /// <summary>
+    /// "💾 Salva come nota": the answer becomes a note in one of your pages (Pagine/&lt;page&gt;/), with the date and the
+    /// task of the branch; returns the note's path, or null (and says why in the chat) when it cannot be written.
+    /// </summary>
+    public string? SaveAsNote(ChatEntry answer, string title, string page)
+    {
+        try
+        {
+            var path = Vault.CustomPages.CreateNote(_options.Value.ProjectPath, string.IsNullOrWhiteSpace(page) ? AnswersPage : page.Trim(),
+                title, answer.Text, _currentTask?.Id);
+            AddSystem($"💾 Salvata nel vault: {path.Replace('\\', '/')} (Bacheca → la pagina «{(string.IsNullOrWhiteSpace(page) ? AnswersPage : page.Trim())}»).");
+            return path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AddSystem($"Non riesco a salvare la nota: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>The request templates as (name, text), from "nome = testo" lines of the settings.</summary>
+    public IReadOnlyList<(string Name, string Text)> Templates =>
+        _options.Value.Assistant.Templates
+            .Select(t => t.Split('=', 2))
+            .Where(p => p.Length == 2 && p[0].Trim().Length > 0 && p[1].Trim().Length > 0)
+            .Select(p => (Name: p[0].Trim().TrimStart('/').ToLowerInvariant(), Text: p[1].Trim()))
+            .ToList();
+
+    /// <summary>"/nome resto" with a template: the text to send ({testo} replaced by the rest, or the rest appended).</summary>
+    internal string? ExpandTemplate(string command, string rest)
+    {
+        var name = command.TrimStart('/');
+        var template = Templates.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (template.Name is null)
+        {
+            return null;
+        }
+
+        return template.Text.Contains("{testo}", StringComparison.OrdinalIgnoreCase)
+            ? template.Text.Replace("{testo}", rest, StringComparison.OrdinalIgnoreCase).Trim()
+            : rest.Length > 0 ? $"{template.Text}\n\n{rest}" : template.Text;
+    }
+
+    /// <summary>"/modelli": lists them; "/modelli nome = testo" adds (or replaces) one; "/modelli -nome" removes it.</summary>
+    private void TemplatesCommand(string input, string argument)
+    {
+        var list = _options.Value.Assistant.Templates;
+        if (argument.StartsWith('-') && argument.Length > 1)
+        {
+            var name = argument[1..].Trim().TrimStart('/');
+            var removed = list.RemoveAll(t => t.Split('=', 2)[0].Trim().TrimStart('/').Equals(name, StringComparison.OrdinalIgnoreCase));
+            Instant(input, removed > 0 ? $"Tolto il modello `/{name}`." : $"Non c'è un modello `/{name}`.");
+            Notify(nameof(Templates));
+            return;
+        }
+
+        if (argument.Contains('='))
+        {
+            var (name, text) = (argument.Split('=', 2)[0].Trim().TrimStart('/').ToLowerInvariant(), argument.Split('=', 2)[1].Trim());
+            if (name.Length == 0 || name.Contains(' ') || text.Length == 0)
+            {
+                Instant(input, "Scrivi `/modelli nome = testo` (il nome senza spazi; nel testo `{testo}` è quello che scriverai dopo il comando).");
+                return;
+            }
+
+            if (ChatCommands.BuiltIn.Any(c => c.Name.Equals("/" + name, StringComparison.OrdinalIgnoreCase)))
+            {
+                Instant(input, $"`/{name}` è già un comando del Buddy: scegli un altro nome.");
+                return;
+            }
+
+            list.RemoveAll(t => t.Split('=', 2)[0].Trim().TrimStart('/').Equals(name, StringComparison.OrdinalIgnoreCase));
+            list.Add($"{name} = {text}");
+            Instant(input, $"Salvato: `/{name}` → {text}");
+            Notify(nameof(Templates));
+            return;
+        }
+
+        var templates = Templates;
+        Instant(input, templates.Count == 0
+            ? "Nessun modello di richiesta. Creane uno: `/modelli stack = Spiegami questo stack trace e la causa probabile: {testo}`, poi usalo con `/stack …`."
+            : "**I tuoi modelli di richiesta**\n\n" + string.Join('\n', templates.Select(t => $"- `/{t.Name}` → {t.Text}"))
+              + "\n\nAggiungi con `/modelli nome = testo`, togli con `/modelli -nome`.");
+    }
+
+    /// <summary>A suggestion of the buddy with buttons (each sends its command), e.g. "passo a Sonnet?" [Sì].</summary>
+    public void Suggest(string text, params ChatAction[] actions) =>
+        Add(new ChatEntry(Speaker.System, text) { Actions = actions });
+
+    /// <summary>A clicked action button: its command is sent like a typed one; the buttons of that message go away.</summary>
+    public Task RunActionAsync(ChatEntry entry, ChatAction action)
+    {
+        entry.Actions = [];
+        return SendAsync(action.Command);
+    }
+
     /// <summary>Adds the configured greeting, if any; called once at startup.</summary>
-    public void Greet() => AddSystem(Phrases.Greeting);
+    public void Greet()
+    {
+        AddSystem(Phrases.Greeting);
+
+        // Something to pick up again: offer it right away (the summary itself is built only when asked).
+        if (Archive?.List(1).Count > 0)
+        {
+            Suggest("Vuoi riprendere da dove eri rimasto?", new ChatAction("↩ Dove ero rimasto?", "/riprendi",
+                "Ultima conversazione, modifiche da committare e test manuali del task"));
+        }
+    }
+
+    /// <summary>
+    /// "/riprendi": where things stand, without a model — the task of the branch, the last conversation (on this task
+    /// if there is one) with a button to reopen it, the changes not committed yet and the manual tests still to do.
+    /// </summary>
+    private async Task ResumeAsync(string input)
+    {
+        await RefreshCurrentTaskAsync();
+        var task = _currentTask;
+        var sb = new System.Text.StringBuilder("**Dove eri rimasto**\n\n");
+        var actions = new List<ChatAction>();
+
+        sb.AppendLine(task is null ? "- Nessun task nel nome del ramo git." : $"- 📌 Task: **{task}**");
+
+        var saved = Archive?.List(30) ?? [];
+        var last = (task is null ? null : saved.FirstOrDefault(c => c.Title.Contains(task.Id, StringComparison.OrdinalIgnoreCase)
+                                                                     || c.Entries.Any(e => e.Text.Contains(task.Id, StringComparison.OrdinalIgnoreCase))))
+                   ?? saved.FirstOrDefault(c => c.Id != _conversationId);
+        if (last is not null)
+        {
+            var answer = last.Entries.LastOrDefault(e => e.Speaker is Speaker.Claude or Speaker.Local)?.Text.ReplaceLineEndings(" ").Trim();
+            sb.AppendLine($"- 💬 Ultima conversazione: {last.Label}");
+            if (answer is { Length: > 0 })
+            {
+                sb.AppendLine($"  > {(answer.Length > 220 ? answer[..220] + "…" : answer)}");
+            }
+
+            actions.Add(new ChatAction("Riapri la conversazione", $"/riapri {last.Id}"));
+        }
+
+        if (_repo.IsAvailable)
+        {
+            var changes = await _repo.GetChangesAsync();
+            sb.AppendLine(changes.Count == 0
+                ? "- ✅ Nessuna modifica da committare."
+                : $"- ✏ {changes.Count} file modificati non ancora committati: {string.Join(", ", changes.Take(5).Select(c => $"`{Path.GetFileName(c.Path)}`"))}{(changes.Count > 5 ? "…" : "")}");
+            if (changes.Count > 0)
+            {
+                actions.Add(new ChatAction("Bozza del commit", "/commit"));
+            }
+        }
+
+        if (task is not null && _commands.ManualTestProgress(task.Id) is { } tests)
+        {
+            sb.AppendLine(tests.Done == tests.Total
+                ? $"- 🧪 Test manuali: tutti fatti ({tests.Total}/{tests.Total}) ✅"
+                : $"- 🧪 Test manuali: {tests.Done}/{tests.Total} fatti, ne mancano {tests.Total - tests.Done}.");
+        }
+
+        Add(new ChatEntry(Speaker.User, input));
+        Add(new ChatEntry(Speaker.Local, sb.ToString().TrimEnd()) { Actions = actions });
+    }
 
     private void Notify(string name) => OnUi(() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)));
 
@@ -724,7 +1391,11 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync() => await CloseClaudeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        SaveToArchive();
+        await CloseClaudeAsync();
+    }
 }
 
 public sealed record LongTurnCompleted(string Request, string? Answer, bool Success, TimeSpan Elapsed);

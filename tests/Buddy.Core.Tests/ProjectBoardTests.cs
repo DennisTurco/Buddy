@@ -243,7 +243,7 @@ public class TestNotesTests
             ## Rollback
 
             Riattivare la categoria.
-            """.Replace("\n", "\r\n"));
+            """.ReplaceLineEndings("\r\n"));
         File.WriteAllText(Path.Combine(_root, "Test web.md"), """
             ## Script
 
@@ -367,6 +367,27 @@ public class WebTestRunTests
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public void Scripts_folder_in_the_test_web_note_is_relative_to_the_repo()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-scheda-").FullName;
+        var repo = Directory.CreateTempSubdirectory("buddy-repo-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(repo, "tests", "e2e"));
+            File.WriteAllText(Path.Combine(root, "Scheda progetto.md"), "# Scheda\n");
+            File.WriteAllText(Path.Combine(root, "Test web.md"), "- **Cartella degli script di test:** `tests/e2e/` nel repo\n");
+            using var vault = new VaultIndex(Options.Create(new BuddySettings { ProjectPath = root }));
+
+            Assert.That(WebTestRun.ScriptsFolder(vault, "", repo), Is.EqualTo(Path.GetFullPath(Path.Combine(repo, "tests/e2e/"))));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(repo, recursive: true);
         }
     }
 }

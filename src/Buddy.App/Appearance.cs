@@ -39,6 +39,17 @@ internal static class Appearance
         window.Resources["CodeBack"] = new SolidColorBrush(Mix(paper, ink, 0.12));
         window.Resources["LinkInk"] = new SolidColorBrush(Luminance(paper) < 0.5 ? accent : Mix(accent, ink, 0.45));
 
+        // Code colours readable on the paper: One Dark on a dark one, One Light on a light one.
+        var dark = Luminance(paper) < 0.5;
+        foreach (var (key, light, night) in new[]
+                 {
+                     ("SynKeyword", "#A626A4", "#C678DD"), ("SynString", "#3E8E3C", "#98C379"), ("SynComment", "#8A8798", "#7F848E"),
+                     ("SynNumber", "#B76B01", "#D19A66"), ("SynType", "#2F6BD9", "#61AFEF"), ("SynTag", "#D2453A", "#E06C75"),
+                 })
+        {
+            window.Resources[key] = new SolidColorBrush(Color.Parse(dark ? night : light));
+        }
+
         if (font)
         {
             // A missing font (e.g. "Segoe UI" on Linux) falls back to the system default.

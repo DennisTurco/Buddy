@@ -67,4 +67,13 @@
         <Setter Property="Background" Value="{DynamicResource CodeBack}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
     </Style>
+
+    <!-- Find in the page (Ctrl+F): paragraphs with the text are tinted, the current one stronger. Last, so they win. -->
+    <Style Selector="ctxt|CTextBlock.findhit">
+        <Setter Property="Foreground" Value="#C77C00" />
+    </Style>
+    <Style Selector="ctxt|CTextBlock.findcurrent">
+        <Setter Property="Foreground" Value="#E8590C" />
+        <Setter Property="SelectionBrush" Value="#55F2B544" />
+    </Style>
 </Styles>

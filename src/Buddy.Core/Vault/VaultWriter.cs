@@ -58,6 +58,38 @@ public static class VaultWriter
     }
 
     /// <summary>
+    /// Puts a list line first in the section titled <paramref name="heading"/> (newest first, as in Decisioni), after
+    /// the blank line that follows the heading; at the end of the note when there is no such section.
+    /// </summary>
+    public static void InsertItemFirst(string path, string heading, string line)
+    {
+        var (content, newline) = Read(path);
+        var lines = content.Split('\n').ToList();
+        var start = lines.FindIndex(l => l.StartsWith('#') && l.TrimStart('#', ' ').Trim().Equals(heading, StringComparison.OrdinalIgnoreCase));
+        if (start < 0)
+        {
+            lines.Add("");
+            lines.Add(Normalize(line).Trim());
+        }
+        else
+        {
+            var at = start + 1;
+            if (at < lines.Count && string.IsNullOrWhiteSpace(lines[at]))
+            {
+                at++;
+            }
+            else
+            {
+                lines.Insert(at++, "");
+            }
+
+            lines.Insert(at, Normalize(line).Trim());
+        }
+
+        Write(path, string.Join('\n', lines), newline);
+    }
+
+    /// <summary>
     /// Ticks or unticks the checkbox on line <paramref name="index"/> ("- [ ] …" ↔ "- [x] …"), if that line still reads
     /// <paramref name="expected"/>. Only the box changes: the rest of the line and of the note stay as written.
     /// </summary>
@@ -79,6 +111,42 @@ public static class VaultWriter
 
         lines[index] = string.Concat(line.AsSpan(0, box + 1), done ? "x" : " ", line.AsSpan(box + 2));
         Write(path, string.Join('\n', lines), newline);
+    }
+
+    /// <summary>
+    /// Points the links to <paramref name="oldTitle"/> in a note at <paramref name="newTitle"/> instead ([[Old]],
+    /// [[Folder/Old|alias]], [[Old#heading]] keep their alias and heading). Returns how many were changed.
+    /// </summary>
+    public static int ReplaceLink(string path, string oldTitle, string newTitle)
+    {
+        var (content, newline) = Read(path);
+        var count = 0;
+        var updated = System.Text.RegularExpressions.Regex.Replace(content,
+            $@"\[\[(?:[^\]|#\n]*/)?{System.Text.RegularExpressions.Regex.Escape(oldTitle)}(?=[\]|#])",
+            _ =>
+            {
+                count++;
+                return "[[" + newTitle;
+            },
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (count > 0)
+        {
+            Write(path, updated, newline);
+        }
+
+        return count;
+    }
+
+    /// <summary>Creates an empty note with a title, refusing to overwrite one that exists.</summary>
+    public static void CreateNote(string path, string title)
+    {
+        if (File.Exists(path))
+        {
+            throw new IOException($"La nota «{Path.GetFileName(path)}» esiste già.");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Write(path, $"# {title}\n\n", Environment.NewLine);
     }
 
     /// <summary>Saves a note edited as a whole, if it still holds <paramref name="expected"/>.</summary>

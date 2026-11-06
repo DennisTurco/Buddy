@@ -114,3 +114,40 @@ public sealed record Attachment(string Label, string? Text, IReadOnlyList<string
 }
 
 public sealed record AttachedImage(string MediaType, string Base64);
+
+/// <summary>
+/// Files of the repository dropped on the chat become "@path" references (relative to the repo, with forward
+/// slashes), which Claude Code reads by itself: nothing is pasted into the prompt and the file is read fresh.
+/// </summary>
+public static class FileReferences
+{
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp" };
+
+    /// <summary>The references, or null when some file is outside every root or is an image (those are attached).</summary>
+    public static IReadOnlyList<string>? ForRepo(IReadOnlyList<string> paths, IEnumerable<string?> roots)
+    {
+        var folders = roots.Where(r => !string.IsNullOrWhiteSpace(r) && Directory.Exists(r))
+            .Select(r => Path.GetFullPath(r!).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar)
+            .ToList();
+        if (paths.Count == 0 || folders.Count == 0)
+        {
+            return null;
+        }
+
+        var references = new List<string>();
+        foreach (var path in paths)
+        {
+            var full = Path.GetFullPath(path);
+            var root = folders.FirstOrDefault(f => full.StartsWith(f, StringComparison.OrdinalIgnoreCase));
+            if (root is null || ImageExtensions.Contains(Path.GetExtension(full)))
+            {
+                return null;
+            }
+
+            var relative = full[root.Length..].Replace('\\', '/');
+            references.Add("@" + (relative.Contains(' ') ? $"\"{relative}\"" : relative));
+        }
+
+        return references;
+    }
+}

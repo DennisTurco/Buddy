@@ -46,11 +46,25 @@ public sealed class ClaudeUsage(TimeProvider clock)
         _path = path;
         try
         {
-            if (File.Exists(path) && JsonSerializer.Deserialize<Saved>(File.ReadAllText(path)) is { } saved && saved.Day == Today)
+            var saved = File.Exists(path) ? JsonSerializer.Deserialize<Saved>(File.ReadAllText(path)) : null;
+
+            // The averages per model are kept across days; the totals only for today.
+            foreach (var (model, stat) in saved?.Models ?? [])
+            {
+                _models[model] = stat;
+            }
+
+            foreach (var (day, stat) in saved?.Days ?? [])
+            {
+                _days[day] = stat;
+            }
+
+            if (saved is not null && saved.Day == Today)
             {
                 Day = saved.Day;
                 TodayCost = saved.Cost;
                 TodayTurns = saved.Turns;
+                _days.TryAdd(Day, new ModelStat(TodayTurns, TodayCost)); // a file from before the history was kept
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -59,10 +73,16 @@ public sealed class ClaudeUsage(TimeProvider clock)
         }
     }
 
-    public void AddTurn(decimal cost)
+    public void AddTurn(decimal cost, string? model = null)
     {
         lock (_gate)
         {
+            var key = ModelKey(model);
+            var stat = _models.GetValueOrDefault(key) ?? new ModelStat(0, 0);
+            _models[key] = new ModelStat(stat.Turns + 1, stat.Cost + Math.Max(0, cost));
+            var today = _days.GetValueOrDefault(Today) ?? new ModelStat(0, 0);
+            _days[Today] = new ModelStat(today.Turns + 1, today.Cost + Math.Max(0, cost));
+
             if (Day != Today)
             {
                 Day = Today;
@@ -135,14 +155,64 @@ public sealed class ClaudeUsage(TimeProvider clock)
 
         try
         {
-            File.WriteAllText(_path, JsonSerializer.Serialize(new Saved(Day, TodayCost, TodayTurns), Json));
+            File.WriteAllText(_path, JsonSerializer.Serialize(new Saved(Day, TodayCost, TodayTurns, new Dictionary<string, ModelStat>(_models),
+                new Dictionary<DateOnly, ModelStat>(_days.Where(d => d.Key.DayNumber >= Today.DayNumber - KeptDays))), Json));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
     }
 
-    private sealed record Saved(DateOnly Day, decimal Cost, int Turns);
+    private sealed record Saved(DateOnly Day, decimal Cost, int Turns, Dictionary<string, ModelStat>? Models = null,
+        Dictionary<DateOnly, ModelStat>? Days = null);
+
+    /// <summary>How many days of spending are kept for the Costi and Settimana pages.</summary>
+    public const int KeptDays = 120;
+
+    private readonly Dictionary<DateOnly, ModelStat> _days = [];
+
+    /// <summary>Spending per day (cost, turns), the last <see cref="KeptDays"/> days.</summary>
+    public IReadOnlyDictionary<DateOnly, ModelStat> Days
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return new Dictionary<DateOnly, ModelStat>(_days);
+            }
+        }
+    }
+
+    /// <summary>Turns and cost per model ("opus", "predefinito"…), since the buddy started counting.</summary>
+    public IReadOnlyDictionary<string, ModelStat> Models
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return new Dictionary<string, ModelStat>(_models, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    public sealed record ModelStat(int Turns, decimal Cost);
+
+    private readonly Dictionary<string, ModelStat> _models = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string ModelKey(string? model) => string.IsNullOrWhiteSpace(model) ? "predefinito" : model.Trim().ToLowerInvariant();
+
+    /// <summary>Average cost of one turn with <paramref name="model"/>, from your own turns; null until there are 3.</summary>
+    public decimal? AverageTurnCost(string? model)
+    {
+        lock (_gate)
+        {
+            return _models.GetValueOrDefault(ModelKey(model)) is { Turns: >= 3 } stat ? stat.Cost / stat.Turns : null;
+        }
+    }
+
+    /// <summary>"~0,15 $ a turno" for the model, or "" when there is no estimate yet.</summary>
+    public string AverageText(string? model) =>
+        AverageTurnCost(model) is { } average ? $"~{average.ToString("0.00", Italian)} $ a turno" : "";
 }
 
 /// <summary>

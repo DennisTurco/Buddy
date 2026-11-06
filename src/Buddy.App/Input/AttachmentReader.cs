@@ -41,6 +41,10 @@ public static class AttachmentReader
         return null;
     }
 
+    /// <summary>The local paths of the files being dropped (none for text or images from a browser).</summary>
+    public static List<string> DroppedFiles(IDataTransfer data) =>
+        data.TryGetFiles() is { Length: > 0 } files ? LocalPaths(files) : [];
+
     public static Attachment? FromDrop(IDataTransfer data, int maxChars)
     {
         if (data.TryGetFiles() is { Length: > 0 } files && LocalPaths(files) is { Count: > 0 } paths)

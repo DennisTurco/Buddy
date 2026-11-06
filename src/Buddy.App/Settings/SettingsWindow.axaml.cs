@@ -75,6 +75,7 @@ public partial class SettingsWindow : Window
         LoadProjectLists();
         RefreshPresetList();
         Topics.Text = string.Join(Environment.NewLine, _settings.Mentor.Topics);
+        DoNotCommit.Text = string.Join(Environment.NewLine, _settings.Claude.DoNotCommit);
         Interests.Text = string.Join(", ", _settings.Mentor.Interests);
 
         _personalities = Personalities.All.Append(new Personality(Personalities.Custom, "Personalizzata", "")).ToList();
@@ -384,6 +385,7 @@ public partial class SettingsWindow : Window
     {
         CollectProjectLists();
         _settings.Mentor.Topics = Lines(Topics.Text);
+        _settings.Claude.DoNotCommit = Lines(DoNotCommit.Text);
         _settings.Mentor.Interests = (Interests.Text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         if (PersonalityCombo.SelectedItem is Personality personality)
         {

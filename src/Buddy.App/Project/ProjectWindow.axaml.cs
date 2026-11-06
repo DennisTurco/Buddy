@@ -32,7 +32,15 @@ public partial class ProjectWindow : Window
         ("manualtests", "🧪  Test manuali", "Test manuali"),
         ("webtests", "🌐  Test web", "Test web"),
         ("notes", "📚  Note", "Note"),
+        ("graph", "🕸  Grafo", "Grafo delle note"),
+        ("week", "📅  Settimana", "Settimana"),
+        ("costs", "💳  Costi", "Costi di Claude"),
+        ("decisions", "⚖  Decisioni", "Decisioni"),
+        ("glossary", "📖  Glossario", "Glossario"),
+        ("prs", "🔀  PR", "Pull request aperte"),
     ];
+
+    private NoteGraph? _graph;
 
     private readonly VaultIndex _vault;
     private readonly BuddySettings _settings;
@@ -118,8 +126,17 @@ public partial class ProjectWindow : Window
         };
 
         Filter.TextChanged += (_, _) => Render();
+        Graph.NoteActivated += OnGraphNoteActivated;
+        PageFindBox.TextChanged += (_, _) => UpdatePageFind();
+        PageFindBox.AddHandler(KeyDownEvent, OnPageFindKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         NotesList.SelectionChanged += (_, _) => ShowNote(NotesList.SelectedItem as NoteView);
-        ManualDocsList.SelectionChanged += (_, _) => ShowManualDoc(ManualDocsList.SelectedItem as ManualDocView);
+        ManualDocsList.SelectionChanged += (_, _) =>
+        {
+            if (!_refillingManualDocs)
+            {
+                ShowManualDoc(ManualDocsList.SelectedItem as ManualDocView);
+            }
+        };
         Nav.SelectionChanged += (_, _) =>
         {
             if (!_switchingView && Nav.SelectedItem is NavItem item)
@@ -129,6 +146,9 @@ public partial class ProjectWindow : Window
         };
         KeyDown += OnWindowKeyDown;
         BoardView.SizeChanged += (_, _) => FitColumns();
+        PageScroller.SizeChanged += (_, _) => FitPageCards();
+        SetUpBoardDrag();
+        SetUpPalette();
 
         Reload();
         ShowView("overview");
@@ -177,6 +197,8 @@ public partial class ProjectWindow : Window
         _board = ProjectBoard.Load(_vault, _settings.TaskIdPattern);
         var selectedNote = (NotesList.SelectedItem as NoteView)?.Note.RelativePath;
         _notes = _board.Notes.Select(n => new NoteView(n)).ToList();
+        _graph = NoteGraph.Build(_board.Notes, _settings.TaskIdPattern);
+        ApplyGraph();
         Render();
 
         // Keep the note being read selected across reloads.
@@ -186,15 +208,40 @@ public partial class ProjectWindow : Window
 
     internal void ShowView(string key)
     {
+        if (key == NewPageKey)
+        {
+            _ = CreatePageAsync(); // "＋ Nuova pagina…": asks the name, then shows the new page
+            return;
+        }
+
+        _lastRealView = key;
         _view = key;
+        GenericView.IsVisible = IsGeneric(key);
         OverviewView.IsVisible = key == "overview";
         BoardPage.IsVisible = key == "board";
         ArchiveView.IsVisible = key == "archive";
         NotesView.IsVisible = key == "notes";
+        GraphView.IsVisible = key == "graph";
+        if (PageFindBar.IsVisible && !(key is "notes" or "manualtests"))
+        {
+            ClosePageFind();
+        }
+        else
+        {
+            RefreshPageFind();
+        }
+        if (key == "graph")
+        {
+            Graph.Resume();
+        }
         ManualTestsView.IsVisible = key == "manualtests";
         WebTestsView.IsVisible = key == "webtests";
-        ViewTitle.Text = Views.First(v => v.Key == key).Title;
+        ViewTitle.Text = TitleOf(key);
         UpdateSubtitle();
+        if (IsGeneric(key))
+        {
+            _ = RenderPageAsync(key);
+        }
 
         _switchingView = true;
         Nav.SelectedItem = (Nav.ItemsSource as IEnumerable<NavItem>)?.FirstOrDefault(n => n.Key == key);
@@ -295,6 +342,7 @@ public partial class ProjectWindow : Window
         attention.AddRange(Shown("attesa").Where(c => c.Item.IsDue(today)).Select(c => new AttentionView(c, "🔓 Non aspetta più")));
         attention.AddRange(Shown("todo").Where(c => c.Priority == 1).Select(c => new AttentionView(c, "🔥 Priorità alta")));
         AttentionList.ItemsSource = attention;
+        RenderHealth(today);
         var inbox = Total("appunti");
         SortInboxButton.IsVisible = inbox > 0 && _skills.Contains("smista");
         SortInboxButton.Content = $"🗂 Smista {(inbox == 1 ? "l'appunto" : $"i {inbox} appunti")} con Claude";
@@ -339,6 +387,7 @@ public partial class ProjectWindow : Window
         }
 
         RenderTests(filter);
+        Graph.Search = filter;
 
         // Side bar
         var open = Flow.Active.Sum(Total);
@@ -351,8 +400,12 @@ public partial class ProjectWindow : Window
             "manualtests" when _manualDocs.Count > 0 => $"{_manualDocs.Count(d => d.IsComplete)}/{_manualDocs.Count}",
             "webtests" when ScriptsList.ItemCount > 0 => ScriptsList.ItemCount.ToString(CultureInfo.InvariantCulture),
             _ => "",
-        })).ToList();
+        })).Concat(CustomPageNav()).ToList();
         Nav.SelectedItem = (Nav.ItemsSource as IEnumerable<NavItem>)?.FirstOrDefault(n => n.Key == _view);
+        if (IsGeneric(_view))
+        {
+            _ = RenderPageAsync(_view); // the vault changed, or the filter: the page follows
+        }
         _switchingView = false;
         UpdateSubtitle();
 
@@ -397,6 +450,8 @@ public partial class ProjectWindow : Window
             "archive" => "Task chiusi e idee scartate",
             "manualtests" => "Le checklist da provare a mano: spunta i casi qui, finiscono nel file come - [x]",
             "webtests" => "Gli script del browser e gli screenshot delle verifiche",
+            "graph" => $"{Graph.NodeCount} note, {Graph.EdgeCount} collegamenti · rotella per lo zoom, trascina per spostarti, click su una nota per aprirla",
+            _ when IsGeneric(_view) => ViewSubtitle.Text, // set by the page itself
             _ => $"{_notes.Count} note in {_settings.ProjectPath}",
         };
     }
@@ -490,6 +545,7 @@ public partial class ProjectWindow : Window
 
         ClaudeActions.ItemsSource = actions;
         ClaudeActionsPanel.IsVisible = actions.Count > 0;
+        _ = LoadTimelineAsync(card);
 
         // Tag picker: the common tags plus any already used in the vault; the item's own is highlighted.
         var used = (_board?.Columns ?? []).SelectMany(c => c.Items).Select(i => i.Field("tag")).OfType<string>();
@@ -658,8 +714,19 @@ public partial class ProjectWindow : Window
                 .ToList()
             : [];
         var selectedPath = (ManualDocsList.SelectedItem as ManualDocView)?.Doc.RelativePath ?? _shownManual?.Doc.RelativePath;
-        ManualDocsList.ItemsSource = _manualDocs;
-        ManualDocsList.SelectedItem = _manualDocs.FirstOrDefault(d => d.Doc.RelativePath == selectedPath) ?? _manualDocs.FirstOrDefault();
+
+        // Replacing the list clears the selection for a moment: those selection changes must not rebuild the
+        // checklist (it would jump back to the top after every tick); it is shown once, below.
+        _refillingManualDocs = true;
+        try
+        {
+            ManualDocsList.ItemsSource = _manualDocs;
+            ManualDocsList.SelectedItem = _manualDocs.FirstOrDefault(d => d.Doc.RelativePath == selectedPath) ?? _manualDocs.FirstOrDefault();
+        }
+        finally
+        {
+            _refillingManualDocs = false;
+        }
         NoManualTests.IsVisible = _manualDocs.Count == 0;
         ((Control)ManualDocsList.Parent!).IsVisible = _manualDocs.Count > 0;
         ManualDocPanel.IsVisible = _manualDocs.Count > 0;
@@ -720,6 +787,9 @@ public partial class ProjectWindow : Window
             return;
         }
 
+        // The same checklist changed (e.g. edited in Obsidian or by Claude): rebuilt, but the reader stays where they were.
+        var samePage = doc is not null && _shownManual?.Doc.RelativePath == doc.Doc.RelativePath;
+        var offset = ManualScroller.Offset;
         _shownManual = doc;
         if (doc is null)
         {
@@ -766,8 +836,20 @@ public partial class ProjectWindow : Window
             return new ManualSectionView(section.Title, cases.Count == 0 ? "" : $"{cases.Count(l => l.Checked)}/{cases.Count}", items);
         }).ToList();
         UpdateManualProgress();
-        ManualScroller.Offset = new Vector(0, 0);
+        if (samePage)
+        {
+            // After the new items are laid out, or the offset would be clamped to the still-empty content.
+            Dispatcher.UIThread.Post(() => ManualScroller.Offset = offset, DispatcherPriority.Loaded);
+        }
+        else
+        {
+            ManualScroller.Offset = new Vector(0, 0);
+        }
+
+        RefreshPageFind();
     }
+
+    private bool _refillingManualDocs;
 
     /// <summary>The raw lines of the shown checklist as they are now (ticks applied).</summary>
     private IEnumerable<string> ShownRawLines() =>
@@ -805,6 +887,53 @@ public partial class ProjectWindow : Window
         if (_shownManual?.TaskId is { } id)
         {
             ClaudeRequested?.Invoke($"/test-manuali {id}");
+        }
+    }
+
+    /// <summary>
+    /// "📄 Esporta in Word": the ticked cases of the checklist in a .docx, saved where the user chooses (Downloads by
+    /// default), then shown in its folder, ready to attach to the card.
+    /// </summary>
+    private async void OnManualExportClick(object? sender, RoutedEventArgs e)
+    {
+        if (_shownManual is not { } shown)
+        {
+            return;
+        }
+
+        // The checklist as it is now on disk (ticks made here included).
+        var doc = TestNotes.ManualTests(_vault, _settings.TaskIdPattern).FirstOrDefault(d => d.RelativePath == shown.Doc.RelativePath) ?? shown.Doc;
+        if (ManualTestReport.DoneCases(doc).Count == 0
+            && !await Settings.Dialogs.ConfirmAsync(this, "Nessun caso è ancora spuntato: esporto comunque il documento (vuoto)?"))
+        {
+            return;
+        }
+
+        var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+        {
+            Title = "Salva i test fatti in Word",
+            SuggestedFileName = ManualTestReport.FileName(doc),
+            DefaultExtension = "docx",
+            SuggestedStartLocation = Directory.Exists(downloads) ? await StorageProvider.TryGetFolderFromPathAsync(new Uri(downloads)) : null,
+            FileTypeChoices = [new Avalonia.Platform.Storage.FilePickerFileType("Documento Word") { Patterns = ["*.docx"] }],
+        });
+        if (file is null || Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file) is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            var title = doc.TaskId is { } id && (_board?.Columns ?? []).SelectMany(c => c.Items).FirstOrDefault(i => i.Id == id) is { } item
+                ? item.Title.Replace("`", "")
+                : null;
+            ManualTestReport.Write(doc, title, path);
+            Shell.Open(Path.GetDirectoryName(path)!);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, $"Non riesco a salvare il documento: {ex.Message}");
         }
     }
 
@@ -858,11 +987,20 @@ public partial class ProjectWindow : Window
             return;
         }
 
-        if (WebTestRun.ScriptsFolder(_vault) is not { } folder || !Directory.Exists(folder))
+        var folder = WebTestRun.ScriptsFolder(_vault, _settings.Repo.Path, _settings.Claude.WorkingDirectory);
+        if (folder is null)
         {
             await Settings.Dialogs.ShowMessageAsync(this,
-                "Non trovo la cartella degli script: nella Scheda progetto, sezione Test web, serve la riga "
-                + "«Cartella degli script di test: `~/percorso/`» con una cartella che esiste.");
+                "Non trovo la cartella degli script: nella Scheda progetto o nella nota Test web serve la riga "
+                + "«Cartella degli script di test: `percorso`» (assoluto, con ~, o relativo al repo).");
+            return;
+        }
+
+        if (!Directory.Exists(folder))
+        {
+            await Settings.Dialogs.ShowMessageAsync(this,
+                $"La cartella degli script indicata nel vault non esiste:\n{folder}\n\n"
+                + "Se è nel repo, forse il branch attuale non la contiene ancora (aggiorna il repo) oppure il percorso va corretto.");
             return;
         }
 
@@ -1124,6 +1262,7 @@ public partial class ProjectWindow : Window
         NoteTitle.Text = note?.Title ?? "";
         NoteViewer.Markdown = note?.Markdown ?? "";
         NoteScroller.Offset = new Vector(0, 0);
+        RefreshPageFind();
 
         // Notes that link here ([[Title]], [[Folder/Title|alias]]).
         var backlinks = note is null
@@ -1242,6 +1381,131 @@ public partial class ProjectWindow : Window
 
     private void OnRefreshClick(object? sender, RoutedEventArgs e) => Reload();
 
+    // ---- Task timeline ----------------------------------------------------------------------------------------
+
+    private Buddy.Core.Repo.GitRepo? _repo;
+
+    /// <summary>Fills the side panel's timeline (git and the journal are read in the background).</summary>
+    private async Task LoadTimelineAsync(CardView card)
+    {
+        TimelinePanel.IsVisible = false;
+        if (!card.HasId || _board is null || card.Item.Id is not { } id)
+        {
+            return;
+        }
+
+        _repo ??= new Buddy.Core.Repo.GitRepo(Microsoft.Extensions.Options.Options.Create(_settings), TimeProvider.System);
+        try
+        {
+            var board = _board;
+            var events = await Task.Run(() => TaskTimeline.BuildAsync(id, board, _vault, _repo, _settings.Mentor.JournalPath, _settings.ProjectPath));
+            if (_selected == card)
+            {
+                TimelineList.ItemsSource = events;
+                var estimate = EstimateLine(card, events);
+                EstimateText.Text = estimate ?? "";
+                EstimateText.IsVisible = estimate is not null;
+                TimelinePanel.IsVisible = events.Count > 0 || estimate is not null;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // No timeline: the rest of the panel is still useful.
+        }
+    }
+
+    // ---- Vault health -----------------------------------------------------------------------------------------
+
+    private IReadOnlySet<string>? _elsewhere;
+
+    private void RenderHealth(DateOnly today)
+    {
+        if (_board is null || _graph is null)
+        {
+            HealthPanel.IsVisible = false;
+            return;
+        }
+
+        var checklists = TestNotes.ManualTests(_vault, _settings.TaskIdPattern);
+        // The rest of the Obsidian vault is read once per window: links resolved there are not broken.
+        _elsewhere ??= VaultHealth.TitlesElsewhere(_settings.ProjectPath);
+        var all = VaultHealth.Check(_board, _graph, checklists, today, int.MaxValue, _elsewhere);
+        HealthPanel.IsVisible = true;
+        HealthList.ItemsSource = all.Take(8).ToList();
+        HealthOk.IsVisible = all.Count == 0;
+        HealthTitle.Text = all.Count == 0 ? "🩺 Salute del vault"
+            : all.Count > 8 ? $"🩺 Salute del vault · {all.Count} cose da sistemare (le prime 8)"
+            : $"🩺 Salute del vault · {all.Count} cos{(all.Count == 1 ? "a" : "e")} da sistemare";
+    }
+
+    /// <summary>"Crea la nota": an empty note with the linked name, next to the project's notes, then opened.</summary>
+    private async void OnCreateMissingNoteClick(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not HealthIssue { MissingTitle: { } title })
+        {
+            return;
+        }
+
+        var relative = title.Replace('\\', '/').Trim('/') + ".md";
+        if (await WriteAsync(() => VaultWriter.CreateNote(FullPath(relative), Path.GetFileName(title))))
+        {
+            AfterEdit();
+            OpenInNotesView(relative);
+        }
+    }
+
+    /// <summary>"Collega a «X»": the broken link in its note now points at the existing note with a near-identical name.</summary>
+    private async void OnRelinkClick(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is HealthIssue { MissingTitle: { } missing, Suggestion: { } suggestion, Target: { } note }
+            && await WriteAsync(() => VaultWriter.ReplaceLink(FullPath(note), missing, suggestion)))
+        {
+            AfterEdit();
+        }
+    }
+
+    private void OnHealthIssueClick(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is HealthIssue { Target: { } target })
+        {
+            OpenInNotesView(target);
+        }
+    }
+
+    // ---- Graph ------------------------------------------------------------------------------------------------
+
+    private void ApplyGraph()
+    {
+        if (_graph is null)
+        {
+            return;
+        }
+
+        Graph.SetGraph(_graph, GraphOrphans.IsChecked == true, GraphMissing.IsChecked == true, GraphByTask.IsChecked == true);
+        GraphLegend.ItemsSource = Graph.Legend
+            .Select(l => new GraphLegendItem(l.Folder, new Avalonia.Media.SolidColorBrush(l.Color)))
+            .ToList();
+        UpdateSubtitle();
+    }
+
+    private void OnGraphOptionChanged(object? sender, RoutedEventArgs e) => ApplyGraph();
+
+    private void OnGraphFitClick(object? sender, RoutedEventArgs e) => Graph.FitToView();
+
+    private void OnGraphRelayoutClick(object? sender, RoutedEventArgs e) => Graph.Relayout();
+
+    private void OnGraphNoteActivated(string relativePath) => OpenInNotesView(relativePath);
+
+    /// <summary>"🕸" in the note viewer: the graph centred on the note being read.</summary>
+    private void OnShowNoteInGraphClick(object? sender, RoutedEventArgs e)
+    {
+        if (NotesList.SelectedItem is NoteView note)
+        {
+            ShowView("graph");
+            Graph.FocusNote(note.Note.RelativePath);
+        }
+    }
+
     private async void OnOpenVaultClick(object? sender, RoutedEventArgs e)
     {
         try
@@ -1263,6 +1527,15 @@ public partial class ProjectWindow : Window
         var ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         switch (e.Key)
         {
+            case Key.K when ctrl:
+                OpenPalette();
+                break;
+            case Key.Escape when Palette.IsVisible:
+                ClosePalette();
+                break;
+            case Key.Escape when PageFindBar.IsVisible:
+                ClosePageFind();
+                break;
             case Key.Escape when _editedNote is not null:
                 StopEditingNote();
                 break;
@@ -1275,6 +1548,9 @@ public partial class ProjectWindow : Window
                 break;
             case Key.Escape:
                 Close();
+                break;
+            case Key.F when ctrl && !e.KeyModifiers.HasFlag(KeyModifiers.Shift) && PageFindAvailable:
+                OpenPageFind();
                 break;
             case Key.F when ctrl:
                 Filter.Focus();
@@ -1289,7 +1565,7 @@ public partial class ProjectWindow : Window
             case Key.S when ctrl && _editedNote is not null:
                 OnSaveNoteClick(null, e);
                 break;
-            case >= Key.D1 and <= Key.D6 when ctrl:
+            case >= Key.D1 and <= Key.D9 when ctrl:
                 ShowView(Views[e.Key - Key.D1].Key);
                 break;
             default:

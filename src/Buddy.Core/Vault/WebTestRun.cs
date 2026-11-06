@@ -11,23 +11,41 @@ namespace Buddy.Core.Vault;
 /// </summary>
 public static partial class WebTestRun
 {
-    /// <summary>"Cartella degli script di test: `~/claude-test/progetto/`" in the Scheda progetto, expanded.</summary>
-    public static string? ScriptsFolder(VaultIndex vault)
+    /// <summary>The notes that may name the scripts folder, in order: the Scheda progetto, then the Test web note.</summary>
+    private static readonly string[] FolderNotes = ["Scheda progetto", "Test web"];
+
+    /// <summary>
+    /// "Cartella degli script di test: `~/claude-test/progetto/`" in the Scheda progetto or in the Test web note,
+    /// expanded. A relative path ("`tests/e2e/` nel repo") is resolved against <paramref name="baseFolders"/> (the repo,
+    /// Claude's folder): the first one where it exists wins, otherwise the first candidate is returned so the caller
+    /// can say which path it tried.
+    /// </summary>
+    public static string? ScriptsFolder(VaultIndex vault, params string?[] baseFolders)
     {
-        var scheda = vault.Notes.Where(n => n.Title.Equals("Scheda progetto", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(n => n.RelativePath.Length).FirstOrDefault();
-        if (scheda is null || FolderLine().Match(scheda.Content) is not { Success: true } match)
+        var path = FolderNotes
+            .Select(title => vault.Notes.Where(n => n.Title.Equals(title, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(n => n.RelativePath.Length).FirstOrDefault())
+            .Select(note => note is null ? null : FolderLine().Match(note.Content))
+            .FirstOrDefault(m => m is { Success: true })?.Groups["path"].Value.Trim();
+        if (string.IsNullOrEmpty(path))
         {
             return null;
         }
 
-        var path = match.Groups["path"].Value.Trim();
         if (path.StartsWith('~'))
         {
-            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path.TrimStart('~', '/', '\\'));
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path.TrimStart('~', '/', '\\'));
         }
 
-        return path.Length > 0 ? path : null;
+        if (Path.IsPathRooted(path))
+        {
+            return path;
+        }
+
+        var candidates = baseFolders.Where(b => !string.IsNullOrWhiteSpace(b))
+            .Select(b => Path.GetFullPath(Path.Combine(b!, path)))
+            .ToList();
+        return candidates.FirstOrDefault(Directory.Exists) ?? candidates.FirstOrDefault() ?? path;
     }
 
     public static string CommandOf(WebTestScript script) =>

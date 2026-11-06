@@ -141,6 +141,71 @@ public sealed class AssistantCommands(VaultIndex vault, GitRepo repo, IOptions<B
     public async Task<(string? Prompt, string? Message)> CommitPromptAsync(string? taskId) =>
         await DraftPromptAsync(Settings.Repo.CommitInstructions, taskId, includeTemplate: false);
 
+    /// <summary>The manual checklist of a task (Test manuali/), how many cases are ticked; null when it has none.</summary>
+    public (int Done, int Total, string RelativePath)? ManualTestProgress(string taskId)
+    {
+        if (!vault.IsAvailable)
+        {
+            return null;
+        }
+
+        var doc = TestNotes.ManualTests(vault, Settings.TaskIdPattern)
+            .FirstOrDefault(d => string.Equals(d.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
+        return doc is null ? null : (doc.Done, doc.Total, doc.RelativePath);
+    }
+
+    /// <summary>
+    /// "/appunto testo" (also Shift+🎤): a line in To-do Appunti, in the format written by hand ("- 2026-11-06 · testo").
+    /// Returns what to show in the chat.
+    /// </summary>
+    public string AddQuickNote(string text)
+    {
+        text = string.Join(' ', text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+        if (text.Length == 0)
+        {
+            return "Scrivi l'appunto dopo il comando: `/appunto chiamare Marco per il rilascio`.";
+        }
+
+        if (!vault.IsAvailable || ProjectBoard.Load(vault, Settings.TaskIdPattern).Columns.FirstOrDefault(c => c.Key == "appunti") is not { } inbox)
+        {
+            return "Nel vault non c'è la nota «To-do Appunti»: creala in Obsidian e riprova.";
+        }
+
+        try
+        {
+            VaultWriter.AppendItem(Path.Combine(Settings.ProjectPath, inbox.NotePath), "Appunti", $"- {DateTime.Today:yyyy-MM-dd} · {text}");
+            return $"📝 Aggiunto agli appunti: {text}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Non riesco a scrivere l'appunto: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Changed files that are on the "do not commit" list (Impostazioni: local config and the like). A line matches
+    /// the whole path or its end ("app.Debug.config" matches "Common/.../Config/app.Debug.config"); "*" is a wildcard.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> DoNotCommitChangesAsync()
+    {
+        var rules = Settings.Claude.DoNotCommit.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim().Replace('\\', '/')).ToList();
+        if (rules.Count == 0 || !repo.IsAvailable)
+        {
+            return [];
+        }
+
+        var changes = await repo.GetChangesAsync();
+        return changes.Select(c => c.Path.Replace('\\', '/'))
+            .Where(path => rules.Any(rule => MatchesRule(path, rule)))
+            .ToList();
+    }
+
+    internal static bool MatchesRule(string path, string rule)
+    {
+        var pattern = "(^|/)" + System.Text.RegularExpressions.Regex.Escape(rule.TrimStart('/')).Replace(@"\*", "[^/]*") + "$";
+        return System.Text.RegularExpressions.Regex.IsMatch(path, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
     public async Task<(string? Prompt, string? Message)> PullRequestPromptAsync(string? taskId) =>
         await DraftPromptAsync(Settings.Repo.PullRequestInstructions, taskId, includeTemplate: true);
 

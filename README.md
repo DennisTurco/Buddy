@@ -51,14 +51,15 @@ Impostazioni → Mentore e voce.
 |---|---|
 | Check-in / check-out | Morning: priorities from the vault and one question to plan with intention. Evening: what went well, what blocked you, what you'd change, mood 1-5. |
 | Before delegating | When you press a task button (e.g. `/lavora ID`), it first asks how *you* would approach it; Claude then reviews your approach before starting. |
-| Pills | Knowledge pills (e.g. TCP vs UDP), method tips, "explain it to me" questions, everyday-approach ideas, chosen from your profile; never repeated (`Pillole.md`). |
+| Pills | Knowledge pills (e.g. TCP vs UDP), method tips, "explain it to me" questions, everyday-approach ideas, chosen from your profile and, about 2 times out of 3, from what is behind the task you are on (branch and changed files); never repeated (`Pillole.md`). |
 | Spaced review | A quick recall question on a pill seen days ago (after 2, 7, 21, 60 days; a wrong or partial answer brings it back after 2). Claude grades the answer (✓ / ~ / ✗), explains what was missing and logs the result in `Pillole.md`. Nothing is asked when no pill is due. |
-| Chats | Growth questions (books, what you are learning), off-topic questions on your interests just for company, and questions to get to know you better. |
+| Chats | Growth questions (books, what you are learning), off-topic questions on your interests just for company, and questions to get to know you better. When a task moves to *Da controllare* the mentor asks one question to learn from it while it is fresh. Under an open question, **🤔 Spiegamelo tu** gets an explanation instead of another question. |
 | Profile | `Profilo.md` keeps goals, reading, learning, interests, strengths, things to improve and a **personal profile** (motivation, work and learning style, how you handle stress and feedback). Written from your answers as dated hypotheses with the evidence, never diagnoses — yours to read and correct. |
+| Check-out and goals | The evening check-out comes with a **draft of the day** already filled in (tasks closed or in review, commits, the pill, hours at the PC, chats) to correct. `/obiettivi` keeps 2-3 **quarter goals** in Profilo.md; the weekly retro measures the week against them. |
 | Breaks and focus | A break suggestion after long continuous activity at the PC; `/focus [min]` silences the mentor and asks how it went. |
 | Weekly retro | On the chosen day Claude writes `Retro/<year>-W<week>.md` from the diary, the vault and your commits, with one strength and one habit to work on. |
-| Trends | The buddy counts, per week, active hours at the PC, focus blocks, check-ins, pills, reviews, chats and approaches (`/andamento` shows the last 4 weeks). The retro adds a row to `Andamento.md` (average mood, hours, focus, reviews, whether last week's habit was kept) and compares the week with the previous ones. |
-| Do not disturb | The mentor stays quiet while another app uses the microphone (a call), an app is full screen or presenting, or "do not disturb" is on (see the table above for what each system detects); due messages wait until you are free. |
+| Trends | The buddy counts, per week, active hours at the PC, focus blocks, check-ins, pills, reviews, chats, approaches and tasks delegated (/lavora) or done with a guide (/guidami): after three delegated in a week it suggests doing the next with /guidami (`/andamento` shows the last 4 weeks; `/competenze` the skills map from the pills and their reviews). The retro also proposes a **weekly challenge**, a small practical exercise on your code, and checks the next week whether you did it. The retro adds a row to `Andamento.md` (average mood, hours, focus, reviews, whether last week's habit was kept) and compares the week with the previous ones. |
+| Do not disturb | The mentor stays quiet while another app uses the microphone (a call), an app is full screen or presenting, or "do not disturb" is on (see the table above for what each system detects); due messages wait until you are free. Pills, reviews and friendly chats also wait until the chat has been quiet for a while after you worked with Claude or the local model (20 minutes by default, Impostazioni → Mentore). |
 
 Your answers are written by Claude (one-shot `claude -p` with a cheap model) into the journal folder only: writing
 elsewhere is denied by the CLI. Commands: `/checkin`, `/checkout`, `/pillola`, `/ripasso`, `/chiacchiera`, `/retro`,
@@ -106,6 +107,26 @@ the settings window), which overrides them. Window position is kept in `<data>/s
 
 - Click the pet: open/close the bubble. Drag it to move. Right click: menu (chat, project board, new conversation,
   open the project vault in Obsidian, settings, exit).
+- In the chat: ↑/↓ recall the messages sent before (kept across restarts); typing `/` suggests the commands and
+  skills (↑/↓ to choose, Tab or Enter to complete; a mistyped command is caught instead of going to Claude); while a
+  model answers, a strip shows how long it has been working with **■ Ferma**; scrolled up, new text does not pull
+  the chat down (**↓ ultimi messaggi**); answers have a copy button and their time; code blocks are highlighted
+  per language, with **⧉ Copia**; ↺ starts a new conversation.
+  More: **Ctrl+F** searches the conversation; under an answer, *Più semplice / Un esempio / Riassumi* ask the same
+  model again; the model button (or `/modello`) picks Claude's or the local model, and the input says what a turn
+  usually costs with it (average of your own turns); files of the repo dropped on the chat become `@path` references
+  for Claude (Shift while dropping attaches them); **🕘** lists the saved conversations (`<data>/conversations`) and
+  reopens one, Claude resuming its session. Running from the sources, a newer build is announced and `/aggiorna`
+  rebuilds and restarts on it.
+  Also: buttons under some messages run their command (e.g. *Passa a Sonnet*, *Crea la checklist*); `/riprendi` (offered
+  at start) tells where you left off: the task of the branch, the last conversation on it (reopen it), changes not
+  committed, manual tests to do; `/appunto testo` or **Shift+🎤** puts a line in *To-do Appunti*; `/commit` warns about
+  the files you never commit (Impostazioni → *File da non committare*); past the **daily budget** (5 $ by default) the
+  buddy offers a lighter model; the model menu has *Scelta automatica* (Haiku for short questions, Opus for /lavora and
+  /analisi); `/log` shows the latest warnings and errors.
+  And: **Ctrl+ / Ctrl- / Ctrl+0** (or Ctrl+wheel) change the size of the messages; **📌** pins a message in a strip at
+  the top; **💾** saves an answer as a note in one of your pages (Pagine/Da Claude by default); **request templates**:
+  `/modelli nome = testo` (with `{testo}` for what follows), then `/nome …`; `/modelli` lists them.
 - **Bacheca del progetto** (pet or tray menu) — the project window, read from the vault's flow notes:
   - *Panoramica*: one number per step (with what matters: ⏰ overdue reviews, 🔥 P1, 🔓 unblocked, Claude cost),
     what needs attention now, *Stato attuale*, last closed tasks;
@@ -113,14 +134,32 @@ the settings window), which overrides them. Window position is kept in `<data>/s
   - *Archivio*: Fatti (total Claude cost, reworks) and Rifiutati;
   - *Test manuali*: the checklists in `Test manuali/` (one `.md` per task, `- [ ]` cases), with progress and cases to
     redo; tick a case and it is written to the file as `- [x]` (refused if the note changed meanwhile). *Aggiorna con
-    Claude* sends `/test-manuali ID`; a task's side panel links to its checklist;
+    Claude* sends `/test-manuali ID`; a task's side panel links to its checklist; **📄 Esporta in Word** writes a
+    .docx with only the cases ticked (by section, with task, date and count) to attach to the card in Jira;
   - *Test web*: the saved browser scripts of the `Test web` note (what they cover, last run ✅/❌, command) and the
     screenshots of the `Test web` folder grouped by task (click to open);
     **▶ Esegui** on a script runs its command (or `npx playwright test <file>`) in the scripts folder named in the
-    Scheda progetto (*Cartella degli script di test*), without Claude: live output, ■ stop, the outcome from
+    Scheda progetto or in the Test web note (*Cartella degli script di test*; a relative path is taken from the repo),
+    without Claude: live output, ■ stop, the outcome from
     Playwright's summary, and "Ultima esecuzione: <date> ✅ (2/2)" written back in the note. A failed run can be sent
     to Claude (🧠 *Chiedi a Claude*) with the end of its output;
   - *Note*: every vault note, with `[[links]]` between them, editable as a whole (Ctrl+S).
+  - *Grafo*: the notes and their links as a graph, like Obsidian's (colour = top folder, size = links; wheel zooms,
+    drag pans or moves a note, hover lights up its links, click opens it; options for unlinked notes and links to
+    notes not yet created; *Colori per task* groups the notes of each task). *🕸 Grafo* in a note shows it there.
+  - **Your pages**: every sub-folder of `Pagine/` in the project folder is a page in the side bar (*＋ Nuova pagina…* creates
+    one); its notes are cards, *＋ Nuova nota* writes one by hand (title and markdown), and chat answers can be saved there.
+  - More pages: **Settimana** (day by day: commits, tasks closed, Claude spending, mood from the journal; ‹ ›),
+    **Costi** (spending per week and per model, tasks by cost), **Decisioni** and **Glossario** (the notes as searchable
+    cards, with *Registra decisione* / *Nuovo termine*; for a term, the notes that use it), **PR** (your open pull requests
+    on GitHub via `gh`, with CI, review and task).
+  - On the board, **drag a card** to another column (Da valutare, Da fare, In attesa, Da controllare: written to the vault;
+    appunti, closing and refusing stay with /smista, /chiudi, /rifiuta). **🔔 Ricordamelo…** in a card's panel sets
+    `[promemoria:: date]` (also «lunedì», «domani», «+3»): that day the chat brings it back. The panel shows the estimate
+    against the real duration and cost.
+  - In a note or a checklist **Ctrl+F** finds in the page (↑/↓, Esc); Ctrl+Shift+F is the lists filter. A task's side
+    panel shows its **🕒 Cronologia** (board steps, PR, notes and checklists, screenshots, journal days, commits with
+    its id). In *Salute del vault* a broken link can be fixed with *Crea la nota* or *Collega a «nota simile»*.
 - **💡 Nuove idee** (project window side bar, Ctrl+I): describe what you would like to add; Claude (one-off
   `claude -p` in the vault) or the local model proposes 3/5/8 ideas, given the Scheda, Stato attuale and the items
   already planned, done or rejected. They go straight into To-do Appunti as `- <date> · 💡 idea`; *Togli queste idee*
@@ -137,7 +176,7 @@ the settings window), which overrides them. Window position is kept in `<data>/s
   🤔 `/valuta`, ✅ `/chiudi` (asks the PR), 🧪 `/test-manuali`, 🌐 `/verifica-web` — sent to Claude in the chat, *Chiedi in chat*, and
   *Modifica* / *Elimina* of the item's markdown. A skill button only appears when the skill is installed
   (`~/.claude/skills` or the project's `.claude/skills`). The side bar adds an appunto (Ctrl+N, Enter); 🗂 Smista sends
-  `/smista`. Shortcuts: Ctrl+1…6 views, Ctrl+F search, Esc closes edit → panel → window. It refreshes by itself when
+  `/smista`. Shortcuts: Ctrl+1…9 views, **Ctrl+K** finds anything (notes, tasks, pages, saved conversations, chat commands), Ctrl+F search, Esc closes edit → panel → window. It refreshes by itself when
   a note changes; an edit never overwrites a note changed meanwhile (it asks to reload instead).
 - **Hide/show**: pet menu → *Nascondi Buddy*; the tray icon (*Mostra/Nascondi Buddy*, or a click), the shortcut and
   notifications bring it back.

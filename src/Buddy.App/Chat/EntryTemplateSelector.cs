@@ -70,3 +70,26 @@ public sealed class ImageThumbnail : IValueConverter
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
+/// <summary>A "/" command offered while typing; the selected one is completed with Tab or Enter.</summary>
+public sealed class SuggestionView(ChatCommand command) : System.ComponentModel.INotifyPropertyChanged
+{
+    private bool _isSelected;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    public ChatCommand Command { get; } = command;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected != value)
+            {
+                _isSelected = value;
+                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+            }
+        }
+    }
+}

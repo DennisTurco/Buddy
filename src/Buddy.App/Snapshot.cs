@@ -26,6 +26,7 @@ internal static class Snapshot
     public static async Task RenderAsync(Conversation conversation, PetWindow pet, BubbleWindow bubble, string folder, IServiceProvider services)
     {
         Directory.CreateDirectory(folder);
+        conversation.Archive = null; // the sample chat must not end up among the user's saved conversations
         await RenderSpritesAsync(pet.Sprites, Path.Combine(folder, "sprites.png"));
 
         conversation.Greet();
@@ -47,7 +48,7 @@ internal static class Snapshot
         var screenshot = Attachment.FromImage(pet.Sprites.IconPng(128), "immagine dagli appunti");
         conversation.Entries.Add(new ChatEntry(Speaker.User, "perché il pulsante è verde?\n📎 1 immagine") { Images = screenshot.Images });
         conversation.Entries.Add(new ChatEntry(Speaker.User, "/lavora NUSR-2367"));
-        conversation.Entries.Add(new ChatEntry(Speaker.Claude, "Leggo la voce e il codice. Piano:\n\n1. aggiorno `LoginFallito.vb`\n2. rigenero lo script\n\n| Task | Dove | Stato |\n|---|---|---|\n| T-010 | `To-Do` | da fare |\n| T-011 | `Da valutare` | idea |\n\n```sql\nselect * from utenti where bloccato = 1;\n```\n\n> Nota: vedi [Stato attuale](obsidian://open?path=x)"));
+        conversation.Entries.Add(new ChatEntry(Speaker.Claude, "Leggo la voce e il codice. Piano:\n\n1. aggiorno `LoginFallito.vb`\n2. rigenero lo script\n\n| Task | Dove | Stato |\n|---|---|---|\n| T-010 | `To-Do` | da fare |\n| T-011 | `Da valutare` | idea |\n\n```sql\nselect * from utenti where bloccato = 1; -- da sbloccare\n```\n\n```csharp\npublic async Task<bool> ResetAsync(int id)\n{\n    // azzera i tentativi\n    return await _db.ExecuteAsync(\"update Utenti set Tentativi = 0\", id) > 0;\n}\n```\n\n> Nota: vedi [Stato attuale](obsidian://open?path=x)"));
         using var input = JsonDocument.Parse("""{"file_path":"/home/me/portale20/Common/Business/Accounts/Data/LoginFallito.vb"}""");
         conversation.Entries.Add(new PermissionEntry(new PermissionRequest("r1", "Edit", input.RootElement.Clone())));
 
@@ -57,6 +58,16 @@ internal static class Snapshot
         await FlushAsync();
 
         Save(bubble, Path.Combine(folder, "bubble.png"));
+
+        // The code blocks of Claude's answer (highlighted, with the copy button), scrolled into view.
+        if (bubble.FindControl<ScrollViewer>("Scroller") is { } scroller
+            && bubble.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("CodeBlock")) is { } code
+            && code.TranslatePoint(new Point(0, 0), scroller.Content as Visual ?? scroller) is { } top)
+        {
+            scroller.Offset = new Vector(0, Math.Max(0, top.Y - 40));
+            await FlushAsync();
+            Save(bubble, Path.Combine(folder, "bubble-code.png"));
+        }
         Save(pet, Path.Combine(folder, "pet.png"));
 
         // Local answer with its sources and the "Chiedi a Claude" button.
@@ -104,11 +115,29 @@ internal static class Snapshot
             services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
             services.GetRequiredService<PetWindow>().Sprites.Frames(PetState.Idle, ChatMode.Local)[0]);
         project.Show();
-        foreach (var view in new[] { "overview", "board", "archive", "manualtests", "webtests", "notes" })
+        foreach (var view in new[] { "overview", "board", "archive", "manualtests", "webtests", "notes", "graph", "week", "costs", "decisions", "glossary", "prs" })
         {
             project.ShowView(view);
+            if (view is "week" or "prs")
+            {
+                await Task.Delay(TimeSpan.FromSeconds(4)); // git and gh answer in the background
+                await FlushAsync();
+            }
+
+            if (view == "graph")
+            {
+                await Task.Delay(TimeSpan.FromSeconds(7)); // the force layout settles and fits itself
+            }
+
             await FlushAsync();
             Save(project, Path.Combine(folder, $"project-{view}.png"));
+            if (view == "overview" && project.FindControl<ScrollViewer>("OverviewView") is { } overview)
+            {
+                project.FindControl<Control>("HealthPanel")?.BringIntoView();
+                await FlushAsync();
+                Save(project, Path.Combine(folder, "project-overview-end.png"));
+                overview.ScrollToHome();
+            }
         }
 
         project.ShowView("overview");

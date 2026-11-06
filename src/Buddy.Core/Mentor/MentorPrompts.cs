@@ -18,8 +18,36 @@ public static class MentorPrompts
             Dai del tu. Frasi brevi, mai paternalistico. Preferisci le domande alle risposte (metodo socratico): fai
             ragionare prima di spiegare. Collega ciò che dice a quello che sai di lui (Profilo.md, diario) e ai suoi
             obiettivi. Un solo spunto alla volta, niente elenchi lunghi.
+            Le domande servono a farlo ragionare, non a metterlo alla prova: se dice che non lo sa, che non ci arriva
+            o ti chiede di spiegare, SPIEGA tu in modo chiaro e concreto (con un'analogia o un esempio, partendo da
+            quello che ha già intuito) invece di rilanciare con un'altra domanda; poi al massimo una piccola domanda
+            per verificare che il concetto sia passato.
             """;
     }
+
+    /// <summary>The mentor's reply ends with (or contains) a question: it waits for an answer.</summary>
+    public static bool AsksSomething(string reply) => reply.TrimEnd().TrimEnd('*', '_', ' ', ')', '"', '»').EndsWith('?')
+                                                     || reply.Split('\n').TakeLast(2).Any(l => l.Contains('?'));
+
+    /// <summary>One more turn of a dialogue the mentor started (check-in, pill, chat…), with what was said so far.</summary>
+    public static string FollowUp(MentorSettings settings, string kind, IReadOnlyList<MentorExchange> thread, string mentorReply,
+        string answer, string today) => $"""
+        {Persona(settings)}
+        {JournalLayout}
+        {PersonalProfileRules}
+        Oggi è {today}. State dialogando ({kind}). Finora:
+        {string.Join("\n", thread.Select(t => $"- Tu: {t.Mentor}\n- Lui: {t.User}"))}
+        - Tu: {mentorReply}
+        - Lui: {answer}
+        1) Se ha detto qualcosa di nuovo su di sé o su cosa sta imparando, aggiungilo al diario di oggi (sezione adatta,
+           senza duplicare) e, se serve, a Profilo.md. Se è solo un "non lo so", non scrivere nulla.
+        2) Rispondi con un messaggio breve nella tua personalità. Se non sa la risposta o ti chiede di spiegare:
+           spiega tu, chiaro e concreto, in 3-6 frasi, partendo da quello che ha già intuito (anche con un esempio
+           pratico legato al suo lavoro), poi eventualmente UNA domanda leggera per fissare il concetto. Se invece ha
+           risposto, riconosci cosa c'è di giusto, correggi o completa quello che manca, e rilancia solo se c'è
+           davvero un passo in più utile. Se il discorso è naturalmente concluso, chiudi senza domande.
+           Rispondi solo con il messaggio da mostrare.
+        """;
 
     public const string JournalLayout = """
         File nella cartella corrente (crea quelli che mancano, in markdown, in italiano):
@@ -94,14 +122,46 @@ public static class MentorPrompts
         Non scrivere file. Rispondi solo con la domanda (1-2 frasi).
         """;
 
-    public static string Pill(MentorSettings settings, string today, IEnumerable<string> topics, string kind) => $"""
+    public static string Pill(MentorSettings settings, string today, IEnumerable<string> topics, string kind, string? work = null) => $"""
         {Persona(settings)}
         {JournalLayout}
         Oggi è {today}. Leggi Pillole.md (per non ripeterti) e Profilo.md (per scegliere qualcosa di utile per lui).
         Argomenti possibili: {string.Join(", ", topics)}, più quelli del profilo.
+        {WorkHint(work)}
         Tipo di pillola: {kind}
         Aggiungi una riga a Pillole.md. Poi rispondi solo con la pillola, in markdown, massimo 120 parole, con un titolo
         in grassetto e, alla fine, una domanda per farlo riflettere o applicarla oggi.
+        """;
+
+    /// <summary>What he is working on, so the pill teaches something behind it: learning on the real job sticks.</summary>
+    internal static string WorkHint(string? work) => string.IsNullOrWhiteSpace(work) ? "" : $"""
+        Su cosa sta lavorando adesso:
+        {work}
+        Preferisci (circa 2 volte su 3) un argomento che sta DIETRO questo lavoro: il concetto, la tecnica o il rischio
+        che il codice toccato mette in gioco (es. un blocco dei login dopo N errori → rate limiting, lockout, enumerazione
+        degli utenti; una query lenta → indici e piani di esecuzione). Resta una pillola generale da imparare, non
+        istruzioni sul task e non un riassunto dei file. Se non c'è nulla di sensato da collegare, scegli liberamente.
+        """;
+
+    /// <summary>The quarter's goals the user gave: written in Profilo.md, then a short confirmation.</summary>
+    public static string SaveQuarterGoals(MentorSettings settings, string today, DateOnly quarterEnd, string answer) => $"""
+        {Persona(settings)}
+        {JournalLayout}
+        Oggi è {today}. Gli hai chiesto 2 o 3 obiettivi per il trimestre (fino al {quarterEnd:yyyy-MM-dd}). Risposta: {answer}
+        1) In Profilo.md scrivi (o sostituisci) la sezione "## Obiettivi del trimestre": una riga per obiettivo, riformulato
+           in modo concreto e verificabile, con "come capiremo che è raggiunto" e la scadenza {quarterEnd:yyyy-MM-dd}. Se
+           c'era una sezione precedente, spostala in "## Obiettivi passati" con la data e com'è andata, se lo sai.
+        2) Rispondi solo con il messaggio da mostrare: gli obiettivi riformulati (elenco breve) e, se uno è vago,
+           UNA domanda per renderlo misurabile.
+        """;
+
+    /// <summary>A task just went to review: one question to learn from it while it is fresh.</summary>
+    public static string TaskRetro(MentorSettings settings, string today, string task) => $"""
+        {Persona(settings)}
+        Oggi è {today}. Ha appena finito il task {task} (passato in "Da controllare"). Leggi Profilo.md e il diario di
+        oggi se esistono. Scrivi un messaggio breve: riconosci il traguardo in mezza riga, poi UNA domanda per imparare
+        dal task finché è fresco (cosa l'ha sorpreso, cosa rifarebbe diversamente, cosa ha imparato, dove si è
+        bloccato). Non scrivere file. Rispondi solo con il messaggio da mostrare.
         """;
 
     public static IReadOnlyList<string> PillKinds { get; } =
@@ -129,8 +189,19 @@ public static class MentorPrompts
            "## Andamento" che confronta questa settimana con le precedenti (umore, focus, ore, ripassi, abitudine: cosa
            migliora, cosa peggiora, un'ipotesi sul perché), UN punto di forza da riconoscere e UNA abitudine su cui
            lavorare la prossima settimana.
-        Poi rispondi solo con un riepilogo breve (max 6 righe, con una riga sull'andamento) e una domanda per scegliere
-        l'obiettivo della prossima settimana.
+        Obiettivi del trimestre: se Profilo.md ha la sezione "## Obiettivi del trimestre", nella retro aggiungi
+        "## Obiettivi" con una riga per obiettivo: il progresso della settimana con un indizio concreto (es. "2 task con
+        /guidami su 5 → autonomia ↑"; i contatori Delegati / con guida sono sopra) e cosa fare la prossima settimana per
+        avvicinarlo. Se la sezione non c'è, una riga che suggerisce /obiettivi.
+        3) Sfida della settimana. Se la retro precedente ha una sezione "## Sfida", valuta dai diari e dai commit se l'ha
+           fatta e scrivilo nella sezione "## Sfida della settimana scorsa" (fatta / in parte / no, cosa ne ha ricavato).
+           Poi proponi UNA nuova sfida pratica per la prossima settimana, piccola (al massimo un'ora) e legata al suo
+           codice o ai task aperti, che lo faccia esercitare invece di delegare: per esempio "scrivi tu il test per X
+           prima di chiederlo a Claude", "fai la review del tuo diff prima della PR con questa checklist", "spiega a un
+           collega come funziona Y". Scrivila nella retro sotto "## Sfida", con come capire se è riuscita.
+        Poi rispondi solo con un riepilogo breve (max 6 righe, con una riga sull'andamento e una sulla sfida della
+        settimana scorsa, se c'era), la nuova sfida in grassetto e una domanda per scegliere l'obiettivo della prossima
+        settimana.
         """;
 
     /// <summary>Marker returned by <see cref="Review"/> when no pill is due.</summary>
@@ -195,3 +266,6 @@ public static class MentorPrompts
     public static string Break(int minutes) =>
         $"Sei al PC da più di {minutes} minuti di fila. Alzati 5 minuti: acqua, sguardo lontano dallo schermo, due passi. 🙂";
 }
+
+/// <summary>One turn of a dialogue with the mentor: what it said and what the user answered.</summary>
+public sealed record MentorExchange(string Mentor, string User);

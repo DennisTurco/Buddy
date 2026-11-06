@@ -42,6 +42,69 @@ public static class Dialogs
         return confirmed && box.Text?.Trim() is { Length: > 0 } name ? name : null;
     }
 
+    /// <summary>One field of <see cref="FormAsync"/>: its label, starting text, and whether it takes several lines.</summary>
+    public sealed record Field(string Label, string Initial = "", bool Multiline = false, bool Required = false);
+
+    /// <summary>
+    /// A small form (title, then each field); the values in order, or null if cancelled or a required field is empty.
+    /// Ctrl+Enter confirms from a multi-line field.
+    /// </summary>
+    public static async Task<string[]?> FormAsync(Window? owner, string title, params Field[] fields)
+    {
+        var boxes = fields.Select(f => new TextBox
+        {
+            Text = f.Initial,
+            Margin = new Thickness(0, 4, 0, 10),
+            AcceptsReturn = f.Multiline,
+            TextWrapping = f.Multiline ? Avalonia.Media.TextWrapping.Wrap : Avalonia.Media.TextWrapping.NoWrap,
+            Height = f.Multiline ? 140 : double.NaN,
+            VerticalContentAlignment = f.Multiline ? VerticalAlignment.Top : VerticalAlignment.Center,
+        }).ToArray();
+        var ok = new Button { Content = "OK", IsDefault = true, Width = 80, Margin = new Thickness(0, 0, 6, 0), HorizontalContentAlignment = HorizontalAlignment.Center };
+        var cancel = new Button { Content = "Annulla", IsCancel = true, Width = 80, HorizontalContentAlignment = HorizontalAlignment.Center };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(ok);
+        buttons.Children.Add(cancel);
+
+        var panel = new StackPanel { Margin = new Thickness(14), Width = 460 };
+        for (var i = 0; i < fields.Length; i++)
+        {
+            panel.Children.Add(new TextBlock { Text = fields[i].Label + (fields[i].Required ? " *" : "") });
+            panel.Children.Add(boxes[i]);
+        }
+
+        panel.Children.Add(buttons);
+        var window = FormWindow(title, panel, owner);
+        window.Width = 500;
+        var confirmed = false;
+        void Confirm()
+        {
+            if (fields.Select((f, i) => !f.Required || !string.IsNullOrWhiteSpace(boxes[i].Text)).All(ok => ok))
+            {
+                confirmed = true;
+                window.Close();
+            }
+        }
+
+        ok.Click += (_, _) => Confirm();
+        cancel.Click += (_, _) => window.Close();
+        foreach (var box in boxes.Where(b => b.AcceptsReturn))
+        {
+            box.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+            {
+                if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                {
+                    e.Handled = true;
+                    Confirm();
+                }
+            }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        }
+
+        window.Opened += (_, _) => boxes.FirstOrDefault()?.Focus();
+        await Show(window, owner);
+        return confirmed ? boxes.Select(b => b.Text?.Trim() ?? "").ToArray() : null;
+    }
+
     /// <summary>A yes/no question; true only for <paramref name="yes"/>.</summary>
     public static async Task<bool> ConfirmAsync(Window? owner, string message, string yes = "Sì", string title = "Buddy")
     {

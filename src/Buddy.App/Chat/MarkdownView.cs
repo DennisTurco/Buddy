@@ -55,8 +55,20 @@ public sealed class MarkdownView : UserControl
         if (change.Property == MarkdownProperty)
         {
             _viewer.Markdown = Markdown ?? "";
+            if (!_enhancePending && (Markdown?.Contains("```") == true || Markdown?.Contains("~~~") == true || Markdown?.Contains("\n    ") == true))
+            {
+                // The viewer builds its controls on the next layout pass: decorate them right after.
+                _enhancePending = true;
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    _enhancePending = false;
+                    CodeBlocks.Enhance(_viewer, Markdown ?? "");
+                }, Avalonia.Threading.DispatcherPriority.Loaded);
+            }
         }
     }
+
+    private bool _enhancePending;
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {

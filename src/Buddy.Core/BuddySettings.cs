@@ -121,6 +121,13 @@ public sealed class MentorSettings
     public bool QuietWhenBusy { get; set; } = true;
 
     /// <summary>
+    /// Pills, reviews and friendly chats wait until the chat has been quiet this long (minutes): right after working
+    /// with Claude or the local model you are still on the task. 0 = no wait. Check-in, check-out, retro and breaks
+    /// are not held.
+    /// </summary>
+    public int QuietAfterChatMinutes { get; set; } = 20;
+
+    /// <summary>
     /// Friendly questions per working day: growth (books, what you are learning), off-topic on your interests just
     /// for company, and questions to get to know you better.
     /// </summary>
@@ -332,6 +339,12 @@ public sealed class AssistantSettings
     /// </summary>
     public List<string> TaskActions { get; set; } = [];
 
+    /// <summary>
+    /// Your request templates, "nome = testo" (e.g. "stack = Spiegami questo stack trace e la causa probabile: {testo}"):
+    /// "/nome …" sends the text with {testo} replaced by what follows (or appended). Managed with /modelli.
+    /// </summary>
+    public List<string> Templates { get; set; } = [];
+
     /// <summary>Global shortcut that opens the bubble with the clipboard as attachment, e.g. "Ctrl+Alt+B". Empty disables it.</summary>
     public string Hotkey { get; set; } = "Ctrl+Alt+B";
 
@@ -369,6 +382,23 @@ public sealed class ClaudeSettings
     public string Model { get; set; } = "";
 
     /// <summary>
+    /// Picks the model per message: Haiku for short questions, Opus for the flow's task skills (/lavora, /analisi…),
+    /// <see cref="Model"/> for the rest. The session is the same (resumed), only the model changes.
+    /// </summary>
+    public bool AutoModel { get; set; }
+
+    /// <summary>Daily Claude spend (dollars) after which the buddy says so and offers a lighter model; 0 = no limit.</summary>
+    public decimal DailyBudgetUsd { get; set; } = 5;
+
+    /// <summary>Skills that get the strongest model when <see cref="AutoModel"/> is on; empty = /lavora, /analisi, /analisi-spike.</summary>
+    public List<string> HeavyCommands { get; set; } = [];
+
+    internal static readonly string[] DefaultHeavyCommands = ["/lavora", "/analisi", "/analisi-spike"];
+
+    /// <summary>Files that must never be committed (e.g. local config), relative to the repo; /commit warns about them.</summary>
+    public List<string> DoNotCommit { get; set; } = [];
+
+    /// <summary>
     /// Tools Claude may use without asking (passed as --allowedTools), e.g. "Read", "Grep", "Bash(git status:*)".
     /// Everything else still goes through the permission prompt in the bubble.
     /// </summary>
@@ -389,6 +419,9 @@ public sealed class AppearanceSettings
 
     public string FontFamily { get; set; } = "Segoe UI";
     public double FontSize { get; set; } = 13;
+
+    /// <summary>Zoom of the chat's messages (Ctrl+ / Ctrl- / Ctrl+0 in the bubble), 1 = as designed.</summary>
+    public double ChatZoom { get; set; } = 1;
 
     public ThemeColors Theme { get; set; } = ThemeColors.Light();
 }

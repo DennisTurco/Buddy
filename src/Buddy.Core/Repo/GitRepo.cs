@@ -113,6 +113,17 @@ public sealed class GitRepo(IOptions<BuddySettings> options, TimeProvider clock)
         return result.Output.Trim() is { Length: > 0 } log ? log : "(nessun commit)";
     }
 
+    /// <summary>Commits on any branch whose message mentions <paramref name="id"/> (date, subject), oldest first.</summary>
+    public async Task<IReadOnlyList<(DateOnly Date, string Subject)>> GetCommitsMentioningAsync(string id, CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["log", "--all", "-i", $"--grep={id}", "--fixed-strings", "--reverse", "--pretty=format:%ad\t%s", "--date=short", "-n", "50"], cancellationToken);
+        return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split('\t', 2))
+            .Where(parts => parts.Length == 2 && DateOnly.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out _))
+            .Select(parts => (DateOnly.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture), parts[1]))
+            .ToList();
+    }
+
     /// <summary>Text of the PR template under .github, if any.</summary>
     public string? ReadPullRequestTemplate()
     {

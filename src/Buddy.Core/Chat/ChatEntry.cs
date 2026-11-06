@@ -46,19 +46,38 @@ public class ChatEntry(Speaker speaker, string text = "") : INotifyPropertyChang
 
     public Speaker Speaker { get; } = speaker;
 
-    public DateTimeOffset Timestamp { get; } = DateTimeOffset.Now;
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
 
     public string Text
     {
         get => _text;
-        set => Set(ref _text, value);
+        set
+        {
+            var wasWaiting = IsWaiting;
+            Set(ref _text, value);
+            if (wasWaiting != IsWaiting)
+            {
+                RaisePropertyChanged(nameof(IsWaiting));
+            }
+        }
     }
 
     public bool IsStreaming
     {
         get => _isStreaming;
-        set => Set(ref _isStreaming, value);
+        set
+        {
+            var wasWaiting = IsWaiting;
+            Set(ref _isStreaming, value);
+            if (wasWaiting != IsWaiting)
+            {
+                RaisePropertyChanged(nameof(IsWaiting));
+            }
+        }
     }
+
+    /// <summary>The answer has started but no text has arrived yet: the bubble shows a "typing" mark.</summary>
+    public bool IsWaiting => _isStreaming && _text.Length == 0;
 
     /// <summary>For a local answer: the question it answered, so the bubble can offer "Chiedi a Claude".</summary>
     public string? Question { get; init; }
@@ -69,6 +88,62 @@ public class ChatEntry(Speaker speaker, string text = "") : INotifyPropertyChang
     public IReadOnlyList<AttachedImage> Images { get; init; } = [];
 
     public bool HasImages => Images.Count > 0;
+
+    /// <summary>Buttons under the message: each sends its command to the chat (e.g. "/test-manuali T-3", "/modello sonnet").</summary>
+    public IReadOnlyList<ChatAction> Actions
+    {
+        get => _actions;
+        set
+        {
+            Set(ref _actions, value);
+            RaisePropertyChanged(nameof(HasActions));
+        }
+    }
+
+    private IReadOnlyList<ChatAction> _actions = [];
+
+    public bool HasActions => _actions.Count > 0;
+
+    /// <summary>Pinned: kept in the strip at the top of the chat until unpinned (e.g. the steps to start a service).</summary>
+    public bool IsPinned
+    {
+        get => _isPinned;
+        set => Set(ref _isPinned, value);
+    }
+
+    private bool _isPinned;
+
+    /// <summary>The first line, short, for the pinned strip.</summary>
+    public string Headline
+    {
+        get
+        {
+            var line = Text.ReplaceLineEndings("\n").Split('\n').Select(l => l.Trim().TrimStart('#', '*', '-', ' ')).FirstOrDefault(l => l.Length > 0) ?? "";
+            line = line.Replace("**", "").Replace("`", "");
+            return line.Length > 90 ? line[..90] + "…" : line;
+        }
+    }
+
+    /// <summary>Matches the search in the chat (Ctrl+F): drawn with a frame.</summary>
+    public bool IsHighlighted
+    {
+        get => _isHighlighted;
+        set => Set(ref _isHighlighted, value);
+    }
+
+    private bool _isHighlighted;
+
+    /// <summary>A mentor's question still waiting for the answer: the bubble offers "Spiegamelo tu".</summary>
+    public bool AwaitsReply
+    {
+        get => _awaitsReply;
+        set => Set(ref _awaitsReply, value);
+    }
+
+    private bool _awaitsReply;
+
+    /// <summary>A finished model answer: the bubble offers quick follow-ups (simpler, an example, a summary).</summary>
+    public bool CanFollowUp => Speaker is Speaker.Claude or Speaker.Local && this is not PermissionEntry;
 
     /// <summary>The "Chiedi a Claude" button is shown (local answer, finished, not yet escalated).</summary>
     public bool CanEscalate
@@ -127,3 +202,6 @@ public sealed class PermissionEntry(PermissionRequest request) : ChatEntry(Speak
         }
     }
 }
+
+/// <summary>A button under a chat message: the label shown and the command sent when it is clicked.</summary>
+public sealed record ChatAction(string Label, string Command, string? Tip = null);

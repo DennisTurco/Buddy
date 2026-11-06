@@ -10,6 +10,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:p="clr-namespace:Buddy.App.Project"
+        xmlns:core="clr-namespace:Buddy.Core.Vault;assembly=Buddy.Core"
         xmlns:chat="clr-namespace:Buddy.App.Chat"
         x:Class="Buddy.App.Project.ProjectWindow"
         Title="Progetto"
@@ -20,6 +21,8 @@
 
     <Window.Resources>
         <x:Double x:Key="ColumnWidth">230</x:Double>
+        <!-- Width of a generic page's cards: two or three per row, set by the page's width (FitPageCards). -->
+        <x:Double x:Key="PageCardWidth">380</x:Double>
         <DataTemplate x:Key="ChipTemplate" x:DataType="p:Chip">
             <Border Classes="chip" Classes.good="{Binding IsGood}" Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}">
                 <TextBlock Text="{Binding Text}" FontSize="11" />
@@ -349,7 +352,8 @@
         <DockPanel Grid.Column="1" Margin="22,16,22,16">
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,14">
                 <TextBox x:Name="Filter" DockPanel.Dock="Right" Width="280" VerticalAlignment="Center"
-                         PlaceholderText="🔍 Cerca ID, titolo, testo… (Ctrl+F)" />
+                         PlaceholderText="🔍 Cerca ID, titolo, testo… (Ctrl+F)"
+                         ToolTip.Tip="Filtra le liste. Con una nota o una checklist aperta Ctrl+F cerca nella pagina; Ctrl+Shift+F torna qui" />
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock x:Name="ViewTitle" FontSize="22" FontWeight="Bold" />
                     <TextBlock x:Name="ViewSubtitle" Classes="muted" FontSize="12" Margin="0,2,16,0" TextTrimming="CharacterEllipsis" />
@@ -490,6 +494,37 @@
                                         <ItemsControl x:Name="RecentList" ItemTemplate="{StaticResource CardTemplate}" />
                                     </StackPanel>
                                 </Border>
+                                <!-- Small things to tidy: broken links, isolated notes, tasks without "Fatto quando", stale checklists. -->
+                                <Border x:Name="HealthPanel" Classes="panel">
+                                    <StackPanel>
+                                        <TextBlock x:Name="HealthTitle" Classes="section" Text="🩺 Salute del vault" />
+                                        <TextBlock x:Name="HealthOk" Classes="muted" FontStyle="Italic" Text="Tutto in ordine ✨" />
+                                        <ItemsControl x:Name="HealthList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="core:HealthIssue">
+                                                    <StackPanel>
+                                                    <Button Classes="link" Click="OnHealthIssueClick" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                            Margin="0,1" IsEnabled="{Binding Target, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                        <DockPanel>
+                                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Margin="0,0,6,0" />
+                                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12.5" />
+                                                        </DockPanel>
+                                                    </Button>
+                                                    <!-- A broken link: create the note, or link to the one with a near-identical name. -->
+                                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="24,0,0,4" IsVisible="{Binding IsBrokenLink}">
+                                                        <Button Classes="small" Content="＋ Crea la nota" Click="OnCreateMissingNoteClick"
+                                                                ToolTip.Tip="Crea una nota vuota con quel nome nella cartella del progetto" />
+                                                        <Button Classes="small" Click="OnRelinkClick" IsVisible="{Binding HasSuggestion}"
+                                                                ToolTip.Tip="Corregge il link nella nota perché punti alla nota esistente">
+                                                            <TextBlock Text="{Binding Suggestion, StringFormat='Collega a «{0}»'}" />
+                                                        </Button>
+                                                    </StackPanel>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -525,7 +560,8 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="p:ColumnView">
-                            <Border Width="{DynamicResource ColumnWidth}" CornerRadius="12" Padding="8" Margin="0,0,10,0" Background="{DynamicResource InputBack}">
+                            <Border Width="{DynamicResource ColumnWidth}" CornerRadius="12" Padding="8" Margin="0,0,10,0" Background="{DynamicResource InputBack}"
+                                    DragDrop.AllowDrop="True">
                                 <DockPanel>
                                     <Border DockPanel.Dock="Top" Height="3" CornerRadius="2" Margin="2,0,2,10" Background="{Binding Accent}" />
                                     <DockPanel DockPanel.Dock="Top" Margin="4,0,4,8">
@@ -615,6 +651,8 @@
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
                                         <Button x:Name="ManualUpdateButton" Classes="action" Content="🧪 Aggiorna con Claude" Margin="0" Click="OnManualUpdateClick"
                                                 ToolTip.Tip="/test-manuali ID: Claude aggiunge i casi nuovi senza togliere le spunte" />
+                                        <Button Classes="small" Content="📄 Esporta in Word" Click="OnManualExportClick"
+                                                ToolTip.Tip="Un documento .docx con i soli casi spuntati, da allegare alla card (Jira)" />
                                         <Button Classes="small" Content="✏ Modifica" Click="OnManualEditClick" ToolTip.Tip="Apri il testo nella vista Note" />
                                         <Button Classes="small" Content="Obsidian" Click="OnManualObsidianClick" />
                                     </StackPanel>
@@ -708,7 +746,8 @@
                                                                 Click="OnRunScriptClick" ToolTip.Tip="{Binding RunTip}" />
                                                         <TextBlock Text="{Binding Name}" Classes="id" FontSize="13.5" Foreground="#8AB4F8" VerticalAlignment="Center" />
                                                     </DockPanel>
-                                                    <TextBlock Text="{Binding Covers}" IsVisible="{Binding HasCovers}" TextWrapping="Wrap" FontSize="12.5" Margin="0,4,0,0" />
+                                                    <!-- Markdown: the descriptions use **bold** and `code` like the note. -->
+                                                    <chat:MarkdownView Markdown="{Binding CoversMarkdown}" IsVisible="{Binding HasCovers}" FontSize="12.5" Margin="0,4,0,0" />
                                                     <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
@@ -784,6 +823,7 @@
                                     <Button x:Name="EditNoteButton" Classes="small" Content="✏ Modifica" Click="OnEditNoteClick" />
                                     <Button x:Name="SaveNoteButton" Classes="small" Content="Salva" Click="OnSaveNoteClick" IsVisible="False" ToolTip.Tip="Ctrl+S" />
                                     <Button x:Name="CancelNoteButton" Classes="small" Content="Annulla" Click="OnCancelNoteClick" IsVisible="False" ToolTip.Tip="Esc" />
+                                    <Button Classes="small" Content="🕸 Grafo" Click="OnShowNoteInGraphClick" ToolTip.Tip="Mostra la nota e i suoi collegamenti nel grafo" />
                                     <Button Classes="small" Content="Obsidian" Click="OnOpenSelectedNoteClick" ToolTip.Tip="Apri la nota in Obsidian" />
                                 </StackPanel>
                                 <TextBlock x:Name="NoteTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -817,6 +857,122 @@
                         </DockPanel>
                     </Border>
                 </Grid>
+
+                <!-- ====== Grafo ====== -->
+                <Border x:Name="GraphView" Classes="panel" Padding="0" IsVisible="False" ClipToBounds="True">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="14,10,14,6">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox x:Name="GraphByTask" Content="Colori per task" IsCheckedChanged="OnGraphOptionChanged"
+                                          ToolTip.Tip="Un colore per task (NUSR-…): le note dello stesso task insieme. Altrimenti un colore per cartella" />
+                                <CheckBox x:Name="GraphOrphans" Content="Note isolate" IsCheckedChanged="OnGraphOptionChanged"
+                                          ToolTip.Tip="Mostra anche le note senza collegamenti" />
+                                <CheckBox x:Name="GraphMissing" Content="Note da creare" IsCheckedChanged="OnGraphOptionChanged"
+                                          ToolTip.Tip="Mostra i link a note che non esistono ancora (cerchi vuoti)" />
+                                <Button Classes="small" Content="⊡ Adatta" Click="OnGraphFitClick" ToolTip.Tip="Mostra tutto il grafo" />
+                                <Button Classes="small" Content="↻ Riordina" Click="OnGraphRelayoutClick" ToolTip.Tip="Ricalcola la disposizione" />
+                            </StackPanel>
+                            <ItemsControl x:Name="GraphLegend" VerticalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="p:GraphLegendItem">
+                                        <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,2,12,2">
+                                            <Ellipse Width="9" Height="9" Fill="{Binding Color}" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Folder}" Classes="muted" FontSize="11.5" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DockPanel>
+                        <p:NoteGraphView x:Name="Graph" />
+                    </DockPanel>
+                </Border>
+
+                <!-- ====== Generic page: your pages, Decisioni, Glossario, Costi, Settimana, PR ====== -->
+                <DockPanel x:Name="GenericView" IsVisible="False">
+                    <WrapPanel x:Name="PageButtons" DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <WrapPanel.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="Margin" Value="0,0,8,4" />
+                            </Style>
+                        </WrapPanel.Styles>
+                    </WrapPanel>
+                    <ScrollViewer x:Name="PageScroller" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <Border x:Name="PageHeaderPanel" Classes="panel" Margin="0,0,0,14" IsVisible="False">
+                                <chat:MarkdownView x:Name="PageHeader" />
+                            </Border>
+                            <TextBlock x:Name="PageEmpty" Classes="muted" FontStyle="Italic" Margin="4,8" TextWrapping="Wrap" IsVisible="False" />
+                            <ItemsControl x:Name="PageCards">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="p:PageCard">
+                                        <Border Classes="panel" Width="{DynamicResource PageCardWidth}" Margin="0,0,12,12" BorderBrush="{Binding AccentBrush}"
+                                                BorderThickness="3,0,0,0" Cursor="Hand" Tapped="OnPageCardTapped"
+                                                ToolTip.Tip="{Binding Target}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14.5" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" Classes="muted" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                                <ItemsControl ItemsSource="{Binding Chips}" IsVisible="{Binding HasChips}" Margin="0,6,0,0" ItemTemplate="{StaticResource ChipTemplate}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                </ItemsControl>
+                                                <chat:MarkdownView Markdown="{Binding Markdown}" IsVisible="{Binding HasMarkdown}" Margin="0,6,0,0" Loaded="OnMarkdownLoaded" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Ctrl+K: one box for everything (notes, cards, pages, saved conversations, chat commands). -->
+                <Border x:Name="Palette" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,30,0,0" Width="620" Padding="10"
+                        CornerRadius="12" Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource ClaudeAccent}"
+                        BorderThickness="1" IsVisible="False" ZIndex="10" BoxShadow="0 8 30 0 #50000000">
+                    <StackPanel>
+                        <TextBox x:Name="PaletteBox" PlaceholderText="Cerca note, task, pagine, conversazioni, comandi…  (↑/↓, Invio, Esc)" FontSize="14" />
+                        <ListBox x:Name="PaletteList" Margin="0,8,0,0" MaxHeight="420" Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="p:PaletteItem">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Width="26" FontSize="14" VerticalAlignment="Center" />
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" FontSize="13.5" />
+                                            <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- Find in the page (Ctrl+F on a note or a checklist): Enter / ↓ next, Shift+Enter / ↑ previous, Esc closes. -->
+                <Border x:Name="PageFindBar" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,24,0" Padding="8,4"
+                        CornerRadius="8" Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource ClaudeAccent}"
+                        BorderThickness="1" IsVisible="False" ZIndex="5" BoxShadow="0 2 8 0 #30000000">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBox x:Name="PageFindBox" Width="220" PlaceholderText="Cerca nella nota…" VerticalAlignment="Center" />
+                        <TextBlock x:Name="PageFindCount" MinWidth="40" VerticalAlignment="Center" Classes="muted" FontSize="12" />
+                        <Button Classes="small" Content="↑" Click="OnPageFindPreviousClick" ToolTip.Tip="Precedente (Shift+Invio)" />
+                        <Button Classes="small" Content="↓" Click="OnPageFindNextClick" ToolTip.Tip="Successivo (Invio)" />
+                        <Button Classes="small" Content="✕" Click="OnPageFindCloseClick" ToolTip.Tip="Chiudi (Esc)" />
+                    </StackPanel>
+                </Border>
             </Panel>
         </DockPanel>
 
@@ -863,6 +1019,24 @@
                         <StackPanel IsVisible="{Binding HasDetails}" Margin="0,14,0,0">
                             <TextBlock Text="Dettagli" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,2" />
                             <chat:MarkdownView Markdown="{Binding DetailsMarkdown}" Loaded="OnMarkdownLoaded" />
+                        </StackPanel>
+
+                        <!-- The life of the task: board, notes, journal and commits, in order. -->
+                        <StackPanel x:Name="TimelinePanel" Margin="0,16,0,0" IsVisible="False">
+                            <TextBlock Text="🕒 Cronologia" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <TextBlock x:Name="EstimateText" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,6" IsVisible="False"
+                                       ToolTip.Tip="Quanto avevi stimato, quanto è durato davvero e quanto è costato" />
+                            <ItemsControl x:Name="TimelineList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="core:TimelineEvent">
+                                        <DockPanel Margin="0,1">
+                                            <TextBlock DockPanel.Dock="Left" Width="52" Text="{Binding Date, StringFormat='{}{0:d MMM}'}" Classes="muted" FontSize="11.5" />
+                                            <TextBlock DockPanel.Dock="Left" Width="22" Text="{Binding Icon}" FontSize="12" />
+                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
 
                         <StackPanel x:Name="TagPanel" Margin="0,18,0,0">
@@ -912,6 +1086,8 @@
                             <Button Classes="small" Content="✏ Modifica" Click="OnEditCardClick" Margin="0,0,6,6" />
                             <Button x:Name="CardManualTestsButton" Classes="small" Click="OnCardManualTestsClick" Margin="0,0,6,6" IsVisible="False" />
                             <Button Classes="small" Content="Apri in Obsidian" Click="OnOpenCardNoteClick" Margin="0,0,6,6" />
+                            <Button Classes="small" Content="🔔 Ricordamelo…" Click="OnRemindClick" Margin="0,0,6,6"
+                                    ToolTip.Tip="Scrive [promemoria:: data] nella voce: quel giorno il Buddy te la ripropone in chat" />
                             <Button Classes="small" Content="🗑 Elimina" Click="OnDeleteCardClick" Margin="0,0,6,6" />
                         </WrapPanel>
                     </StackPanel>

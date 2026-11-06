@@ -34,9 +34,28 @@
             </Button>
         </DataTemplate>
 
+        <!-- Buttons under a message (suggestions of the buddy or the mentor): each sends its command. -->
+        <DataTemplate x:Key="ActionsTemplate" x:DataType="core:ChatEntry">
+            <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}" Margin="0,4,0,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="core:ChatAction">
+                        <Button Content="{Binding Label}" ToolTip.Tip="{Binding Tip}" Click="OnActionClick" Classes="small" Margin="0,0,4,2"
+                                Background="{DynamicResource ClaudeBubble}" Foreground="{DynamicResource Ink}"
+                                BorderBrush="{DynamicResource ClaudeAccent}" BorderThickness="1" Cursor="Hand" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </DataTemplate>
+
         <DataTemplate x:Key="UserTemplate" x:DataType="core:ChatEntry">
             <Border HorizontalAlignment="Right" MaxWidth="{DynamicResource UserMaxWidth}" Margin="40,4,0,4" Padding="10,6"
-                    CornerRadius="10,10,2,10" Background="{DynamicResource UserBubble}">
+                    CornerRadius="10,10,2,10" Background="{DynamicResource UserBubble}" Classes.hit="{Binding IsHighlighted}"
+                    ToolTip.Tip="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}">
                 <StackPanel>
                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{DynamicResource Ink}" />
                     <ItemsControl ItemsSource="{Binding Images}" IsVisible="{Binding HasImages}" ItemTemplate="{StaticResource ImageTemplate}">
@@ -51,7 +70,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="AssistantTemplate" x:DataType="core:ChatEntry">
-            <Border Classes="card"
+            <Border Classes="card" Classes.hit="{Binding IsHighlighted}"
                     Classes.claude="{Binding Speaker, Converter={StaticResource SpeakerIs}, ConverterParameter=Claude}"
                     Classes.mentor="{Binding Speaker, Converter={StaticResource SpeakerIs}, ConverterParameter=Mentor}"
                     HorizontalAlignment="Left" MaxWidth="{DynamicResource AssistantMaxWidth}" Margin="0,4,30,4" Padding="10,6"
@@ -61,16 +80,45 @@
                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{DynamicResource Ink}"
                                          IsVisible="{Binding IsStreaming}" />
                     <chat:MarkdownView Markdown="{Binding Text}" IsVisible="{Binding !IsStreaming}" />
-                    <Button Content="Chiedi a Claude ↗" Click="OnEscalateClick" IsVisible="{Binding CanEscalate}"
-                            HorizontalAlignment="Left" Margin="0,4,0,0" Padding="6,1" FontSize="11"
-                            ToolTip.Tip="Manda la stessa domanda a Claude" />
+                    <TextBlock Text="⋯" FontSize="16" Foreground="{DynamicResource Muted}" IsVisible="{Binding IsWaiting}" />
+                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActionsTemplate}" IsVisible="{Binding HasActions}" />
+                    <DockPanel Margin="0,4,0,0" IsVisible="{Binding !IsStreaming}">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}" FontSize="10"
+                                   Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        <Button DockPanel.Dock="Right" Classes="flat copy" Content="⧉" Width="20" Height="18" FontSize="12"
+                                Click="OnCopyEntryClick" ToolTip.Tip="Copia la risposta (markdown)" />
+                        <Button DockPanel.Dock="Right" Classes="flat copy" Content="💾" Width="20" Height="18" FontSize="11"
+                                Click="OnSaveAsNoteClick" ToolTip.Tip="Salva come nota nel vault (una delle tue pagine)" />
+                        <Button DockPanel.Dock="Right" Classes="flat copy" Content="📌" Width="20" Height="18" FontSize="11"
+                                Click="OnPinClick" ToolTip.Tip="Fissa in alto (o togli)" />
+                        <WrapPanel>
+                            <Button Content="Chiedi a Claude ↗" Click="OnEscalateClick" IsVisible="{Binding CanEscalate}"
+                                    Padding="6,1" FontSize="11" Margin="0,0,4,0"
+                                    ToolTip.Tip="Manda la stessa domanda a Claude" />
+                            <Button Content="🤔 Spiegamelo tu" Click="OnExplainItClick" IsVisible="{Binding AwaitsReply}"
+                                    Padding="6,1" FontSize="11" Margin="0,0,4,0"
+                                    ToolTip.Tip="Non lo sai? Il mentore te lo spiega, con un esempio" />
+                            <!-- Quick follow-ups, shown when the pointer is over the answer. -->
+                            <StackPanel Orientation="Horizontal" Spacing="3" IsVisible="{Binding CanFollowUp}">
+                                <Button Classes="flat quick" Content="Più semplice" Tag="Più semplice" Click="OnFollowUpClick" Padding="5,0" FontSize="10.5"
+                                        ToolTip.Tip="Rispiegamelo in modo più semplice" />
+                                <Button Classes="flat quick" Content="Un esempio" Tag="Un esempio" Click="OnFollowUpClick" Padding="5,0" FontSize="10.5"
+                                        ToolTip.Tip="Fammi un esempio concreto" />
+                                <Button Classes="flat quick" Content="Riassumi" Tag="Riassumi" Click="OnFollowUpClick" Padding="5,0" FontSize="10.5"
+                                        ToolTip.Tip="Riassumilo in 3 righe" />
+                            </StackPanel>
+                        </WrapPanel>
+                    </DockPanel>
                 </StackPanel>
             </Border>
         </DataTemplate>
 
         <DataTemplate x:Key="SystemTemplate" x:DataType="core:ChatEntry">
-            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                 Margin="4,2" FontSize="11" Foreground="{DynamicResource Muted}" />
+            <StackPanel Margin="4,2">
+                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes.hit="{Binding IsHighlighted}"
+                                     FontSize="11" Foreground="{DynamicResource Muted}" />
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActionsTemplate}" IsVisible="{Binding HasActions}" />
+            </StackPanel>
         </DataTemplate>
 
         <DataTemplate x:Key="PermissionTemplate" x:DataType="core:PermissionEntry">
@@ -124,29 +172,72 @@
             <Setter Property="Padding" Value="6,1" />
             <Setter Property="FontSize" Value="11" />
         </Style>
+        <!-- The copy button shows up when the pointer is over the message (it keeps its place: no jumps). -->
+        <Style Selector="Border.card Button.copy">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        </Style>
+        <Style Selector="Border.card:pointerover Button.copy">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <!-- A search hit (Ctrl+F): an outline that does not change the layout. -->
+        <Style Selector="Border.hit">
+            <Setter Property="BoxShadow" Value="0 0 0 2 #F2B544" />
+        </Style>
+        <Style Selector="SelectableTextBlock.hit">
+            <Setter Property="Foreground" Value="#F2B544" />
+        </Style>
+        <Style Selector="Border.card Button.quick">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource LinkInk}" />
+        </Style>
+        <Style Selector="Border.card:pointerover Button.quick">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.suggestion">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Button.suggestion.selected">
+            <Setter Property="Background" Value="{DynamicResource ClaudeBubble}" />
+        </Style>
     </Window.Styles>
 
     <!-- Margin leaves room for the drop shadow and the tail pointing at the pet. -->
     <Grid Margin="10,10,10,4" RowDefinitions="*,14">
         <Border CornerRadius="16" Background="{DynamicResource Paper}" BorderBrush="{DynamicResource Frame}" BorderThickness="2"
                 BoxShadow="0 2 12 0 #40000000">
-            <Grid Margin="10" RowDefinitions="Auto,Auto,*,Auto,Auto">
+            <Grid Margin="10" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto">
 
                 <DockPanel x:Name="Header" Margin="2,0,0,6" Background="Transparent">
                     <Button DockPanel.Dock="Right" Classes="flat" Content="✕" Width="24" Height="22"
                             Click="OnCloseClick" ToolTip.Tip="Chiudi (Esc)" />
                     <Button x:Name="MaximizeButton" DockPanel.Dock="Right" Classes="flat" Content="⛶" Width="24" Height="22" Margin="0,0,2,0"
                             Click="OnMaximizeClick" ToolTip.Tip="Schermo intero (F11 o doppio click sul titolo)" />
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="ModeDot" Width="10" Height="10" Margin="0,0,6,0" Stroke="{DynamicResource Ink}" StrokeThickness="1.5" />
-                        <TextBlock x:Name="ModeText" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" />
+                    <Button DockPanel.Dock="Right" Classes="flat" Content="↺" Width="24" Height="22" Margin="0,0,2,0"
+                            Click="OnNewConversationClick" ToolTip.Tip="Nuova conversazione (/nuova); quella attuale resta salvata" />
+                    <Button x:Name="HistoryButton" DockPanel.Dock="Right" Classes="flat" Content="🕘" Width="24" Height="22" Margin="0,0,2,0"
+                            Click="OnHistoryClick" ToolTip.Tip="Conversazioni precedenti" />
+                    <!-- A dock, not a stack: the cost text is the one that gets shortened when the bubble is narrow. -->
+                    <DockPanel VerticalAlignment="Center">
+                        <Ellipse x:Name="ModeDot" DockPanel.Dock="Left" Width="10" Height="10" Margin="0,0,6,0" Stroke="{DynamicResource Ink}" StrokeThickness="1.5" />
+                        <TextBlock x:Name="ModeText" DockPanel.Dock="Left" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" VerticalAlignment="Center" />
+                        <Button x:Name="ModelButton" DockPanel.Dock="Left" Classes="small" Margin="6,0,0,0" Padding="6,0" MinHeight="0" Cursor="Hand"
+                                VerticalAlignment="Center" Click="OnModelClick"
+                                Background="Transparent" BorderBrush="{DynamicResource Muted}" BorderThickness="1" CornerRadius="8"
+                                Foreground="{DynamicResource Muted}" ToolTip.Tip="Scegli il modello (Claude o locale) · /modello" />
                         <TextBlock x:Name="UsageText" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource Muted}" IsVisible="False" />
-                    </StackPanel>
+                    </DockPanel>
                 </DockPanel>
 
                 <!-- Current task (from the git branch) and its quick actions. -->
-                <StackPanel x:Name="TaskStrip" Grid.Row="1" Margin="2,0,0,6" IsVisible="False">
+                <StackPanel Grid.Row="1">
+                <StackPanel x:Name="TaskStrip" Margin="2,0,0,6" IsVisible="False">
                     <TextBlock x:Name="TaskText" FontSize="11.5" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" />
                     <ItemsControl x:Name="TaskActionsList" Margin="0,3,0,0">
                         <ItemsControl.ItemsPanel>
@@ -164,12 +255,68 @@
                     </ItemsControl>
                 </StackPanel>
 
-                <ScrollViewer x:Name="Scroller" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl x:Name="EntriesList" ItemTemplate="{StaticResource EntrySelector}" />
-                </ScrollViewer>
+                <!-- Pinned messages: one line each, click to go back to it, ✕ to unpin. -->
+                <ItemsControl x:Name="PinnedList" Margin="0,0,0,6" IsVisible="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="core:ChatEntry">
+                            <Border Margin="0,0,0,3" Padding="8,3" CornerRadius="6" Background="{DynamicResource MentorBubble}"
+                                    BorderBrush="{DynamicResource MentorAccent}" BorderThickness="2,0,0,0">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Classes="flat" Content="✕" Width="18" Height="16" FontSize="10"
+                                            Click="OnUnpinClick" ToolTip.Tip="Togli dai fissati" />
+                                    <Button Classes="flat" HorizontalContentAlignment="Left" Click="OnPinnedClick" Cursor="Hand"
+                                            ToolTip.Tip="Vai al messaggio">
+                                        <TextBlock Text="{Binding Headline, StringFormat='📌 {0}'}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource Ink}" />
+                                    </Button>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </StackPanel>
+
+                <Panel Grid.Row="2">
+                    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <!-- Ctrl+ / Ctrl- zoom the messages (text, code, images) without changing the bubble. -->
+                        <LayoutTransformControl x:Name="EntriesZoom">
+                            <ItemsControl x:Name="EntriesList" ItemTemplate="{StaticResource EntrySelector}" />
+                        </LayoutTransformControl>
+                    </ScrollViewer>
+                    <!-- Search in the conversation (Ctrl+F): Enter / ↓ next, Shift+Enter / ↑ previous, Esc closes. -->
+                    <Border x:Name="SearchBar" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,2,14,0" Padding="6,2"
+                            CornerRadius="8" Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource ClaudeAccent}"
+                            BorderThickness="1" IsVisible="False" ZIndex="1">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBox x:Name="SearchBox" Width="150" MinHeight="0" Padding="4,2" FontSize="12" PlaceholderText="Cerca nella chat…"
+                                     Foreground="{DynamicResource Ink}" />
+                            <TextBlock x:Name="SearchCount" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource Muted}" MinWidth="34" />
+                            <Button Classes="flat" Content="↑" Width="20" Height="20" Click="OnSearchPreviousClick" ToolTip.Tip="Precedente (Shift+Invio)" />
+                            <Button Classes="flat" Content="↓" Width="20" Height="20" Click="OnSearchNextClick" ToolTip.Tip="Successivo (Invio)" />
+                            <Button Classes="flat" Content="✕" Width="20" Height="20" Click="OnSearchCloseClick" ToolTip.Tip="Chiudi (Esc)" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Scrolled up to read: new text does not pull the chat down, this button does. -->
+                    <Button x:Name="JumpToEndButton" Content="↓ ultimi messaggi" Classes="small" IsVisible="False"
+                            HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,6" Click="OnJumpToEndClick"
+                            Background="{DynamicResource ClaudeBubble}" Foreground="{DynamicResource Ink}"
+                            BorderBrush="{DynamicResource ClaudeAccent}" BorderThickness="1" CornerRadius="10" Cursor="Hand" />
+                </Panel>
+
+                <!-- A model is answering: how long it has been working and a button to stop it. -->
+                <Border x:Name="WorkingStrip" Grid.Row="3" Margin="0,6,0,0" Padding="8,3" CornerRadius="8"
+                        Background="{DynamicResource UserBubble}" IsVisible="False">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Classes="small" Content="■ Ferma" Click="OnStopClick" Cursor="Hand"
+                                ToolTip.Tip="Interrompe la risposta (/stop); la conversazione resta" />
+                        <TextBlock x:Name="WorkingText" VerticalAlignment="Center" FontSize="11.5" Foreground="{DynamicResource Muted}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                </Border>
 
                 <!-- Pending attachment (clipboard, dropped files/images) with ready-made questions. -->
-                <Border x:Name="AttachmentPanel" Grid.Row="3" Margin="0,8,0,0" Padding="8,6" CornerRadius="8"
+                <Border x:Name="AttachmentPanel" Grid.Row="4" Margin="0,8,0,0" Padding="8,6" CornerRadius="8"
                         Background="{DynamicResource UserBubble}" IsVisible="False">
                     <StackPanel>
                         <DockPanel>
@@ -195,7 +342,26 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="4" Margin="0,8,0,0" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource Muted}"
+                <!-- "/" commands matching what is typed: ↑/↓ to choose, Tab or Enter to complete. -->
+                <Border x:Name="SuggestionsPanel" Grid.Row="5" Margin="0,6,0,0" Padding="3" CornerRadius="8" IsVisible="False"
+                        Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource ClaudeAccent}" BorderThickness="1">
+                    <ItemsControl x:Name="SuggestionsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="chat:SuggestionView">
+                                <Button Classes="suggestion" Classes.selected="{Binding IsSelected}" Click="OnSuggestionClick" Cursor="Hand">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Command.Name}" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                                        <TextBlock Text="{Binding Command.Description}" Foreground="{DynamicResource Muted}" FontSize="11.5"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+
+                <Border Grid.Row="6" Margin="0,8,0,0" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource Muted}"
                         Background="{DynamicResource InputBack}">
                     <DockPanel>
                         <Button x:Name="AttachButton" DockPanel.Dock="Right" Classes="flat" Content="📎" Width="28" Height="28"
@@ -203,7 +369,7 @@
                                 ToolTip.Tip="Allega immagini o file (o incolla con Ctrl+V, o trascinali sulla chat)" />
                         <Button x:Name="MicButton" DockPanel.Dock="Right" Classes="flat" Content="🎤" Width="30" Margin="0,0,2,0"
                                 VerticalAlignment="Bottom" Height="28" Click="OnMicClick"
-                                ToolTip.Tip="Detta (click per iniziare, click per finire). Trascrizione locale con Whisper." />
+                                ToolTip.Tip="Detta (click per iniziare, click per finire). Shift+click: appunto diretto in To-do Appunti. Trascrizione locale con Whisper." />
                         <TextBox x:Name="Input" Padding="6,5" MinHeight="0" FocusAdorner="{x:Null}"
                                  Foreground="{DynamicResource Ink}" CaretBrush="{DynamicResource Ink}"
                                  TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="90"

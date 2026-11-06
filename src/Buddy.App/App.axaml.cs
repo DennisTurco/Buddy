@@ -78,6 +78,8 @@ public partial class App : Application
 
         _host.Services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>().PersistTo(Path.Combine(SettingsStore.Folder, "usage.json"));
         var conversation = _host.Services.GetRequiredService<Conversation>();
+        conversation.Archive = new ConversationArchive(Path.Combine(SettingsStore.Folder, "conversations"));
+        conversation.LogFolder = _logs.Folder;
         var pet = _host.Services.GetRequiredService<PetWindow>();
         var bubble = _host.Services.GetRequiredService<BubbleWindow>();
         var settings = _host.Services.GetRequiredService<IOptions<BuddySettings>>().Value;
@@ -133,6 +135,7 @@ public partial class App : Application
         };
         pet.AttachmentDropped += (_, _) => bubble.ShowAndFocus();
         bubble.Anchor = pet;
+        bubble.LocalModelsSource = () => _host.Services.GetRequiredService<Buddy.Core.Llm.OllamaClient>().ListModelsAsync();
         pet.HoldStill = () => bubble.IsVisible;
         pet.Moved += (_, _) =>
         {
@@ -240,10 +243,33 @@ public partial class App : Application
             }
         };
 
+        // Running from the sources: a newer build is announced, and /aggiorna rebuilds and restarts on it.
+        var exe = Environment.ProcessPath ?? "";
+        if (_builds.IsAvailable && !Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            _builds.NewerBuild += built => Dispatcher.UIThread.Post(() =>
+            {
+                conversation.AnnounceNewerBuild(built);
+                conversation.UpdateRequested = () =>
+                {
+                    if (_builds.RestartWithBuild(exe))
+                    {
+                        Exit();
+                    }
+                };
+                if (!bubble.IsVisible)
+                {
+                    _tray?.Notify(name, "È pronta una versione più nuova: scrivi /aggiorna nella chat per usarla.", success: true);
+                }
+            });
+        }
+
         pet.Show();
         _ = _host.Services.GetRequiredService<Buddy.Core.Llm.OllamaClient>().WarmUpAsync();
         _host.Services.GetRequiredService<Buddy.Core.Mentor.MentorService>().Start();
     }
+
+    private readonly BuildWatcher _builds = new();
 
     /// <summary>
     /// Switches to another project (null: asks for a new one) and restarts on it. The project being left is saved
@@ -339,6 +365,12 @@ public partial class App : Application
             return (true, answer.ToString());
         };
         _project.AskRequested += question => services.GetRequiredService<BubbleWindow>().ShowWithText(question);
+        _project.ChatCommandRequested += async command =>
+        {
+            // From Ctrl+K: reopen a saved conversation, or run a chat command, in the chat.
+            services.GetRequiredService<BubbleWindow>().ShowAndFocus();
+            await services.GetRequiredService<Conversation>().SendAsync(command);
+        };
         _project.ClaudeRequested += async command =>
         {
             // The skill runs in the chat with Claude, where its questions and permission requests show up.

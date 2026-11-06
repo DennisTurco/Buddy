@@ -31,6 +31,9 @@ public sealed class ClaudeSession : IAsyncDisposable
 
     public string? SessionId { get; private set; }
 
+    /// <summary>The model this process runs with, instead of the configured one (automatic choice per message).</summary>
+    public string? ModelOverride { get; init; }
+
     public bool IsRunning => _process is { HasExited: false };
 
     public void Start(string? resumeSessionId = null)
@@ -155,10 +158,11 @@ public sealed class ClaudeSession : IAsyncDisposable
             yield return claude.PermissionMode.Trim();
         }
 
-        if (!string.IsNullOrWhiteSpace(claude.Model))
+        var model = ModelOverride ?? claude.Model;
+        if (!string.IsNullOrWhiteSpace(model))
         {
             yield return "--model";
-            yield return claude.Model;
+            yield return model;
         }
 
         if (!string.IsNullOrWhiteSpace(resumeSessionId))

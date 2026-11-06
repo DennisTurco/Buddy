@@ -199,6 +199,11 @@ public sealed class CardView : INotifyPropertyChanged
             chips.Add(new Chip($"{(late ? "⏰" : "📅")} {item.DueLabel} {due.ToString("d MMM", Culture)}", late ? ChipKind.Hot : ChipKind.Plain));
         }
 
+        if (item.Field(Buddy.Core.Vault.Reminders.Field) is { } remind && DateOnly.TryParse(remind, CultureInfo.InvariantCulture, out var remindOn))
+        {
+            chips.Add(new Chip($"🔔 {remindOn.ToString("d MMM", Culture)}", remindOn <= today ? ChipKind.Warm : ChipKind.Plain));
+        }
+
         if (item.Field("stima", "estimate") is { } estimate)
         {
             chips.Add(new Chip($"⏱ {estimate}", ChipKind.Plain));
@@ -249,6 +254,9 @@ public sealed record TileView(string Key, string Label, string Value, string Sub
 
 /// <summary>An item that needs a look now, with why.</summary>
 public sealed record AttentionView(CardView Card, string Reason);
+
+/// <summary>One folder in the graph legend, with its colour.</summary>
+public sealed record GraphLegendItem(string Folder, Avalonia.Media.IBrush Color);
 
 /// <summary>A side-bar entry.</summary>
 public sealed record NavItem(string Key, string Label, string Badge)
@@ -505,6 +513,10 @@ public sealed record ScriptView(WebTestScript Script)
 
     public bool HasCovers => !string.IsNullOrWhiteSpace(Covers);
 
+    /// <summary>The same text as markdown (bold, code, [[links]]), one paragraph per part.</summary>
+    public string CoversMarkdown => NoteLinks.ToMarkdown(string.Join("\n\n",
+        new[] { Script.Covers, Remark }.Where(t => !string.IsNullOrWhiteSpace(t))));
+
     /// <summary>"(2/2, senza invio)" from "(2/2, senza invio). Nota: …": the short outcome for the chip.</summary>
     private string? Outcome => Script.Outcome is { } o && o.StartsWith('(') && o.IndexOf(')') is > 0 and var end ? o[..(end + 1)] : Script.Outcome is { Length: <= 30 } shortOne ? shortOne : null;
 
@@ -567,4 +579,35 @@ public static class Tags
 public sealed record TagOption(string Name, IBrush Brush, bool IsSelected, int Count = 0)
 {
     public string Label => Count > 0 ? $"{Name} {Count}" : Name;
+}
+
+/// <summary>
+/// A card of a generic page (your pages, Decisioni, Glossario, PR, Settimana, Costi): title, chips, markdown body.
+/// <paramref name="Target"/> is the note opened by a click (or an http link, opened in the browser).
+/// </summary>
+public sealed record PageCard(string Title, string? Subtitle, IReadOnlyList<Chip> Chips, string? Markdown, string? Target, string? Accent = null)
+{
+    public bool HasSubtitle => !string.IsNullOrWhiteSpace(Subtitle);
+
+    public bool HasChips => Chips.Count > 0;
+
+    public bool HasMarkdown => !string.IsNullOrWhiteSpace(Markdown);
+
+    public bool HasTarget => Target is not null;
+
+    public Avalonia.Media.IBrush AccentBrush => Accent is { } color
+        ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(color))
+        : Avalonia.Media.Brushes.Transparent;
+}
+
+/// <summary>A button in a page's tool bar: what it says and the action it runs.</summary>
+public sealed record PageButton(string Label, string Action, string? Tip = null);
+
+/// <summary>What a generic page shows: a line under the title, an optional markdown header (tables), the cards.</summary>
+public sealed record PageContent(string Subtitle, string? Header, IReadOnlyList<PageCard> Cards, IReadOnlyList<PageButton> Buttons, string Empty);
+
+/// <summary>A result of the Ctrl+K box: what it is, and what Enter does with it.</summary>
+public sealed record PaletteItem(string Icon, string Title, string? Subtitle, string Kind, Action Open, int Score)
+{
+    public bool HasSubtitle => !string.IsNullOrWhiteSpace(Subtitle);
 }

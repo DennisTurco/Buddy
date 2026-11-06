@@ -19,13 +19,13 @@ public static class MentorStats
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("| Settimana | Ore attive | Focus | Check-in/out | Pillole | Ripassi | Chiacchiere | Approcci | Pause suggerite |");
-        sb.AppendLine("|---|---|---|---|---|---|---|---|---|");
+        sb.AppendLine("| Settimana | Ore attive | Focus | Check-in/out | Pillole | Ripassi | Chiacchiere | Approcci | Delegati / con guida | Pause suggerite |");
+        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|");
         foreach (var key in keys)
         {
             var w = state.Weeks.GetValueOrDefault(key) ?? new WeekStats();
             var hours = (w.ActiveMinutes / 60.0).ToString("0.#", CultureInfo.GetCultureInfo("it-IT"));
-            sb.AppendLine($"| {key} | {hours} | {w.FocusBlocks} ({w.FocusMinutes} min) | {w.CheckIns}/{w.CheckOuts} | {w.Pills} | {w.Reviews} | {w.Chats} | {w.Approaches} | {w.BreakReminders} |");
+            sb.AppendLine($"| {key} | {hours} | {w.FocusBlocks} ({w.FocusMinutes} min) | {w.CheckIns}/{w.CheckOuts} | {w.Pills} | {w.Reviews} | {w.Chats} | {w.Approaches} | {w.Delegated} / {w.Guided} | {w.BreakReminders} |");
         }
 
         return sb.ToString().TrimEnd();

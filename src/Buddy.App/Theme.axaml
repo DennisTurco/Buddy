@@ -24,6 +24,13 @@
         <!-- Markdown: code background and links (replaced per window from the Appearance colours). -->
         <SolidColorBrush x:Key="CodeBack" Color="#EDEAF3" />
         <SolidColorBrush x:Key="LinkInk" Color="#6B4FC4" />
+        <!-- Syntax colours of code blocks (light paper; Appearance switches to a dark set on a dark paper). -->
+        <SolidColorBrush x:Key="SynKeyword" Color="#A626A4" />
+        <SolidColorBrush x:Key="SynString" Color="#3E8E3C" />
+        <SolidColorBrush x:Key="SynComment" Color="#8A8798" />
+        <SolidColorBrush x:Key="SynNumber" Color="#B76B01" />
+        <SolidColorBrush x:Key="SynType" Color="#2F6BD9" />
+        <SolidColorBrush x:Key="SynTag" Color="#D2453A" />
         <!-- A list: the first font installed wins (Windows, macOS, then common Linux ones). -->
         <FontFamily x:Key="MonoFont">Consolas, Menlo, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
     </Styles.Resources>
