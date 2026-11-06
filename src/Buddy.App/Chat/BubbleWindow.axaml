@@ -22,6 +22,7 @@
         <sys:Double x:Key="AssistantMaxWidth">320</sys:Double>
         <sys:Double x:Key="ImageHeight">110</sys:Double>
         <chat:SpeakerIs x:Key="SpeakerIs" />
+        <chat:HideQuickReplies x:Key="HideQuickReplies" />
         <chat:ImageThumbnail x:Key="ImageThumbnail" />
 
         <!-- An image thumbnail (attachment or sent message): click opens it full size. -->
@@ -77,9 +78,9 @@
                     CornerRadius="10,10,10,2" BorderThickness="2,0,0,0">
                 <StackPanel>
                     <!-- While streaming the text is shown plain (cheap on every chunk); markdown once complete. -->
-                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{DynamicResource Ink}"
+                    <SelectableTextBlock Text="{Binding Text, Converter={StaticResource HideQuickReplies}}" TextWrapping="Wrap" Foreground="{DynamicResource Ink}"
                                          IsVisible="{Binding IsStreaming}" />
-                    <chat:MarkdownView Markdown="{Binding Text}" IsVisible="{Binding !IsStreaming}" />
+                    <chat:MarkdownView Markdown="{Binding Text, Converter={StaticResource HideQuickReplies}}" IsVisible="{Binding !IsStreaming}" />
                     <TextBlock Text="⋯" FontSize="16" Foreground="{DynamicResource Muted}" IsVisible="{Binding IsWaiting}" />
                     <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActionsTemplate}" IsVisible="{Binding HasActions}" />
                     <DockPanel Margin="0,4,0,0" IsVisible="{Binding !IsStreaming}">
@@ -126,13 +127,61 @@
             <ThemeVariantScope RequestedThemeVariant="Light">
             <Border Margin="0,6" Padding="10,8" CornerRadius="8" Background="{DynamicResource PermissionBack}"
                     BorderBrush="{DynamicResource PermissionBorder}" BorderThickness="1">
+                <!-- The window sets text boxes to the chat's paper (dark in a dark theme): this box stays light. -->
+                <Border.Resources>
+                    <SolidColorBrush x:Key="TextControlBackground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="TextControlForeground" Color="#241F36" />
+                    <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#241F36" />
+                    <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#241F36" />
+                </Border.Resources>
                 <StackPanel>
-                    <TextBlock Text="Claude chiede il permesso:" FontWeight="SemiBold" Foreground="#241F36" />
-                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,4"
-                                         Foreground="#241F36" FontFamily="{StaticResource MonoFont}" FontSize="12" />
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPending}">
-                        <Button Content="Sì" Width="64" HorizontalContentAlignment="Center" Click="OnAllowClick" />
-                        <Button Content="No" Width="64" HorizontalContentAlignment="Center" Click="OnDenyClick" />
+                    <StackPanel IsVisible="{Binding IsPermission}">
+                        <TextBlock Text="Claude chiede il permesso:" FontWeight="SemiBold" Foreground="#241F36" />
+                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,4"
+                                             Foreground="#241F36" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPending}">
+                            <Button Content="Sì" Width="64" HorizontalContentAlignment="Center" Click="OnAllowClick" />
+                            <Button Content="No" Width="64" HorizontalContentAlignment="Center" Click="OnDenyClick" />
+                        </StackPanel>
+                    </StackPanel>
+                    <!-- AskUserQuestion: Claude's multiple-choice questions, answered here. -->
+                    <StackPanel IsVisible="{Binding IsQuestion}" Spacing="6">
+                        <TextBlock Text="Claude ti chiede:" FontWeight="SemiBold" Foreground="#241F36" />
+                        <ItemsControl ItemsSource="{Binding Questions}" IsEnabled="{Binding IsPending}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="core:QuestionView">
+                                    <StackPanel Margin="0,2,0,8" Spacing="4">
+                                        <SelectableTextBlock Text="{Binding Question}" TextWrapping="Wrap" Foreground="#241F36" />
+                                        <ItemsControl ItemsSource="{Binding Options}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="core:OptionView">
+                                                    <ToggleButton IsChecked="{Binding IsSelected}" Margin="0,0,6,6" Padding="8,4" MaxWidth="320"
+                                                                  ToolTip.Tip="{Binding Description}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                            <TextBlock Text="{Binding Description}" IsVisible="{Binding HasDescription}"
+                                                                       FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                    </ToggleButton>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBox Text="{Binding Other}" PlaceholderText="Altro: scrivi la tua risposta" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPending}">
+                            <Button Content="Rispondi" IsEnabled="{Binding CanAnswer}" Click="OnAnswerClick" />
+                            <Button Content="Non rispondere" Click="OnSkipQuestionsClick" />
+                        </StackPanel>
                     </StackPanel>
                     <TextBlock Text="{Binding Outcome}" IsVisible="{Binding !IsPending}" Foreground="#6B6680" />
                 </StackPanel>

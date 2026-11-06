@@ -76,6 +76,61 @@ public static class CustomPages
         return Path.GetRelativePath(projectPath, file);
     }
 
+    /// <summary>
+    /// Renames a page (its folder). Links written with the folder ([[Pagine/Old/Nota]]) are updated in the project's
+    /// notes; links by title alone keep working by themselves. Returns the new name.
+    /// </summary>
+    public static string RenamePage(string projectPath, string page, string newName)
+    {
+        newName = Clean(newName);
+        var from = Path.Combine(projectPath, Folder, page);
+        var to = Path.Combine(projectPath, Folder, newName);
+        if (newName.Length == 0)
+        {
+            throw new IOException("Il nome della pagina è vuoto o contiene solo caratteri non validi.");
+        }
+
+        if (!Directory.Exists(from))
+        {
+            throw new IOException($"La pagina «{page}» non esiste più.");
+        }
+
+        if (string.Equals(page, newName, StringComparison.Ordinal))
+        {
+            return newName;
+        }
+
+        if (Directory.Exists(to) && !string.Equals(page, newName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException($"La pagina «{newName}» esiste già.");
+        }
+
+        Directory.Move(from, to);
+        var oldPrefix = $"{Folder}/{page}/";
+        foreach (var file in Directory.EnumerateFiles(projectPath, "*.md", SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(file);
+            if (text.Contains(oldPrefix, StringComparison.Ordinal))
+            {
+                File.WriteAllText(file, text.Replace(oldPrefix, $"{Folder}/{newName}/", StringComparison.Ordinal));
+            }
+        }
+
+        return newName;
+    }
+
+    /// <summary>Moves a page and its notes to the vault's trash (see <see cref="VaultTrash"/>); returns where.</summary>
+    public static string DeletePage(string projectPath, string page)
+    {
+        var folder = Path.Combine(projectPath, Folder, page);
+        if (!Directory.Exists(folder))
+        {
+            throw new IOException($"La pagina «{page}» non esiste più.");
+        }
+
+        return VaultTrash.Move(projectPath, folder);
+    }
+
     /// <summary>"created: 2026-11-06" in the front matter, else null.</summary>
     public static DateOnly? Created(VaultNote note) =>
         Regex.Match(note.Content, @"^created:\s*(\d{4}-\d{2}-\d{2})", RegexOptions.Multiline) is { Success: true } m
@@ -90,6 +145,107 @@ public static class CustomPages
 
     private static string Clean(string name) =>
         string.Concat(name.Trim().Split(Path.GetInvalidFileNameChars())).Trim().TrimEnd('.');
+}
+
+/// <summary>
+/// Notes and pages deleted from Buddy are not erased: they go to the ".trash" folder at the vault's root, the same
+/// place Obsidian's "Move to Obsidian trash" uses, so they can be recovered from there.
+/// </summary>
+public static class VaultTrash
+{
+    public const string Folder = ".trash";
+
+    /// <summary>Moves a file or folder of the project to the trash, with a number when the name is taken; returns the new path.</summary>
+    public static string Move(string projectPath, string path)
+    {
+        var trash = Path.Combine(FlowTemplate.VaultRootOf(projectPath), Folder);
+        Directory.CreateDirectory(trash);
+        var isFile = File.Exists(path);
+        var name = Path.GetFileNameWithoutExtension(path);
+        var extension = isFile ? Path.GetExtension(path) : "";
+        var target = Path.Combine(trash, name + extension);
+        for (var i = 2; File.Exists(target) || Directory.Exists(target); i++)
+        {
+            target = Path.Combine(trash, $"{name} ({i}){extension}");
+        }
+
+        if (isFile)
+        {
+            File.Move(path, target);
+        }
+        else
+        {
+            Directory.Move(path, target);
+        }
+
+        return target;
+    }
+}
+
+/// <summary>Renaming and deleting a single note from Buddy.</summary>
+public static class NoteFiles
+{
+    /// <summary>
+    /// Renames a note: the file, its first heading when it repeated the old title, and the links to it in the
+    /// project's notes. Returns the new path relative to the project.
+    /// </summary>
+    public static string Rename(string projectPath, string relativePath, string newTitle)
+    {
+        var from = Path.Combine(projectPath, relativePath);
+        var oldTitle = Path.GetFileNameWithoutExtension(from);
+        newTitle = string.Concat(newTitle.Trim().Split(Path.GetInvalidFileNameChars())).Trim().TrimEnd('.');
+        if (newTitle.Length == 0)
+        {
+            throw new IOException("Il titolo è vuoto o contiene solo caratteri non validi.");
+        }
+
+        if (!File.Exists(from))
+        {
+            throw new IOException($"La nota «{oldTitle}» non esiste più.");
+        }
+
+        var to = Path.Combine(Path.GetDirectoryName(from)!, newTitle + ".md");
+        if (string.Equals(from, to, StringComparison.Ordinal))
+        {
+            return relativePath;
+        }
+
+        if (File.Exists(to) && !string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException($"Esiste già una nota «{newTitle}» in questa cartella.");
+        }
+
+        var text = File.ReadAllText(from);
+        var heading = new Regex($@"^#\s+{Regex.Escape(oldTitle)}\s*$", RegexOptions.Multiline);
+        File.Move(from, to);
+        if (heading.IsMatch(text))
+        {
+            File.WriteAllText(to, heading.Replace(text, $"# {newTitle}", 1));
+        }
+
+        foreach (var file in Directory.EnumerateFiles(projectPath, "*.md", SearchOption.AllDirectories))
+        {
+            VaultWriter.ReplaceLink(file, oldTitle, newTitle);
+        }
+
+        return Path.GetRelativePath(projectPath, to);
+    }
+
+    /// <summary>Moves a note to the vault's trash; returns where.</summary>
+    public static string Delete(string projectPath, string relativePath)
+    {
+        var path = Path.Combine(projectPath, relativePath);
+        if (!File.Exists(path))
+        {
+            throw new IOException($"La nota «{Path.GetFileNameWithoutExtension(path)}» non esiste più.");
+        }
+
+        return VaultTrash.Move(projectPath, path);
+    }
+
+    /// <summary>The flow's own notes (To-Do, Scheda progetto…): Buddy and Claude rely on them, so they cannot be renamed or deleted here.</summary>
+    public static bool IsFlowNote(string relativePath) =>
+        FlowTemplate.ProjectNotes.Contains(Path.GetFileName(relativePath), StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>One line of the Decisioni note: "- 2026-11-06 · cosa — Perché: motivo · NUSR-2367".</summary>

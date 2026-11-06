@@ -55,7 +55,18 @@ public partial class SettingsWindow : Window
 
         FontCombo.ItemsSource = FontManager.Current.SystemFonts.Select(f => f.Name).Distinct().Order().ToList();
         BuildThemeRows();
+        BuildThemePresets();
         BuildPetColorRows();
+        if (Buddy.Core.Tracker.JiraToken.Read(SettingsStore.Folder) is not null)
+        {
+            JiraTokenBox.PlaceholderText = "Token salvato: lascia vuoto per tenerlo, o scrivine uno nuovo";
+        }
+
+        if (Buddy.Core.Tracker.AzureToken.Read(SettingsStore.Folder) is not null)
+        {
+            AzureTokenBox.PlaceholderText = "Token salvato: lascia vuoto per tenerlo, o scrivine uno nuovo";
+        }
+
 
         SystemPrompt.Text = string.IsNullOrWhiteSpace(_settings.Ollama.SystemPrompt) ? LocalAssistant.DefaultSystemPrompt : _settings.Ollama.SystemPrompt;
 
@@ -285,15 +296,122 @@ public partial class SettingsWindow : Window
 
     private void ApplyTheme(ThemeColors theme)
     {
-        _settings.Appearance.Theme = theme;
+        _settings.Appearance.Theme = theme.Clone();
         ThemeColors.Children.Clear();
         ThemeColors.RowDefinitions.Clear();
         BuildThemeRows();
+        BuildThemePresets();
     }
 
-    private void OnLightThemeClick(object? sender, RoutedEventArgs e) => ApplyTheme(Buddy.Core.ThemeColors.Light());
+    /// <summary>The built-in themes and the saved ones, as buttons with a preview of their colours; the current one is marked.</summary>
+    private void BuildThemePresets()
+    {
+        ThemePresets.Children.Clear();
+        var current = _settings.Appearance.Theme;
+        var themes = Buddy.Core.ThemeColors.BuiltIn.Select(t => (t.Name, Colors: t.Create(), Custom: false))
+            .Concat(_settings.Appearance.CustomThemes.Select(t => (t.Name, t.Colors, Custom: true)));
+        string? selectedCustom = null;
+        foreach (var (name, colors, custom) in themes)
+        {
+            var selected = colors.SameAs(current);
+            if (selected && custom)
+            {
+                selectedCustom = name;
+            }
 
-    private void OnDarkThemeClick(object? sender, RoutedEventArgs e) => ApplyTheme(Buddy.Core.ThemeColors.Dark());
+            ThemePresets.Children.Add(ThemeButton(name, colors, custom, selected));
+        }
+
+        DeleteThemeButton.IsVisible = selectedCustom is not null;
+        DeleteThemeButton.Tag = selectedCustom;
+    }
+
+    private Button ThemeButton(string name, ThemeColors colors, bool custom, bool selected)
+    {
+        Border Swatch(string color) => new()
+        {
+            Width = 14,
+            Height = 14,
+            CornerRadius = new CornerRadius(7),
+            Background = new SolidColorBrush(PetSprites.ParseColor(color, Colors.Gray)),
+            BorderBrush = new SolidColorBrush(PetSprites.ParseColor(colors.Border, Colors.Gray)),
+            BorderThickness = new Thickness(1),
+        };
+
+        var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, Margin = new Thickness(0, 4, 0, 0) };
+        foreach (var color in new[] { colors.UserBubble, colors.LocalAccent, colors.ClaudeAccent, colors.MentorAccent })
+        {
+            swatches.Children.Add(Swatch(color));
+        }
+
+        var label = new TextBlock
+        {
+            Text = (custom ? "★ " : "") + name,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = new SolidColorBrush(PetSprites.ParseColor(colors.Text, Colors.Black)),
+        };
+        var content = new StackPanel();
+        content.Children.Add(label);
+        content.Children.Add(swatches);
+        var button = new Button
+        {
+            Content = content,
+            Margin = new Thickness(0, 0, 8, 8),
+            Padding = new Thickness(12, 8),
+            MinWidth = 110,
+            Background = new SolidColorBrush(PetSprites.ParseColor(colors.Background, Colors.White)),
+            BorderBrush = selected ? new SolidColorBrush(PetSprites.ParseColor(colors.ClaudeAccent, Colors.Gray)) : Brushes.Gray,
+            BorderThickness = new Thickness(selected ? 3 : 1),
+            CornerRadius = new CornerRadius(10),
+        };
+        // Hovered or pressed it keeps its own colours (Fluent would turn it grey, and the name unreadable).
+        var back = (IBrush)button.Background;
+        var ink = label.Foreground!;
+        foreach (var key in new[] { "ButtonBackgroundPointerOver", "ButtonBackgroundPressed" })
+        {
+            button.Resources[key] = back;
+        }
+
+        foreach (var key in new[] { "ButtonForegroundPointerOver", "ButtonForegroundPressed" })
+        {
+            button.Resources[key] = ink;
+        }
+
+        button.Resources["ButtonBorderBrushPointerOver"] = new SolidColorBrush(PetSprites.ParseColor(colors.ClaudeAccent, Colors.Gray));
+        ToolTip.SetTip(button, custom ? $"Tema personale «{name}»" : $"Tema {name}");
+        button.Click += (_, _) => ApplyTheme(colors);
+        return button;
+    }
+
+    private async void OnSaveThemeClick(object? sender, RoutedEventArgs e)
+    {
+        var current = _settings.Appearance.CustomThemes.FirstOrDefault(t => t.Colors.SameAs(_settings.Appearance.Theme))?.Name ?? "";
+        if (await Dialogs.AskAsync(this, "Salva tema", "Nome del tema (uno esistente viene sovrascritto):", current) is not { } name)
+        {
+            return;
+        }
+
+        name = name.Trim();
+        if (Buddy.Core.ThemeColors.BuiltIn.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            await Dialogs.ShowMessageAsync(this, $"«{name}» è un tema già incluso: scegli un altro nome.");
+            return;
+        }
+
+        var themes = _settings.Appearance.CustomThemes;
+        themes.RemoveAll(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase));
+        themes.Add(new NamedTheme { Name = name, Colors = _settings.Appearance.Theme.Clone() });
+        BuildThemePresets();
+    }
+
+    private void OnDeleteThemeClick(object? sender, RoutedEventArgs e)
+    {
+        if (DeleteThemeButton.Tag is string name)
+        {
+            _settings.Appearance.CustomThemes.RemoveAll(t => t.Name == name);
+            BuildThemePresets();
+        }
+    }
 
     private async void OnRefreshModelsClick(object? sender, RoutedEventArgs e) => await RefreshModelsAsync();
 
@@ -381,9 +499,74 @@ public partial class SettingsWindow : Window
         DataContext = _settings;
     }
 
+    /// <summary>The token typed in the box, or the saved one when the box was left empty.</summary>
+    private string? JiraTokenTyped => JiraTokenBox.Text?.Trim() is { Length: > 0 } typed ? typed : Buddy.Core.Tracker.JiraToken.Read(SettingsStore.Folder);
+
+    private async void OnJiraTestClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_settings.Jira.IsConfigured || JiraTokenTyped is not { } token)
+        {
+            JiraTestResult.Text = "Scrivi l'indirizzo di Jira e il token.";
+            return;
+        }
+
+        JiraTestResult.Text = "Provo…";
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            var issues = await new Buddy.Core.Tracker.JiraClient(http).AssignedAsync(_settings.Jira, token, _settings.JiraProject);
+            JiraTestResult.Text = issues.Count == 0
+                ? "✓ Collegato: nessuna card aperta assegnata a te."
+                : $"✓ Collegato: {issues.Count} card aperte assegnate a te (es. {issues[0].Key} · {issues[0].Summary}).";
+        }
+        catch (Exception ex) when (ex is Buddy.Core.Tracker.JiraException or HttpRequestException or TaskCanceledException or UriFormatException or InvalidOperationException)
+        {
+            JiraTestResult.Text = $"✗ {ex.Message}";
+        }
+    }
+
+    /// <summary>Work items and PRs read with the token typed (or saved), on the project from the settings or the git remote.</summary>
+    private async void OnAzureTestClick(object? sender, RoutedEventArgs e)
+    {
+        var token = AzureTokenBox.Text?.Trim() is { Length: > 0 } typed ? typed : Buddy.Core.Tracker.AzureToken.Read(SettingsStore.Folder);
+        var repo = new Buddy.Core.Repo.GitRepo(Microsoft.Extensions.Options.Options.Create(_settings), TimeProvider.System);
+        var remote = repo.IsAvailable ? await repo.GetRemoteUrlAsync() : null;
+        var project = Buddy.Core.Tracker.AzureProject.FromSettings(_settings.AzureDevOps, _settings.AzureProject)
+                      ?? Buddy.Core.Tracker.AzureProject.FromRemote(remote);
+        if (token is null || project is null)
+        {
+            AzureTestResult.Text = token is null ? "Scrivi il token (PAT)." : "Il repository non è su Azure Repos: scrivi organizzazione e progetto.";
+            return;
+        }
+
+        AzureTestResult.Text = "Provo…";
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            var items = await new Buddy.Core.Tracker.AzureDevOpsClient(http, token).AssignedAsync(project);
+            AzureTestResult.Text = $"✓ Collegato a {project.Project}: {items.Count} work item aperti assegnati a te"
+                                   + (items.Count > 0 ? $" (es. {items[0].Key} · {items[0].Summary})." : ".");
+        }
+        catch (Exception ex) when (ex is Buddy.Core.Tracker.TrackerException or HttpRequestException or TaskCanceledException or UriFormatException
+                                       or InvalidOperationException or System.Text.Json.JsonException or KeyNotFoundException)
+        {
+            AzureTestResult.Text = $"✗ {ex.Message}";
+        }
+    }
+
     private async void OnSaveClick(object? sender, RoutedEventArgs e)
     {
         CollectProjectLists();
+        if (JiraTokenBox.Text?.Trim() is { Length: > 0 } jiraToken)
+        {
+            Buddy.Core.Tracker.JiraToken.Write(SettingsStore.Folder, jiraToken);
+        }
+
+        if (AzureTokenBox.Text?.Trim() is { Length: > 0 } azureToken)
+        {
+            Buddy.Core.Tracker.AzureToken.Write(SettingsStore.Folder, azureToken);
+        }
+
         _settings.Mentor.Topics = Lines(Topics.Text);
         _settings.Claude.DoNotCommit = Lines(DoNotCommit.Text);
         _settings.Mentor.Interests = (Interests.Text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();

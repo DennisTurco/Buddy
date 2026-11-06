@@ -8,6 +8,7 @@ public sealed class WindowsAudioCapture : IAudioCapture
 {
     private WaveInEvent? _recorder;
     private MemoryStream? _audio;
+    private readonly object _gate = new();
 
     public bool IsRecording => _recorder is not null;
 
@@ -25,7 +26,13 @@ public sealed class WindowsAudioCapture : IAudioCapture
 
         _audio = new MemoryStream();
         _recorder = new WaveInEvent { WaveFormat = new WaveFormat(16_000, 16, 1), BufferMilliseconds = 100 };
-        _recorder.DataAvailable += (_, e) => _audio?.Write(e.Buffer, 0, e.BytesRecorded);
+        _recorder.DataAvailable += (_, e) =>
+        {
+            lock (_gate)
+            {
+                _audio?.Write(e.Buffer, 0, e.BytesRecorded);
+            }
+        };
         try
         {
             _recorder.StartRecording();
@@ -51,8 +58,19 @@ public sealed class WindowsAudioCapture : IAudioCapture
         await stopped.Task.WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         recorder.Dispose();
         _recorder = null;
-        _audio = null;
-        return audio.ToArray();
+        lock (_gate)
+        {
+            _audio = null;
+            return audio.ToArray();
+        }
+    }
+
+    public byte[] Snapshot()
+    {
+        lock (_gate)
+        {
+            return _audio?.ToArray() ?? [];
+        }
     }
 
     public void Dispose()

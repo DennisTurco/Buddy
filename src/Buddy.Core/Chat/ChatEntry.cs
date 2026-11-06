@@ -169,12 +169,19 @@ public class ChatEntry(Speaker speaker, string text = "") : INotifyPropertyChang
 }
 
 /// <summary>A pending "may Claude do this?" question, answered with the buttons in the bubble.</summary>
-public sealed class PermissionEntry(PermissionRequest request) : ChatEntry(Speaker.Claude, request.Summary)
+public sealed class PermissionEntry : ChatEntry
 {
+    public PermissionEntry(PermissionRequest request)
+        : base(Speaker.Claude, request.Summary)
+    {
+        Request = request;
+        Questions = request.ToolName == "AskUserQuestion" ? QuestionView.Parse(request.Input, RefreshCanAnswer) : [];
+    }
+
     private readonly TaskCompletionSource<PermissionDecision> _decision = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private string? _outcome;
 
-    public PermissionRequest Request { get; } = request;
+    public PermissionRequest Request { get; }
 
     public Task<PermissionDecision> Decision => _decision.Task;
 
@@ -190,9 +197,45 @@ public sealed class PermissionEntry(PermissionRequest request) : ChatEntry(Speak
         }
     }
 
+    /// <summary>Claude's multiple-choice questions (AskUserQuestion), answered in the bubble instead of Sì/No.</summary>
+    public IReadOnlyList<QuestionView> Questions { get; }
+
+    public bool IsQuestion => Questions.Count > 0;
+
+    public bool IsPermission => !IsQuestion;
+
+    /// <summary>Every question has a choice or a free answer.</summary>
+    public bool CanAnswer => Questions.All(q => q.IsAnswered);
+
     public void Allow() => Resolve(PermissionDecision.Allowed, "✓ consentito");
 
     public void Deny() => Resolve(PermissionDecision.Denied(), "✗ rifiutato");
+
+    /// <summary>Sends the answers: the CLI reads them from the "answers" map of the tool input (question → labels).</summary>
+    public void Answer()
+    {
+        if (!IsQuestion || !CanAnswer)
+        {
+            return;
+        }
+
+        var input = System.Text.Json.Nodes.JsonNode.Parse(Request.Input.GetRawText())!.AsObject();
+        var answers = new System.Text.Json.Nodes.JsonObject();
+        foreach (var question in Questions)
+        {
+            answers[question.Question] = question.AnswerText;
+        }
+
+        input["answers"] = answers;
+        Resolve(new PermissionDecision(true, UpdatedInput: input), "✓ " + string.Join(" · ", Questions.Select(q => q.AnswerText)));
+    }
+
+    /// <summary>Closes the questions without answering: Claude is told the user chose not to.</summary>
+    public void Skip() => Resolve(
+        PermissionDecision.Denied("The user chose not to answer these questions. Do not ask them again; ask in plain text if you still need the answer."),
+        "✗ nessuna risposta");
+
+    private void RefreshCanAnswer() => RaisePropertyChanged(nameof(CanAnswer));
 
     private void Resolve(PermissionDecision decision, string outcome)
     {

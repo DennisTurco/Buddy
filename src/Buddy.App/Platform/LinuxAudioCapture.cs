@@ -10,8 +10,10 @@ namespace Buddy.App.Platform;
 /// </summary>
 public sealed class LinuxAudioCapture : IAudioCapture
 {
+    private readonly object _gate = new();
     private Process? _recorder;
     private Task<byte[]>? _reading;
+    private MemoryStream? _buffer;
 
     public bool IsRecording => _recorder is not null;
 
@@ -48,11 +50,24 @@ public sealed class LinuxAudioCapture : IAudioCapture
 
         var stdout = _recorder.StandardOutput.BaseStream;
         _ = _recorder.StandardError.ReadToEndAsync();
+        var buffer = _buffer = new MemoryStream();
         _reading = Task.Run(async () =>
         {
-            using var buffer = new MemoryStream();
-            await stdout.CopyToAsync(buffer).ConfigureAwait(false);
-            return buffer.ToArray();
+            // Chunk by chunk, so Snapshot can read what arrived so far.
+            var chunk = new byte[8192];
+            int read;
+            while ((read = await stdout.ReadAsync(chunk).ConfigureAwait(false)) > 0)
+            {
+                lock (_gate)
+                {
+                    buffer.Write(chunk, 0, read);
+                }
+            }
+
+            lock (_gate)
+            {
+                return buffer.ToArray();
+            }
         });
     }
 
@@ -65,6 +80,7 @@ public sealed class LinuxAudioCapture : IAudioCapture
 
         _recorder = null;
         _reading = null;
+        _buffer = null;
         try
         {
             if (!recorder.HasExited)
@@ -80,6 +96,15 @@ public sealed class LinuxAudioCapture : IAudioCapture
         finally
         {
             recorder.Dispose();
+        }
+    }
+
+    public byte[] Snapshot()
+    {
+        lock (_gate)
+        {
+            var pcm = _buffer?.ToArray() ?? [];
+            return pcm.Length % 2 == 0 ? pcm : pcm[..^1];
         }
     }
 

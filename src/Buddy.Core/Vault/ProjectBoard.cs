@@ -265,6 +265,10 @@ public sealed partial record BoardItem(
             ? value
             : null;
 
+    /// <summary>The item's tags: [tag:: bug] or, written by hand with several, [tag:: bug, ui].</summary>
+    public IReadOnlyList<string> TagList =>
+        Field("tag") is { } tags ? tags.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+
     /// <summary>"costo: 7,22 $" among the tags, in dollars.</summary>
     public decimal? Cost =>
         Tags.Select(t => CostRegex().Match(t)).FirstOrDefault(m => m.Success) is { } match

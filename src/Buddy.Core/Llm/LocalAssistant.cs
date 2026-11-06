@@ -26,9 +26,10 @@ public sealed class LocalAssistant(OllamaClient ollama, ContextBuilder contextBu
 
     /// <summary>The configured prompt, or the default one with the personality chosen at first run.</summary>
     private string SystemPrompt =>
-        string.IsNullOrWhiteSpace(options.Value.Ollama.SystemPrompt)
+        (string.IsNullOrWhiteSpace(options.Value.Ollama.SystemPrompt)
             ? $"{DefaultSystemPrompt}\nTono: {Mentor.Personalities.Describe(options.Value.Mentor)}"
-            : options.Value.Ollama.SystemPrompt;
+            : options.Value.Ollama.SystemPrompt)
+        + (options.Value.Assistant.QuickReplies ? "\n" + Chat.QuickReplies.Instruction : "");
 
     public async IAsyncEnumerable<string> AskAsync(
         string question,

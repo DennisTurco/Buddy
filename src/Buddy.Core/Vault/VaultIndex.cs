@@ -71,6 +71,9 @@ public sealed class VaultIndex : IDisposable
         return result;
     }
 
+    /// <summary>Reads the vault again on next use: after Buddy itself moved files (the watcher may be late, or miss a folder).</summary>
+    public void Refresh() => Invalidate();
+
     /// <summary>A note was added, changed, renamed or deleted. Raised on a background thread.</summary>
     public event Action? Changed;
 
@@ -94,6 +97,12 @@ public sealed class VaultIndex : IDisposable
         var notes = new List<VaultNote>();
         foreach (var path in Directory.EnumerateFiles(_root, "*.md", SearchOption.AllDirectories))
         {
+            // Hidden folders: Obsidian's .trash (notes deleted from Buddy), .obsidian, .git.
+            if (Path.GetRelativePath(_root, path).Split('/', '\\').Any(part => part.StartsWith('.')))
+            {
+                continue;
+            }
+
             try
             {
                 notes.Add(new VaultNote(Path.GetRelativePath(_root, path), File.ReadAllText(path, Encoding.UTF8)));

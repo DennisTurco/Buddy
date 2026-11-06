@@ -36,9 +36,20 @@
                 <StackPanel>
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Left" Text="{Binding Id}" Classes="id" Foreground="{Binding Accent}" IsVisible="{Binding HasId}" Margin="0,0,8,0" />
-                        <Border DockPanel.Dock="Left" Classes="tag" Background="{Binding TagBrush}" IsVisible="{Binding HasTag}">
-                            <TextBlock Text="{Binding Tag}" />
-                        </Border>
+                        <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding TagChips}" IsVisible="{Binding HasTag}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="4" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="p:TagOption">
+                                    <Border Classes="tag" Background="{Binding Brush}">
+                                        <TextBlock Text="{Binding Name}" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <TextBlock Text="{Binding DateText}" Classes="muted" FontSize="11" VerticalAlignment="Center"
                                    HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
                     </DockPanel>
@@ -330,6 +341,18 @@
                         <Button Grid.Column="2" Classes="small" Content="⟳" Click="OnRefreshClick"
                                 ToolTip.Tip="Rileggi le note (si aggiorna anche da sola)" />
                     </Grid>
+                    <!-- Feedback: a new GitHub issue (on Buddy or on the project) and donations. -->
+                    <Grid ColumnDefinitions="*,4,*,4,*" Margin="0,4,0,0">
+                        <Button x:Name="BugButton" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                Content="🐞 Bug" Click="OnReportClick" Tag="bug"
+                                ToolTip.Tip="Segnala un bug: apre una issue su GitHub, su Buddy o sul progetto" />
+                        <Button Grid.Column="2" x:Name="FeatureButton" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                Content="✨ Idea" Click="OnReportClick" Tag="feature"
+                                ToolTip.Tip="Chiedi una funzionalità: apre una issue su GitHub, su Buddy o sul progetto" />
+                        <Button Grid.Column="4" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                Content="❤ Dona" Click="OnDonateClick"
+                                ToolTip.Tip="Sostieni Buddy con una donazione su PayPal" />
+                    </Grid>
                 </StackPanel>
 
                 <ListBox x:Name="Nav" Background="Transparent">
@@ -533,24 +556,30 @@
                 <!-- ====== Bacheca ====== -->
                 <!-- Columns share the width; below ColumnMinWidth each they scroll sideways (e.g. with the side panel open). -->
                 <DockPanel x:Name="BoardPage" IsVisible="False">
-                <!-- Filter by tag: "Tutti" plus every tag used on the board, with how many items have it. -->
-                <ItemsControl x:Name="TagBar" DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="p:TagOption">
-                            <Button Classes="tagfilter" Classes.on="{Binding IsSelected}" Click="OnTagFilterClick">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Ellipse Width="8" Height="8" Fill="{Binding Brush}" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Label}" FontSize="12" />
-                                </StackPanel>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <!-- Filter by tag ("Tutti" plus every tag on the board, with counts); on the right, your cards from the
+                     project's trackers (Jira, GitHub issues, Azure Boards) imported into To-Do. -->
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button x:Name="JiraImportButton" DockPanel.Dock="Right" Classes="small" VerticalAlignment="Top"
+                            Content="⬇ Importa" Click="OnJiraImportClick"
+                            ToolTip.Tip="Importa in To-Do le card assegnate a te (Jira, issue di GitHub, Azure Boards) che non sono ancora nella bacheca" />
+                    <ItemsControl x:Name="TagBar">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="p:TagOption">
+                                <Button Classes="tagfilter" Classes.on="{Binding IsSelected}" Click="OnTagFilterClick">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Ellipse Width="8" Height="8" Fill="{Binding Brush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Label}" FontSize="12" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
                 <ScrollViewer x:Name="BoardView" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <ItemsControl x:Name="BoardColumns">
                     <ItemsControl.ItemsPanel>
@@ -565,6 +594,8 @@
                                 <DockPanel>
                                     <Border DockPanel.Dock="Top" Height="3" CornerRadius="2" Margin="2,0,2,10" Background="{Binding Accent}" />
                                     <DockPanel DockPanel.Dock="Top" Margin="4,0,4,8">
+                                        <Button DockPanel.Dock="Right" Classes="small" Content="＋" Padding="7,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                IsVisible="{Binding CanAdd}" ToolTip.Tip="{Binding AddTip}" Click="OnColumnAddClick" />
                                         <Border DockPanel.Dock="Right" CornerRadius="9" Padding="7,0" Background="{DynamicResource Paper}" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Count}" FontSize="11.5" FontWeight="SemiBold" />
                                         </Border>
@@ -821,6 +852,10 @@
                             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <Button x:Name="EditNoteButton" Classes="small" Content="✏ Modifica" Click="OnEditNoteClick" />
+                                    <Button x:Name="RenameNoteButton" Classes="small" Content="Rinomina" Click="OnRenameNoteClick"
+                                            ToolTip.Tip="Cambia il titolo: rinomina il file e aggiorna i link che puntano alla nota" />
+                                    <Button x:Name="DeleteNoteButton" Classes="small" Content="🗑" Click="OnDeleteNoteClick"
+                                            ToolTip.Tip="Sposta la nota nel cestino del vault (.trash)" />
                                     <Button x:Name="SaveNoteButton" Classes="small" Content="Salva" Click="OnSaveNoteClick" IsVisible="False" ToolTip.Tip="Ctrl+S" />
                                     <Button x:Name="CancelNoteButton" Classes="small" Content="Annulla" Click="OnCancelNoteClick" IsVisible="False" ToolTip.Tip="Esc" />
                                     <Button Classes="small" Content="🕸 Grafo" Click="OnShowNoteInGraphClick" ToolTip.Tip="Mostra la nota e i suoi collegamenti nel grafo" />
@@ -850,9 +885,38 @@
                                         </StackPanel>
                                     </StackPanel>
                                 </ScrollViewer>
-                                <TextBox x:Name="NoteEditor" IsVisible="False" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="13"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+                                <!-- Editor: markdown tool bar, the text, and (optionally) the live preview beside it. -->
+                                <DockPanel x:Name="NoteEditorPanel" IsVisible="False">
+                                    <WrapPanel x:Name="NoteToolbar" DockPanel.Dock="Top" Margin="0,0,0,6">
+                                        <Button Classes="small" Content="B" FontWeight="Bold" Tag="bold" Click="OnFormatClick" ToolTip.Tip="Grassetto (Ctrl+B)" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="I" FontStyle="Italic" Tag="italic" Click="OnFormatClick" ToolTip.Tip="Corsivo (Ctrl+I)" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="S" Tag="strike" Click="OnFormatClick" ToolTip.Tip="Barrato" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="H1" Tag="h1" Click="OnFormatClick" ToolTip.Tip="Titolo" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="H2" Tag="h2" Click="OnFormatClick" ToolTip.Tip="Sottotitolo" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="•" Tag="list" Click="OnFormatClick" ToolTip.Tip="Elenco puntato" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="1." Tag="numbered" Click="OnFormatClick" ToolTip.Tip="Elenco numerato" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="☐" Tag="check" Click="OnFormatClick" ToolTip.Tip="Lista di cose da fare" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="❝" Tag="quote" Click="OnFormatClick" ToolTip.Tip="Citazione" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="&lt;/&gt;" Tag="code" Click="OnFormatClick" ToolTip.Tip="Codice (Ctrl+E); su più righe diventa un blocco" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="[[ ]]" Tag="wikilink" Click="OnFormatClick" ToolTip.Tip="Link a un'altra nota" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="🔗" Tag="link" Click="OnFormatClick" ToolTip.Tip="Link a un indirizzo (Ctrl+K)" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="▦" Tag="table" Click="OnFormatClick" ToolTip.Tip="Tabella" Margin="0,0,4,4" />
+                                        <Button Classes="small" Content="―" Tag="rule" Click="OnFormatClick" ToolTip.Tip="Linea di separazione" Margin="0,0,12,4" />
+                                        <ToggleButton x:Name="NotePreviewToggle" Classes="small" Content="👁 Anteprima" IsChecked="True"
+                                                      IsCheckedChanged="OnNotePreviewToggled" ToolTip.Tip="Mostra il risultato accanto, mentre scrivi" Margin="0,0,4,4" />
+                                    </WrapPanel>
+                                    <Grid x:Name="NoteEditorGrid" ColumnDefinitions="*,12,*">
+                                        <TextBox x:Name="NoteEditor" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                                                 FontFamily="{StaticResource MonoFont}" FontSize="13"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+                                        <Border x:Name="NotePreviewPanel" Grid.Column="2" Classes="panel" Padding="12,8"
+                                                BorderBrush="{DynamicResource UserBubble}" BorderThickness="1" CornerRadius="8">
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                <chat:MarkdownView x:Name="NotePreview" />
+                                            </ScrollViewer>
+                                        </Border>
+                                    </Grid>
+                                </DockPanel>
                             </Panel>
                         </DockPanel>
                     </Border>
@@ -1086,6 +1150,7 @@
                             <Button Classes="small" Content="✏ Modifica" Click="OnEditCardClick" Margin="0,0,6,6" />
                             <Button x:Name="CardManualTestsButton" Classes="small" Click="OnCardManualTestsClick" Margin="0,0,6,6" IsVisible="False" />
                             <Button Classes="small" Content="Apri in Obsidian" Click="OnOpenCardNoteClick" Margin="0,0,6,6" />
+                            <Button x:Name="CardIssueButton" Classes="small" Click="OnCardIssueClick" Margin="0,0,6,6" IsVisible="False" />
                             <Button Classes="small" Content="🔔 Ricordamelo…" Click="OnRemindClick" Margin="0,0,6,6"
                                     ToolTip.Tip="Scrive [promemoria:: data] nella voce: quel giorno il Buddy te la ripropone in chat" />
                             <Button Classes="small" Content="🗑 Elimina" Click="OnDeleteCardClick" Margin="0,0,6,6" />

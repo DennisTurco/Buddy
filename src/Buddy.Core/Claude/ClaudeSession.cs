@@ -158,6 +158,12 @@ public sealed class ClaudeSession : IAsyncDisposable
             yield return claude.PermissionMode.Trim();
         }
 
+        if (_settings.Assistant.QuickReplies)
+        {
+            yield return "--append-system-prompt";
+            yield return Chat.QuickReplies.Instruction;
+        }
+
         var model = ModelOverride ?? claude.Model;
         if (!string.IsNullOrWhiteSpace(model))
         {
@@ -320,7 +326,11 @@ public sealed class ClaudeSession : IAsyncDisposable
         }
 
         JsonObject response = decision.Allow
-            ? new JsonObject { ["behavior"] = "allow", ["updatedInput"] = JsonNode.Parse(input.ValueKind == JsonValueKind.Undefined ? "{}" : input.GetRawText()) }
+            ? new JsonObject
+            {
+                ["behavior"] = "allow",
+                ["updatedInput"] = decision.UpdatedInput?.DeepClone() ?? JsonNode.Parse(input.ValueKind == JsonValueKind.Undefined ? "{}" : input.GetRawText()),
+            }
             : new JsonObject { ["behavior"] = "deny", ["message"] = decision.Message ?? "Rifiutato." };
 
         await WriteLineAsync(new JsonObject

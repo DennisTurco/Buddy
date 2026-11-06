@@ -676,6 +676,11 @@ public sealed class MentorService : IDisposable
         }
 
         _conversation.SetThinking(true);
+        if (_settings.Assistant.QuickReplies)
+        {
+            prompt += "\n\n" + Chat.QuickReplies.Instruction;
+        }
+
         var result = await _claude.RunAsync(prompt, Settings.JournalPath, Settings.Model, readOnly);
         _conversation.SetThinking(false);
         return result.Success && result.Text.Length > 0 ? result.Text : null;

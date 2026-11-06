@@ -639,6 +639,16 @@ public partial class BubbleWindow : Window
     }
 
     private bool _micToNote;
+    private string _dictationBase = "";
+
+    /// <summary>What was in the box before dictating, followed by the dictated text.</summary>
+    private void ShowDictation(string text)
+    {
+        Input.Text = text.Length == 0 ? _dictationBase
+            : _dictationBase.Length == 0 ? text
+            : $"{_dictationBase.TrimEnd()} {text}";
+        Input.CaretIndex = Input.Text.Length;
+    }
     private bool _shiftOnMic;
 
     private async void OnMicClick(object? sender, RoutedEventArgs e)
@@ -662,7 +672,23 @@ public partial class BubbleWindow : Window
             {
                 // Shift+click: what is said goes straight to To-do Appunti, without passing through the chat box.
                 _micToNote = _shiftOnMic;
-                voice.StartRecording();
+                _dictationBase = Input.Text ?? "";
+                if (_settings.Voice.Live)
+                {
+                    // The text appears in the box while speaking; it is replaced by the final one at the end.
+                    voice.StartLive(text => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        if (voice.IsRecording)
+                        {
+                            ShowDictation(text);
+                        }
+                    }));
+                }
+                else
+                {
+                    voice.StartRecording();
+                }
+
                 MicButton.Content = _micToNote ? "📝" : "⏺";
                 MicButton.Foreground = Brushes.IndianRed;
                 ToolTip.SetTip(MicButton, _micToNote ? "Detta l'appunto per To-do Appunti… click per finire" : "Sto ascoltando… click per finire");
@@ -671,16 +697,19 @@ public partial class BubbleWindow : Window
 
             MicButton.Content = "⏳";
             MicButton.IsEnabled = false;
-            var text = await Task.Run(() => voice.StopAndTranscribeAsync());
-            if (text.Length > 0 && _micToNote)
+            var text = await Task.Run(() => _settings.Voice.Live ? voice.StopLiveAsync() : voice.StopAndTranscribeAsync());
+            if (_micToNote)
             {
-                await _conversation.SendAsync($"/appunto {text}");
+                Input.Text = _dictationBase;
+                if (text.Length > 0)
+                {
+                    await _conversation.SendAsync($"/appunto {text}");
+                }
             }
-            else if (text.Length > 0)
+            else
             {
                 // The transcription goes into the box, to be checked before sending.
-                Input.Text = string.IsNullOrEmpty(Input.Text) ? text : $"{Input.Text} {text}";
-                Input.CaretIndex = Input.Text.Length;
+                ShowDictation(text);
                 Input.Focus();
             }
         }
@@ -1180,6 +1209,10 @@ public partial class BubbleWindow : Window
     private void OnAllowClick(object? sender, RoutedEventArgs e) => ((sender as Control)?.DataContext as PermissionEntry)?.Allow();
 
     private void OnDenyClick(object? sender, RoutedEventArgs e) => ((sender as Control)?.DataContext as PermissionEntry)?.Deny();
+
+    private void OnAnswerClick(object? sender, RoutedEventArgs e) => ((sender as Control)?.DataContext as PermissionEntry)?.Answer();
+
+    private void OnSkipQuestionsClick(object? sender, RoutedEventArgs e) => ((sender as Control)?.DataContext as PermissionEntry)?.Skip();
 
     // ---- Pins and notes from answers --------------------------------------------------------------------------
 

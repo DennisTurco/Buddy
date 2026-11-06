@@ -17,6 +17,12 @@ public sealed class BuddySettings
     /// <summary>Regex that recognises task IDs inside a question (e.g. NUSR-1234, or T-001 for tasks without a tracker card).</summary>
     public string TaskIdPattern { get; set; } = @"\b[A-Z]{1,10}-\d+\b";
 
+    /// <summary>Jira project key of the current project (e.g. ABC), used by "⬇ Importa"; empty: every card assigned to you.</summary>
+    public string JiraProject { get; set; } = "";
+
+    /// <summary>Azure DevOps project of the current project; empty: the one of the repository's git remote.</summary>
+    public string AzureProject { get; set; } = "";
+
     /// <summary>
     /// Upper bound for the vault text passed to the local model. Keep it well below the model's context window
     /// (Ollama defaults to 4096 tokens and silently drops the overflow); prompt size also drives latency.
@@ -41,11 +47,21 @@ public sealed class BuddySettings
 
     public VoiceSettings Voice { get; set; } = new();
 
+    public JiraSettings Jira { get; set; } = new();
+
+    public AzureDevOpsSettings AzureDevOps { get; set; } = new();
+
     /// <summary>Saved project setups; switching copies one into the fields above (see <see cref="ProjectPreset.ApplyTo"/>).</summary>
     public List<ProjectPreset> Presets { get; set; } = [];
 
     /// <summary>Name of the preset currently applied, for the menu check mark; empty when none.</summary>
     public string ActivePreset { get; set; } = "";
+
+    /// <summary>
+    /// Folder of a personal copy of the flow template, used instead of the one built into Buddy when a new project's
+    /// vault is created. Empty: the built-in template.
+    /// </summary>
+    public string FlowTemplatePath { get; set; } = "";
 
     /// <summary>False until the first-run wizard (name, interests, personality, journal) has been completed.</summary>
     public bool FirstRunCompleted { get; set; }
@@ -60,6 +76,9 @@ public sealed class VoiceSettings
     public string ModelPath { get; set; } = "";
 
     public string Language { get; set; } = "it";
+
+    /// <summary>Transcribe while speaking (the text appears in the box as you talk) instead of only at the end.</summary>
+    public bool Live { get; set; } = true;
 }
 
 /// <summary>
@@ -183,8 +202,16 @@ public sealed class ProjectPreset
     public RepoSettings Repo { get; set; } = new();
     public List<string> TaskActions { get; set; } = [];
 
+    /// <summary>Jira project key whose cards this project imports (empty: every card assigned to you).</summary>
+    public string JiraProject { get; set; } = "";
+
+    /// <summary>Azure DevOps project whose work items this project imports (empty: the one of the git remote).</summary>
+    public string AzureProject { get; set; } = "";
+
     public static ProjectPreset From(BuddySettings settings, string name) => new()
     {
+        JiraProject = settings.JiraProject,
+        AzureProject = settings.AzureProject,
         Name = name,
         ProjectPath = settings.ProjectPath,
         AlwaysIncludedNotes = [.. settings.AlwaysIncludedNotes],
@@ -224,6 +251,8 @@ public sealed class ProjectPreset
             PullRequestTemplatePattern = Repo.PullRequestTemplatePattern,
         };
         settings.Assistant.TaskActions = [.. TaskActions];
+        settings.JiraProject = JiraProject;
+        settings.AzureProject = AzureProject;
         settings.ActivePreset = Name;
     }
 
@@ -333,6 +362,9 @@ public sealed class RepoSettings
 
 public sealed class AssistantSettings
 {
+    /// <summary>The models propose 2–3 replies at the end of a message that asks something; shown as buttons.</summary>
+    public bool QuickReplies { get; set; } = true;
+
     /// <summary>
     /// Buttons shown in the bubble when a task is known (from the question or the current branch); {id} is replaced
     /// with the task id. Each is sent to Claude, so skills like /lavora work.
@@ -424,6 +456,17 @@ public sealed class AppearanceSettings
     public double ChatZoom { get; set; } = 1;
 
     public ThemeColors Theme { get; set; } = ThemeColors.Light();
+
+    /// <summary>Colour sets saved by the user from Impostazioni → Aspetto, next to the built-in ones (<see cref="ThemeColors.BuiltIn"/>).</summary>
+    public List<NamedTheme> CustomThemes { get; set; } = [];
+}
+
+/// <summary>A colour set with a name: a built-in theme or one saved by the user.</summary>
+public sealed class NamedTheme
+{
+    public string Name { get; set; } = "";
+
+    public ThemeColors Colors { get; set; } = new();
 }
 
 /// <summary>Bubble colours as #RRGGBB strings.</summary>
@@ -458,6 +501,71 @@ public sealed class ThemeColors
         MentorAccent = "#F2B544",
     };
 
+    /// <summary>The five built-in themes, in the order they are offered.</summary>
+    public static IReadOnlyList<(string Name, Func<ThemeColors> Create)> BuiltIn { get; } =
+    [
+        ("Chiaro", Light),
+        ("Scuro", Dark),
+        ("Notte blu", NightBlue),
+        ("Foresta", Forest),
+        ("Tramonto", Sunset),
+    ];
+
+    public ThemeColors Clone() => (ThemeColors)MemberwiseClone();
+
+    /// <summary>Same colours, ignoring case and spaces: tells which theme the current colours come from.</summary>
+    public bool SameAs(ThemeColors other) =>
+        typeof(ThemeColors).GetProperties().Where(p => p.PropertyType == typeof(string))
+            .All(p => string.Equals(((string?)p.GetValue(this))?.Trim(), ((string?)p.GetValue(other))?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    public static ThemeColors NightBlue() => new()
+    {
+        Background = "#141B2D",
+        Border = "#6B7A99",
+        Text = "#E6ECF7",
+        MutedText = "#97A3BA",
+        UserBubble = "#26324D",
+        LocalBubble = "#173A36",
+        LocalAccent = "#5ED3B8",
+        ClaudeBubble = "#2B2E5C",
+        ClaudeAccent = "#8EA8FF",
+        Input = "#1C2540",
+        MentorBubble = "#3A3220",
+        MentorAccent = "#F2C14E",
+    };
+
+    public static ThemeColors Forest() => new()
+    {
+        Background = "#18221C",
+        Border = "#7E9A86",
+        Text = "#E7F0E9",
+        MutedText = "#9DB3A3",
+        UserBubble = "#2A3A30",
+        LocalBubble = "#1E3F2E",
+        LocalAccent = "#86D6A0",
+        ClaudeBubble = "#33304A",
+        ClaudeAccent = "#C3A6F2",
+        Input = "#202C25",
+        MentorBubble = "#3B3520",
+        MentorAccent = "#E8C15A",
+    };
+
+    public static ThemeColors Sunset() => new()
+    {
+        Background = "#FFF6EE",
+        Border = "#3A2A2A",
+        Text = "#3A2A2A",
+        MutedText = "#7A5F57",
+        UserBubble = "#F5E3D8",
+        LocalBubble = "#E4F4E6",
+        LocalAccent = "#6CC28C",
+        ClaudeBubble = "#F7E4F0",
+        ClaudeAccent = "#D98BB8",
+        Input = "#FFFFFF",
+        MentorBubble = "#FFEBC7",
+        MentorAccent = "#F0A33A",
+    };
+
     public static ThemeColors Dark() => new()
     {
         Background = "#1F1C2C",
@@ -473,6 +581,35 @@ public sealed class ThemeColors
         MentorBubble = "#3D3320",
         MentorAccent = "#F2B544",
     };
+}
+
+/// <summary>
+/// Jira: the cards assigned to you, imported into To-Do from the board ("⬇ Jira"). The API token is not here but in
+/// its own file readable only by you (see Tracker.JiraToken).
+/// </summary>
+public sealed class JiraSettings
+{
+    /// <summary>The Jira site, e.g. https://azienda.atlassian.net (Cloud) or the address of Jira Server/Data Center.</summary>
+    public string BaseUrl { get; set; } = "";
+
+    /// <summary>The Atlassian account's email, for Jira Cloud. Empty on Server/Data Center, where the token is a personal access token.</summary>
+    public string Email { get; set; } = "";
+
+    /// <summary>Your own JQL instead of "assigned to me and not done" (the project filter is not added then).</summary>
+    public string Jql { get; set; } = "";
+
+    public bool IsConfigured => BaseUrl.Trim().Length > 0;
+}
+
+/// <summary>
+/// Azure DevOps: work items assigned to you ("⬇ Importa") and your pull requests with their CI. Organization and project
+/// come from the repository's git remote when it is on Azure Repos; these fields are for boards used with a repository
+/// elsewhere. The token (PAT) is in its own private file (see Tracker.AzureToken).
+/// </summary>
+public sealed class AzureDevOpsSettings
+{
+    /// <summary>https://dev.azure.com/organizzazione, or just the organization's name.</summary>
+    public string Organization { get; set; } = "";
 }
 
 public sealed class PetSettings

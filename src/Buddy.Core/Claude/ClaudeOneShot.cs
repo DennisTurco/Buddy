@@ -43,11 +43,13 @@ public sealed class ClaudeOneShot(IOptions<BuddySettings> options, ILogger<Claud
 
         // Read anywhere it was given access to; write only under the working directory; anything else that would
         // need a permission prompt is denied automatically (--permission-prompts none).
+        // The write rule uses an absolute path: "./**" is resolved against the shell's current directory, so after
+        // a "cd" into one of the --add-dir folders every write to the journal was denied. Edit rules also cover Write.
         foreach (var arg in new[]
                  {
                      "-p", "--output-format", "text", "--permission-prompts", "none",
                      "--allowedTools", "Read", "--allowedTools", "Glob", "--allowedTools", "Grep",
-                     "--allowedTools", "Edit(./**)", "--allowedTools", "Write(./**)",
+                     "--allowedTools", $"Edit({AbsoluteRulePath(workingDirectory)}/**)",
                  })
         {
             startInfo.ArgumentList.Add(arg);
@@ -97,6 +99,21 @@ public sealed class ClaudeOneShot(IOptions<BuddySettings> options, ILogger<Claud
             _log.LogError(ex, "claude -p non eseguito in {Folder}", workingDirectory);
             return new OneShotResult(false, ClaudeExecutable.Describe(ex, settings.Claude.Executable));
         }
+    }
+
+    /// <summary>
+    /// A folder in Claude Code's permission-rule syntax for absolute paths: "//" + the path in POSIX form
+    /// ("/home/me/x" → "//home/me/x", "C:\Users\me" → "//c/Users/me").
+    /// </summary>
+    internal static string AbsoluteRulePath(string directory)
+    {
+        var path = Path.GetFullPath(directory).TrimEnd('/', '\\').Replace('\\', '/');
+        if (path.Length >= 2 && path[1] == ':')
+        {
+            path = "/" + char.ToLowerInvariant(path[0]) + path[2..];
+        }
+
+        return "/" + path;
     }
 }
 

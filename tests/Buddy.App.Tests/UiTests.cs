@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.NUnit;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Threading;
 using Buddy.App.Chat;
@@ -107,6 +108,115 @@ public class UiTests
         window.KeyPress(key, modifiers, PhysicalKey.None, null);
         window.KeyRelease(key, modifiers, PhysicalKey.None, null);
         Dispatcher.UIThread.RunJobs();
+    }
+
+    [AvaloniaTest]
+    public async Task Copying_a_line_with_inline_code_keeps_the_whole_text()
+    {
+        var view = new MarkdownView { Markdown = "prima riga\n\nla voce è in `Da valutare` e `To-Do` ok" };
+        var window = new Window { Content = view, Width = 800, Height = 200 };
+        window.Show();
+        await SettleAsync();
+
+        var line = view.GetLogicalDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>().Last();
+        var origin = line.TranslatePoint(new Point(0, 0), window)!.Value;
+        window.MouseDown(new Point(origin.X + 1, origin.Y + 6), MouseButton.Left);
+        window.MouseMove(new Point(origin.X + 790, origin.Y + 6));
+        window.MouseUp(new Point(origin.X + 790, origin.Y + 6), MouseButton.Left);
+        await SettleAsync();
+        Press(window, Key.C, RawInputModifiers.Control);
+        await SettleAsync();
+
+        var copied = await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(window.Clipboard!);
+        Assert.That(copied, Is.EqualTo("la voce è in Da valutare e To-Do ok"));
+    }
+
+    [AvaloniaTest]
+    public async Task Claude_s_multiple_choice_question_is_answered_in_the_bubble()
+    {
+        var settings = Settings();
+        var conversation = Conversation(settings);
+        var bubble = new BubbleWindow(conversation, Options.Create(settings));
+        bubble.Show();
+        using var input = System.Text.Json.JsonDocument.Parse("""
+            {"questions":[{"question":"Cosa faccio con T-004?","header":"T-004","multiSelect":false,
+              "options":[{"label":"Rimanda","description":"tra 30 giorni"},{"label":"Approva","description":"va in To-Do"}]}]}
+            """);
+        var entry = new PermissionEntry(new PermissionRequest("r1", "AskUserQuestion", input.RootElement.Clone()));
+        conversation.Entries.Add(entry);
+        await SettleAsync();
+
+        var visuals = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(bubble).ToList();
+        Assert.That(visuals.OfType<TextBlock>().Any(t => t.Text == "Cosa faccio con T-004?"), Is.True, "the question is shown");
+        var answer = visuals.OfType<Button>().Single(b => b.Content as string == "Rispondi");
+        Assert.That(answer.IsEffectivelyEnabled, Is.False, "nothing chosen yet");
+
+        visuals.OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(t => t.DataContext is OptionView { Label: "Approva" }).IsChecked = true;
+        await SettleAsync(100);
+        Assert.That(answer.IsEffectivelyEnabled, Is.True);
+        answer.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        var decision = await entry.Decision;
+        Assert.That(decision.UpdatedInput!["answers"]!["Cosa faccio con T-004?"]!.GetValue<string>(), Is.EqualTo("Approva"));
+    }
+
+    [AvaloniaTest]
+    public async Task A_new_project_without_a_vault_gets_one_from_the_template()
+    {
+        var settings = Settings();
+        var window = new Buddy.App.Settings.NewProjectWindow(settings);
+        var task = window.ShowAndWaitAsync(null);
+        await SettleAsync(100);
+        var boxes = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<TextBox>().ToList();
+        var (name, vault) = (boxes[0], boxes[2]);
+
+        name.Text = "Demo";
+        Dispatcher.UIThread.RunJobs();
+        Assert.That(boxes.Select(b => b.PlaceholderText), Has.Some.Contains("Obsidian"));
+        Assert.That(vault.Text, Is.EqualTo(Buddy.Core.Vault.FlowTemplate.DefaultProjectFolder("Demo")), "proposed while not edited");
+
+        var folder = Path.Combine(_root, "Vault", "Progetti", "Demo");
+        vault.Text = folder;
+        Dispatcher.UIThread.RunJobs();
+        name.Text = "Demo 2";
+        Dispatcher.UIThread.RunJobs();
+        Assert.That(vault.Text, Is.EqualTo(folder), "a folder chosen by the user stays");
+
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Button>().First(b => b.Content as string == "Crea e passa al progetto")
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        await SettleAsync(200);
+
+        var preset = await task;
+        Assert.That(preset?.ProjectPath, Is.EqualTo(folder));
+        Assert.That(File.Exists(Path.Combine(folder, "To-Do.md")), Is.True);
+        Assert.That(preset!.AlwaysIncludedNotes, Does.Contain("To-Do.md"));
+    }
+
+    [AvaloniaTest]
+    public async Task A_mentor_question_shows_its_quick_replies_and_a_click_answers()
+    {
+        var settings = Settings();
+        var conversation = Conversation(settings);
+        var bubble = new BubbleWindow(conversation, Options.Create(settings));
+        bubble.Show();
+        string? answered = null;
+        conversation.PostMentor("Quale funzione proveresti con il TDD?\n\n<!-- risposte: Lo sconto | Il login -->", reply =>
+        {
+            answered = reply;
+            return Task.CompletedTask;
+        });
+        await SettleAsync();
+
+        var entry = conversation.Entries.Last();
+        Assert.That(entry.Text, Is.EqualTo("Quale funzione proveresti con il TDD?"));
+        var buttons = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(bubble).OfType<Button>()
+            .Where(b => b.DataContext is ChatAction).ToList();
+        Assert.That(buttons.Select(b => ((ChatAction)b.DataContext!).Label), Is.EqualTo(new[] { "Lo sconto", "Il login" }));
+
+        buttons[0].RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        await SettleAsync();
+        Assert.That(answered, Is.EqualTo("Lo sconto"));
+        Assert.That(entry.HasActions, Is.False, "the buttons go away once used");
     }
 
     [AvaloniaTest]
@@ -283,6 +393,211 @@ public class PagesAndPaletteTests
     }
 
     [AvaloniaTest]
+    public async Task A_task_added_with_the_form_lands_in_To_Do_with_the_next_id()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-entry-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            window.ShowEntryForm = form =>
+            {
+                form.TitleBox.Text = "Login con SSO";
+                form.DoneWhenBox.Text = "si entra con l'account aziendale";
+                form.TagButtons.First(b => (string)b.Content! == "feature").IsChecked = true;
+                return Task.FromResult<Buddy.Core.Vault.NewEntry?>(form.Entry);
+            };
+            var todo = window.Board!.Columns.First(c => c.Key == "todo");
+            await window.AddEntryAsync(todo);
+            await window.AddEntryAsync(todo);
+
+            var content = File.ReadAllText(Path.Combine(project, "To-Do.md"));
+            Assert.That(content, Does.Contain("- [ ] T-001 · " + DateTime.Today.ToString("yyyy-MM-dd") + " · Login con SSO [priorita:: P2] [stima:: 1h] [tag:: feature]"));
+            Assert.That(content, Does.Contain("- [ ] T-002 · "), "the second one takes the next id");
+            Assert.That(content, Does.Contain("prossimo_id: T-003"));
+            Assert.That(content, Does.Contain("  - Fatto quando: si entra con l'account aziendale"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
+    public async Task A_page_note_is_edited_with_the_tool_bar_and_renamed_but_flow_notes_are_protected()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-editor-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var note = CustomPages.CreateNote(project, "Ricette", "Avvio", "uno");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            var notesList = window.FindControl<ListBox>("NotesList")!;
+            var rename = window.FindControl<Button>("RenameNoteButton")!;
+            window.ShowView("notes");
+            notesList.SelectedItem = notesList.Items.OfType<NoteView>().First(n => n.Title == "To-Do");
+            await Settle();
+            Assert.That(rename.IsVisible, Is.False, "To-Do cannot be renamed");
+
+            notesList.SelectedItem = notesList.Items.OfType<NoteView>().First(n => n.Title == "Avvio");
+            await Settle();
+            Assert.That(rename.IsVisible, Is.True);
+
+            window.FindControl<Button>("EditNoteButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await Settle();
+            var editor = window.FindControl<TextBox>("NoteEditor")!;
+            Assert.That(window.FindControl<Control>("NoteToolbar")!.IsEffectivelyVisible, Is.True);
+            var at = editor.Text!.IndexOf("uno", StringComparison.Ordinal);
+            editor.SelectionStart = at;
+            editor.SelectionEnd = at + 3;
+            editor.Focus();
+            window.KeyPress(Key.B, RawInputModifiers.Control, PhysicalKey.B, "b");
+            Dispatcher.UIThread.RunJobs();
+            Assert.That(editor.Text, Does.Contain("**uno**"));
+
+            await Task.Delay(300);
+            await Settle();
+            Assert.That(window.FindControl<Buddy.App.Chat.MarkdownView>("NotePreview")!.Markdown, Does.Contain("**uno**"), "live preview");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
+    public async Task Jira_cards_not_on_the_board_are_imported_into_To_Do()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-jira-ui-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            Buddy.Core.Vault.VaultWriter.AppendItem(Path.Combine(project, "Da controllare.md"), "Voci", "- [ ] ABC-1 · Già fatto");
+            var settings = new BuddySettings { ProjectPath = project, Jira = { BaseUrl = "https://a.atlassian.net" } };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            Buddy.Core.Tracker.TrackerIssue Card(string key, string title) => new(key, title, "", "High", "Story", "To Do", "Persona A", null, $"https://a.atlassian.net/browse/{key}");
+            var tracker = new FakeTracker([Card("ABC-1", "Già fatto"), Card("ABC-2", "Nuova"), Card("ABC-3", "Scartata")]);
+            IReadOnlyList<string>? offered = null;
+            window.ShowTrackerImport = dialog =>
+            {
+                offered = dialog.Boxes.Select(b => ((TextBlock)((StackPanel)b.Content!).Children[0]).Text!).ToList();
+                dialog.Boxes[1].IsChecked = false;
+                return Task.FromResult<IReadOnlyList<Buddy.Core.Tracker.TrackerIssue>?>([Card("ABC-2", "Nuova")]);
+            };
+
+            await window.ImportAsync(tracker);
+
+            Assert.That(offered, Is.EqualTo(new[] { "ABC-2 · Nuova", "ABC-3 · Scartata" }), "ABC-1 is already on the board");
+            var todo = File.ReadAllText(Path.Combine(project, "To-Do.md"));
+            Assert.That(todo, Does.Contain("- [ ] ABC-2 · " + DateTime.Today.ToString("yyyy-MM-dd") + " · Nuova [priorita:: P1] [tag:: ticket]"));
+            Assert.That(todo, Does.Not.Contain("ABC-3"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
+    public async Task A_card_becomes_a_GitHub_issue_and_keeps_its_link()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-issue-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            Buddy.Core.Vault.VaultWriter.AppendItem(Path.Combine(project, "To-Do.md"), "Task",
+                "- [ ] T-001 · 2026-11-06 · Export CSV vuoto [priorita:: P1] [tag:: bug]\n  - Fatto quando: il CSV ha i voti");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.GitHubRepoSource = () => Task.FromResult<Buddy.Core.Repo.GitHubRepo?>(new Buddy.Core.Repo.GitHubRepo("o", "r"));
+            Buddy.Core.Tracker.IssueDraft? proposed = null, created = null;
+            window.ShowIssueForm = form =>
+            {
+                proposed = form.Issue;
+                form.TitleBox.Text = "Export CSV senza righe";
+                return Task.FromResult(form.Issue);
+            };
+            window.CreateIssue = draft =>
+            {
+                created = draft;
+                return Task.FromResult("https://github.com/o/r/issues/42");
+            };
+            window.Show();
+            await Settle();
+            window.ShowView("board");
+            await Settle();
+
+            var card = window.Cards.Single(c => c.Id == "T-001");
+            window.Select(card);
+            await Settle();
+            var button = window.FindControl<Button>("CardIssueButton")!;
+            Assert.That(button.IsVisible, Is.True);
+            Assert.That(button.Content, Is.EqualTo("✚ Crea issue GitHub"));
+
+            await window.CreateIssueAsync(card);
+            await Settle();
+
+            Assert.That(proposed!.Body, Does.Contain("- **Fatto quando**: il CSV ha i voti"));
+            Assert.That(created!.Title, Is.EqualTo("Export CSV senza righe"));
+            Assert.That(created.Labels, Is.EqualTo(new[] { "bug" }));
+            Assert.That(File.ReadAllText(Path.Combine(project, "To-Do.md")), Does.Contain("[tag:: bug] [issue:: https://github.com/o/r/issues/42]"));
+            Assert.That(button.Content, Is.EqualTo("↗ Issue #42"), "the card stays selected and now points to its issue");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
+    public async Task A_card_with_an_open_pull_request_shows_its_CI()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-ci-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            Buddy.Core.Vault.VaultWriter.AppendItem(Path.Combine(project, "Da controllare.md"), "Voci", "- [ ] AB-42 · Export voti");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.PullRequestSource = () => Task.FromResult<(IReadOnlyList<Buddy.Core.Repo.PullRequestInfo>, string?)>(
+                ([new Buddy.Core.Repo.PullRequestInfo(5, "Export voti", "feature/AB-42", "https://x/pr/5", false, "APPROVED", "failure", null, "AB-42")], null));
+            window.Show();
+            await Settle();
+            window.ShowView("board");
+            await Settle();
+
+            var card = window.Cards.Single(c => c.Id == "AB-42");
+            Assert.That(card.Chips.First().Text, Is.EqualTo("❌ CI #5 · 👍"));
+            Assert.That(card.Chips.First().IsHot, Is.True);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
     public async Task A_folder_in_Pagine_is_a_page_and_Ctrl_K_finds_its_notes()
     {
         var root = Directory.CreateTempSubdirectory("buddy-pages-").FullName;
@@ -333,4 +648,12 @@ internal static class ProjectWindowTestExtensions
     public static CheckBox FindVisualCheck(this ProjectWindow window, string text) =>
         Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<CheckBox>()
             .First(c => c.DataContext is CheckView view && view.Text.StartsWith(text, StringComparison.Ordinal) && view.Text[text.Length..].StartsWith(' '));
+}
+
+/// <summary>A tracker that returns fixed cards.</summary>
+internal sealed class FakeTracker(IReadOnlyList<Buddy.Core.Tracker.TrackerIssue> issues) : Buddy.Core.Tracker.ITracker
+{
+    public string Name => "Finto";
+
+    public Task<IReadOnlyList<Buddy.Core.Tracker.TrackerIssue>> AssignedAsync(CancellationToken cancellationToken = default) => Task.FromResult(issues);
 }

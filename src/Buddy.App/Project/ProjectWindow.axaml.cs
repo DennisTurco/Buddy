@@ -50,6 +50,11 @@ public partial class ProjectWindow : Window
     private readonly DispatcherTimer _reload;
     private readonly DispatcherTimer _quickNoteDone;
     private ProjectBoard? _board;
+    private readonly DispatcherTimer _notePreview;
+
+    /// <summary>The board as last read from the vault (for tests).</summary>
+    internal ProjectBoard? Board => _board;
+
     private List<NoteView> _notes = [];
     private List<CardView> _cards = [];
     private string _view = "overview";
@@ -129,6 +134,18 @@ public partial class ProjectWindow : Window
         Graph.NoteActivated += OnGraphNoteActivated;
         PageFindBox.TextChanged += (_, _) => UpdatePageFind();
         PageFindBox.AddHandler(KeyDownEvent, OnPageFindKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        NoteEditor.AddHandler(KeyDownEvent, OnNoteEditorKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        _notePreview = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _notePreview.Tick += (_, _) =>
+        {
+            _notePreview.Stop();
+            UpdateNotePreview();
+        };
+        NoteEditor.TextChanged += (_, _) =>
+        {
+            _notePreview.Stop();
+            _notePreview.Start();
+        };
         NotesList.SelectionChanged += (_, _) => ShowNote(NotesList.SelectedItem as NoteView);
         ManualDocsList.SelectionChanged += (_, _) =>
         {
@@ -148,6 +165,7 @@ public partial class ProjectWindow : Window
         BoardView.SizeChanged += (_, _) => FitColumns();
         PageScroller.SizeChanged += (_, _) => FitPageCards();
         SetUpBoardDrag();
+
         SetUpPalette();
 
         Reload();
@@ -234,6 +252,11 @@ public partial class ProjectWindow : Window
         {
             Graph.Resume();
         }
+
+        if (key == "board")
+        {
+            _ = LoadPullRequestsAsync();
+        }
         ManualTestsView.IsVisible = key == "manualtests";
         WebTestsView.IsVisible = key == "webtests";
         ViewTitle.Text = TitleOf(key);
@@ -258,6 +281,11 @@ public partial class ProjectWindow : Window
 
     private void Render()
     {
+        if (_view == "board")
+        {
+            _ = LoadPullRequestsAsync(); // CI of the open PRs on the cards; cached, re-renders when it changes
+        }
+
         var filter = Filter.Text?.Trim() ?? "";
         var today = DateOnly.FromDateTime(DateTime.Today);
         var columns = _board?.Columns ?? [];
@@ -270,8 +298,8 @@ public partial class ProjectWindow : Window
             }
 
             var cards = column.Items.Where(i => i.Matches(filter))
-                .Where(i => _tagFilter is null || !Flow.Active.Contains(key) || string.Equals(i.Field("tag"), _tagFilter, StringComparison.OrdinalIgnoreCase))
-                .Select(i => new CardView(i, column, today));
+                .Where(i => _tagFilter is null || !Flow.Active.Contains(key) || i.TagList.Contains(_tagFilter, StringComparer.OrdinalIgnoreCase))
+                .Select(i => new CardView(i, column, today, PullRequestOf(i)));
             return key switch
             {
                 "todo" => cards.OrderBy(c => c.Priority).ThenBy(c => c.Item.Date ?? DateOnly.MaxValue).ToList(),
@@ -295,7 +323,7 @@ public partial class ProjectWindow : Window
 
         // Tag filter bar: every tag on the board, with its count.
         var boardTags = columns.Where(c => Flow.Active.Contains(c.Key)).SelectMany(c => c.Items)
-            .Select(i => i.Field("tag")).OfType<string>()
+            .SelectMany(i => i.TagList)
             .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
             .Select(g => new TagOption(g.Key, Tags.Brush(g.Key), string.Equals(g.Key, _tagFilter, StringComparison.OrdinalIgnoreCase), g.Count()))
@@ -548,11 +576,11 @@ public partial class ProjectWindow : Window
         _ = LoadTimelineAsync(card);
 
         // Tag picker: the common tags plus any already used in the vault; the item's own is highlighted.
-        var used = (_board?.Columns ?? []).SelectMany(c => c.Items).Select(i => i.Field("tag")).OfType<string>();
+        var used = (_board?.Columns ?? []).SelectMany(c => c.Items).SelectMany(i => i.TagList);
         DetailTags.ItemsSource = Tags.Defaults.Select(d => d.Name)
             .Concat(used.Where(u => !Tags.Defaults.Any(d => d.Name.Equals(u, StringComparison.OrdinalIgnoreCase))))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(t => new TagOption(t, Tags.Brush(t), string.Equals(t, card.Tag, StringComparison.OrdinalIgnoreCase)))
+            .Select(t => new TagOption(t, Tags.Brush(t), card.Item.TagList.Contains(t, StringComparer.OrdinalIgnoreCase)))
             .ToList();
         TagRemoveButton.IsVisible = card.HasTag;
         TagPanel.IsVisible = card.Item.Raw.Length > 0;
@@ -560,6 +588,123 @@ public partial class ProjectWindow : Window
         var manual = card.Id is { } taskId ? _manualDocs.FirstOrDefault(d => d.TaskId == taskId) : null;
         CardManualTestsButton.IsVisible = manual is not null;
         CardManualTestsButton.Content = manual is null ? "" : $"🧪 Test manuali {manual.Doc.Done}/{manual.Doc.Total}";
+        _ = UpdateIssueButtonAsync(card);
+    }
+
+    // ---- Card → GitHub issue ----------------------------------------------------------------------------------
+
+    /// <summary>Tests give the repository instead of reading the git remote.</summary>
+    internal Func<Task<Buddy.Core.Repo.GitHubRepo?>>? GitHubRepoSource { get; set; }
+
+    /// <summary>Tests write the issue instead of the dialog.</summary>
+    internal Func<IssueFormWindow, Task<Buddy.Core.Tracker.IssueDraft?>>? ShowIssueForm { get; set; }
+
+    /// <summary>Tests create the issue instead of gh; returns its link.</summary>
+    internal Func<Buddy.Core.Tracker.IssueDraft, Task<string>>? CreateIssue { get; set; }
+
+    private Task<Buddy.Core.Repo.GitHubRepo?>? _gitHubRepo;
+
+    /// <summary>The project's GitHub repository (from the git remote, read once), null when it is not on GitHub.</summary>
+    private Task<Buddy.Core.Repo.GitHubRepo?> GitHubRepoAsync()
+    {
+        if (GitHubRepoSource is { } source)
+        {
+            return source();
+        }
+
+        _repo ??= new Buddy.Core.Repo.GitRepo(Options.Create(_settings), TimeProvider.System);
+        var repo = _repo;
+        return _gitHubRepo ??= Task.Run(async () =>
+            repo.IsAvailable ? Buddy.Core.Repo.GitHubLinks.FromRemote(await repo.GetRemoteUrlAsync()) : null);
+    }
+
+    /// <summary>
+    /// "↗ Issue #12" when the card is tied to an issue (opens it); "✚ Crea issue GitHub" for an open card of a
+    /// project on GitHub; hidden otherwise.
+    /// </summary>
+    private async Task UpdateIssueButtonAsync(CardView card)
+    {
+        CardIssueButton.IsVisible = false;
+        if (card.Item.Raw.Length == 0)
+        {
+            return;
+        }
+
+        if (Buddy.Core.Tracker.IssueFromCard.LinkOf(card.Item) is { } link)
+        {
+            CardIssueButton.Content = $"↗ Issue {Buddy.Core.Tracker.IssueFromCard.Number(link)}";
+            ToolTip.SetTip(CardIssueButton, link);
+            CardIssueButton.IsVisible = true;
+            return;
+        }
+
+        if (card.Column.Key is "fatti" or "rifiutati" || await GitHubRepoAsync() is not { } repository || _selected != card)
+        {
+            return;
+        }
+
+        CardIssueButton.Content = "✚ Crea issue GitHub";
+        ToolTip.SetTip(CardIssueButton, $"Crea un'issue in {repository} da questa voce e ci mette il link");
+        CardIssueButton.IsVisible = true;
+    }
+
+    private async void OnCardIssueClick(object? sender, RoutedEventArgs e)
+    {
+        if (_selected is not { } card)
+        {
+            return;
+        }
+
+        if (Buddy.Core.Tracker.IssueFromCard.LinkOf(card.Item) is { } link)
+        {
+            Shell.Open(link);
+            return;
+        }
+
+        await CreateIssueAsync(card);
+    }
+
+    /// <summary>The issue proposed from the card, checked in the form, created with gh; the card gets [issue:: link].</summary>
+    internal async Task CreateIssueAsync(CardView card)
+    {
+        if (await GitHubRepoAsync() is not { } repository)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, "Il repository di questo progetto non è su GitHub.");
+            return;
+        }
+
+        var window = new IssueFormWindow(repository.ToString(), Buddy.Core.Tracker.IssueFromCard.Draft(card.Item));
+        if (await (ShowIssueForm?.Invoke(window) ?? window.ShowAndWaitAsync(this)) is not { } draft)
+        {
+            return;
+        }
+
+        string url;
+        CardIssueButton.IsEnabled = false;
+        CardIssueButton.Content = "✚ Creo l'issue…";
+        try
+        {
+            var repoPath = _repo?.RootPath ?? "";
+            url = CreateIssue is { } create
+                ? await create(draft)
+                : await Task.Run(() => Buddy.Core.Tracker.IssueFromCard.CreateAsync(repoPath, draft));
+        }
+        catch (Buddy.Core.Tracker.TrackerException ex)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, $"GitHub non ha creato l'issue: {ex.Message}");
+            CardIssueButton.Content = "✚ Crea issue GitHub";
+            return;
+        }
+        finally
+        {
+            CardIssueButton.IsEnabled = true;
+        }
+
+        if (await WriteAsync(() => VaultWriter.ReplaceBlock(FullPath(card.Column.NotePath), card.Item.Raw,
+                ItemFields.Set(card.Item.Raw, Buddy.Core.Tracker.IssueFromCard.Field, url))))
+        {
+            AfterEdit();
+        }
     }
 
     private void CloseDetail()
@@ -618,6 +763,199 @@ public partial class ProjectWindow : Window
         ClaudeRequested?.Invoke(action.Command.Replace("{id}", id).Replace("{input}", input).Trim());
     }
 
+    private static readonly HttpClient JiraHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
+
+    /// <summary>Tests give the trackers instead of reading the settings and the git remote.</summary>
+    internal Func<Task<IReadOnlyList<Buddy.Core.Tracker.ITracker>>>? TrackerSource { get; set; }
+
+    /// <summary>Tests pick the cards instead of the dialog.</summary>
+    internal Func<TrackerImportWindow, Task<IReadOnlyList<Buddy.Core.Tracker.TrackerIssue>?>>? ShowTrackerImport { get; set; }
+
+    /// <summary>"⬇ Importa": the trackers of this project; one is used at once, with several a menu asks which.</summary>
+    private async void OnJiraImportClick(object? sender, RoutedEventArgs e)
+    {
+        _repo ??= new Buddy.Core.Repo.GitRepo(Microsoft.Extensions.Options.Options.Create(_settings), TimeProvider.System);
+        var repo = _repo;
+        var trackers = TrackerSource is { } source
+            ? await source()
+            : await Task.Run(() => Buddy.Core.Tracker.ProjectTrackers.AvailableAsync(_settings, SettingsStore.Folder, JiraHttp, repo));
+        switch (trackers.Count)
+        {
+            case 0:
+                await Settings.Dialogs.ShowMessageAsync(this,
+                    "Nessun tracker collegato a questo progetto. Le card arrivano da:\n"
+                    + "• Jira — indirizzo e token in Impostazioni → Assistente → Jira;\n"
+                    + "• issue di GitHub — se il repository è su GitHub (serve gh collegato con «gh auth login»);\n"
+                    + "• Azure Boards — token (PAT) in Impostazioni → Assistente → Azure DevOps, progetto dal repository o dalle impostazioni.");
+                return;
+            case 1:
+                await ImportAsync(trackers[0]);
+                return;
+        }
+
+        var menu = new ContextMenu { Placement = PlacementMode.BottomEdgeAlignedRight, PlacementTarget = JiraImportButton };
+        foreach (var tracker in trackers)
+        {
+            var item = new MenuItem { Header = $"Da {tracker.Name}" };
+            item.Click += async (_, _) => await ImportAsync(tracker);
+            menu.Items.Add(item);
+        }
+
+        // A ContextMenu, not a MenuFlyout: the flyout does not open on X11.
+        JiraImportButton.ContextMenu = menu;
+        menu.Open(JiraImportButton);
+    }
+
+    /// <summary>The cards assigned to you in <paramref name="tracker"/>, the new ones to pick, the picked ones appended to To-Do.</summary>
+    internal async Task ImportAsync(Buddy.Core.Tracker.ITracker tracker)
+    {
+        if (_board?.Columns.FirstOrDefault(c => c.Key == "todo") is not { } todo)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, "Nel vault non c'è la nota «To-Do»: le card importate vanno lì.");
+            return;
+        }
+
+        IReadOnlyList<Buddy.Core.Tracker.TrackerIssue> all;
+        JiraImportButton.IsEnabled = false;
+        JiraImportButton.Content = "⬇ Importa…";
+        try
+        {
+            all = await Task.Run(() => tracker.AssignedAsync());
+        }
+        catch (Exception ex) when (ex is Buddy.Core.Tracker.TrackerException or HttpRequestException or TaskCanceledException or UriFormatException
+                                       or InvalidOperationException or System.Text.Json.JsonException)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, ex is Buddy.Core.Tracker.TrackerException ? ex.Message : $"Non riesco a leggere {tracker.Name}: {ex.Message}");
+            return;
+        }
+        finally
+        {
+            JiraImportButton.IsEnabled = true;
+            JiraImportButton.Content = "⬇ Importa";
+        }
+
+        var fresh = Buddy.Core.Tracker.TrackerImport.New(all, _board);
+        var window = new TrackerImportWindow(tracker.Name, fresh, all.Count - fresh.Count);
+        if (await (ShowTrackerImport?.Invoke(window) ?? window.ShowAndWaitAsync(this)) is not { Count: > 0 } picked)
+        {
+            return;
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (await WriteAsync(() =>
+            {
+                foreach (var issue in picked)
+                {
+                    VaultWriter.AppendItem(FullPath(todo.NotePath), BoardEntries.Sections["todo"], Buddy.Core.Tracker.TrackerImport.ToTask(issue, today));
+                }
+            }))
+        {
+            AfterEdit();
+        }
+    }
+
+    /// <summary>The open PR whose branch or title names the item's task (from the last read, see LoadPullRequestsAsync).</summary>
+    private Buddy.Core.Repo.PullRequestInfo? PullRequestOf(BoardItem item) =>
+        item.Id is { } id && _prs?.List is { } prs ? prs.FirstOrDefault(p => string.Equals(p.TaskId, id, StringComparison.OrdinalIgnoreCase)) : null;
+
+    private bool _loadingPullRequests;
+
+    /// <summary>
+    /// Reads the open PRs and their CI in the background (GitHub or Azure Repos, at most every 3 minutes) and shows
+    /// them on the board's cards.
+    /// </summary>
+    private async Task LoadPullRequestsAsync(bool refresh = false)
+    {
+        if (_loadingPullRequests || (!refresh && _prs is { } cached && DateTime.Now - cached.At < TimeSpan.FromMinutes(3)))
+        {
+            return;
+        }
+
+        _loadingPullRequests = true;
+        try
+        {
+            _repo ??= new Buddy.Core.Repo.GitRepo(Microsoft.Extensions.Options.Options.Create(_settings), TimeProvider.System);
+            var repo = _repo;
+            var (list, problem) = PullRequestSource is { } source
+                ? await source()
+                : await Task.Run(() => Buddy.Core.Tracker.ProjectTrackers.PullRequestsAsync(_settings, SettingsStore.Folder, JiraHttp, repo));
+            var changed = _prs is not { } before || !before.List.SequenceEqual(list);
+            _prs = (DateTime.Now, list, problem);
+            if (changed && list.Count > 0 && _view == "board")
+            {
+                Render();
+            }
+        }
+        finally
+        {
+            _loadingPullRequests = false;
+        }
+    }
+
+    /// <summary>Tests give the PRs instead of asking GitHub or Azure DevOps.</summary>
+    internal Func<Task<(IReadOnlyList<Buddy.Core.Repo.PullRequestInfo> List, string? Problem)>>? PullRequestSource { get; set; }
+
+    private async void OnColumnAddClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: ColumnView column })
+        {
+            await AddEntryAsync(column.Column);
+        }
+    }
+
+    /// <summary>Tests fill in the form instead of showing it as a dialog.</summary>
+    internal Func<EntryFormWindow, Task<NewEntry?>>? ShowEntryForm { get; set; }
+
+    /// <summary>"＋" on a column: the form, then the item written in the column's note in the flow's format.</summary>
+    internal async Task AddEntryAsync(BoardColumn column)
+    {
+        if (_board is null || !BoardEntries.Sections.TryGetValue(column.Key, out var section))
+        {
+            return;
+        }
+
+        var todo = _board.Columns.FirstOrDefault(c => c.Key == "todo");
+        var todoPath = todo is null ? null : FullPath(todo.NotePath);
+        var usedIds = _board.Columns.SelectMany(c => c.Items).Select(i => i.Id);
+        var nextId = BoardEntries.NextId(todoPath is not null && File.Exists(todoPath) ? File.ReadAllText(todoPath) : null, usedIds);
+        var knownTags = Tags.Defaults.Select(d => d.Name).Concat(_board.Columns.SelectMany(c => c.Items).SelectMany(i => i.TagList));
+
+        var form = new EntryFormWindow(column.Key, nextId, knownTags);
+        if (await (ShowEntryForm?.Invoke(form) ?? form.ShowAndWaitAsync(this)) is not { } entry)
+        {
+            return;
+        }
+
+        var id = entry.Id.Length > 0 ? entry.Id : nextId;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var text = column.Key switch
+        {
+            "appunti" => BoardEntries.Appunto(entry, today),
+            "attesa" => BoardEntries.WaitingTask(entry, id),
+            "controllare" => BoardEntries.ToReview(entry, id),
+            _ => BoardEntries.Task(entry, id, today),
+        };
+
+        var written = await WriteAsync(() =>
+        {
+            VaultWriter.AppendItem(FullPath(column.NotePath), section, text);
+            if (column.Key != "appunti" && todoPath is not null && File.Exists(todoPath))
+            {
+                // The id is taken: the counter moves past it, as /smista does.
+                var content = File.ReadAllText(todoPath).Replace("\r\n", "\n");
+                var advanced = BoardEntries.AdvanceNextId(content, id);
+                if (advanced != content)
+                {
+                    VaultWriter.Save(todoPath, content, advanced);
+                }
+            }
+        });
+        if (written)
+        {
+            AfterEdit();
+        }
+    }
+
     private void OnColumnActionClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: FlowAction action })
@@ -639,21 +977,33 @@ public partial class ProjectWindow : Window
     {
         if (sender is Control { DataContext: TagOption tag })
         {
-            await SetTagAsync(tag.IsSelected ? null : tag.Name);
+            await ToggleTagAsync(tag.Name);
         }
     }
 
     private async void OnTagOtherClick(object? sender, RoutedEventArgs e)
     {
-        if (await Settings.Dialogs.AskAsync(this, "Tag", "Nome del tag (es. sicurezza, performance):", _selected?.Tag ?? "") is { } name)
+        if (await Settings.Dialogs.AskAsync(this, "Tag", "Nome del tag (es. sicurezza, performance):") is { } name)
         {
-            await SetTagAsync(name.ToLowerInvariant());
+            await ToggleTagAsync(name.ToLowerInvariant().Trim());
         }
     }
 
     private async void OnTagRemoveClick(object? sender, RoutedEventArgs e) => await SetTagAsync(null);
 
-    /// <summary>Writes [tag:: name] on the item's first line in its note (null removes it).</summary>
+    /// <summary>Adds the tag to the item, or removes it when it already has it (an item can have several).</summary>
+    private Task ToggleTagAsync(string tag)
+    {
+        var tags = _selected?.Item.TagList.ToList() ?? [];
+        if (tags.RemoveAll(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase)) == 0 && tag.Length > 0)
+        {
+            tags.Add(tag);
+        }
+
+        return SetTagAsync(tags.Count == 0 ? null : string.Join(", ", tags));
+    }
+
+    /// <summary>Writes [tag:: names] on the item's first line in its note (null removes it).</summary>
     private async Task SetTagAsync(string? tag)
     {
         if (_selected is not { } card || card.Item.Raw.Length == 0)
@@ -1260,6 +1610,8 @@ public partial class ProjectWindow : Window
         }
 
         NoteTitle.Text = note?.Title ?? "";
+        RenameNoteButton.IsVisible = note is not null && CanManageSelectedNote;
+        DeleteNoteButton.IsVisible = note is not null && CanManageSelectedNote;
         NoteViewer.Markdown = note?.Markdown ?? "";
         NoteScroller.Offset = new Vector(0, 0);
         RefreshPageFind();
@@ -1333,12 +1685,114 @@ public partial class ProjectWindow : Window
 
     private void SetNoteEditing(bool editing)
     {
-        NoteEditor.IsVisible = editing;
+        NoteEditorPanel.IsVisible = editing;
         NoteScroller.IsVisible = !editing;
         EditNoteButton.IsVisible = !editing;
+        RenameNoteButton.IsVisible = !editing && CanManageSelectedNote;
+        DeleteNoteButton.IsVisible = !editing && CanManageSelectedNote;
+        if (editing)
+        {
+            UpdateNotePreview();
+        }
+
         SaveNoteButton.IsVisible = editing;
         CancelNoteButton.IsVisible = editing;
         NotesList.IsEnabled = !editing;
+    }
+
+    /// <summary>Flow notes (To-Do, Scheda progetto…) are not renamed or deleted from here: the flow relies on their names.</summary>
+    private bool CanManageSelectedNote => NotesList.SelectedItem is NoteView note && !NoteFiles.IsFlowNote(note.Note.RelativePath);
+
+    private async void OnRenameNoteClick(object? sender, RoutedEventArgs e)
+    {
+        if (NotesList.SelectedItem is not NoteView note
+            || await Settings.Dialogs.AskAsync(this, "Rinomina nota", "Nuovo titolo (i link alla nota vengono aggiornati):", note.Title) is not { } title)
+        {
+            return;
+        }
+
+        var renamed = note.Note.RelativePath;
+        if (await WriteAsync(() => renamed = NoteFiles.Rename(_settings.ProjectPath, note.Note.RelativePath, title)))
+        {
+            _vault.Refresh();
+            Reload();
+            OpenInNotesView(renamed);
+        }
+    }
+
+    private async void OnDeleteNoteClick(object? sender, RoutedEventArgs e)
+    {
+        if (NotesList.SelectedItem is not NoteView note
+            || !await Settings.Dialogs.ConfirmAsync(this,
+                $"Eliminare la nota «{note.Title}»? Finisce nel cestino del vault (.trash), da cui si può recuperare.", "Elimina"))
+        {
+            return;
+        }
+
+        if (await WriteAsync(() => NoteFiles.Delete(_settings.ProjectPath, note.Note.RelativePath)))
+        {
+            _vault.Refresh();
+            Reload();
+        }
+    }
+
+    // ---- Note editor: tool bar, shortcuts, live preview ------------------------------------------------------
+
+    private void OnFormatClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: string command })
+        {
+            ApplyFormat(command);
+        }
+    }
+
+    private void ApplyFormat(string command)
+    {
+        var result = Buddy.Core.Text.MarkdownFormat.Apply(NoteEditor.Text ?? "", NoteEditor.SelectionStart, NoteEditor.SelectionEnd, command);
+        NoteEditor.Text = result.Text;
+        NoteEditor.SelectionStart = result.SelectionStart;
+        NoteEditor.SelectionEnd = result.SelectionEnd;
+        NoteEditor.Focus();
+    }
+
+    /// <summary>Ctrl+B bold, Ctrl+I italic, Ctrl+E code, Ctrl+K link: while typing they win over the window's shortcuts.</summary>
+    private void OnNoteEditorKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            return;
+        }
+
+        var command = e.Key switch
+        {
+            Key.B => "bold",
+            Key.I => "italic",
+            Key.E => "code",
+            Key.K => "link",
+            _ => null,
+        };
+        if (command is not null)
+        {
+            e.Handled = true;
+            ApplyFormat(command);
+        }
+    }
+
+    private void OnNotePreviewToggled(object? sender, RoutedEventArgs e)
+    {
+        var show = NotePreviewToggle.IsChecked == true;
+        NotePreviewPanel.IsVisible = show;
+        NoteEditorGrid.ColumnDefinitions[1].Width = new GridLength(show ? 12 : 0);
+        NoteEditorGrid.ColumnDefinitions[2].Width = show ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        UpdateNotePreview();
+    }
+
+    private void UpdateNotePreview()
+    {
+        if (NotePreviewToggle.IsChecked == true && NoteEditorPanel.IsVisible)
+        {
+            NotePreview.Markdown = NoteLinks.ToMarkdown(NoteView.StripFrontMatter(NoteEditor.Text ?? ""));
+        }
     }
 
     // ---- Obsidian, links, keys --------------------------------------------------------------------------------
@@ -1505,6 +1959,39 @@ public partial class ProjectWindow : Window
             Graph.FocusNote(note.Note.RelativePath);
         }
     }
+
+    /// <summary>"🐞 Bug" / "✨ Idea": where to open the issue, Buddy itself or the project's GitHub repository.</summary>
+    private async void OnReportClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string tag } button)
+        {
+            return;
+        }
+
+        var kind = tag == "bug" ? Buddy.Core.Repo.IssueKind.Bug : Buddy.Core.Repo.IssueKind.Feature;
+        _repo ??= new Buddy.Core.Repo.GitRepo(Microsoft.Extensions.Options.Options.Create(_settings), TimeProvider.System);
+        var project = _repo.IsAvailable ? Buddy.Core.Repo.GitHubLinks.FromRemote(await _repo.GetRemoteUrlAsync()) : null;
+
+        var onBuddy = new MenuItem { Header = $"Su Buddy ({Buddy.Core.Repo.GitHubLinks.Buddy})" };
+        onBuddy.Click += (_, _) => Shell.Open(Buddy.Core.Repo.GitHubLinks.NewIssueUrl(Buddy.Core.Repo.GitHubLinks.Buddy, kind,
+            typeof(ProjectWindow).Assembly.GetName().Version?.ToString(3), System.Runtime.InteropServices.RuntimeInformation.OSDescription));
+        var onProject = new MenuItem
+        {
+            Header = project is null ? "Sul progetto (il repository non è su GitHub)" : $"Sul progetto ({project})",
+            IsEnabled = project is not null,
+        };
+        if (project is not null)
+        {
+            onProject.Click += (_, _) => Shell.Open(Buddy.Core.Repo.GitHubLinks.NewIssueUrl(project, kind));
+        }
+
+        // A ContextMenu, not a MenuFlyout: the flyout does not open on X11.
+        var menu = new ContextMenu { Placement = PlacementMode.TopEdgeAlignedLeft, PlacementTarget = button, Items = { onBuddy, onProject } };
+        button.ContextMenu = menu;
+        menu.Open(button);
+    }
+
+    private void OnDonateClick(object? sender, RoutedEventArgs e) => Shell.Open(Buddy.Core.Repo.GitHubLinks.DonationUrl);
 
     private async void OnOpenVaultClick(object? sender, RoutedEventArgs e)
     {

@@ -76,12 +76,17 @@
                         </Grid>
 
                         <DockPanel Margin="0,14,0,4">
-                            <TextBlock Text="Colori della nuvoletta" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Button Content="Tema chiaro" Click="OnLightThemeClick" />
-                                <Button Content="Tema scuro" Click="OnDarkThemeClick" />
+                            <TextBlock Text="Tema" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
+                                <Button Content="💾 Salva come tema…" Click="OnSaveThemeClick"
+                                        ToolTip.Tip="Salva i colori qui sotto come tema personale, da riprendere con un clic" />
+                                <Button x:Name="DeleteThemeButton" Content="🗑 Elimina tema" Click="OnDeleteThemeClick" IsVisible="False"
+                                        ToolTip.Tip="Elimina il tema personale selezionato" />
                             </StackPanel>
                         </DockPanel>
+                        <TextBlock Text="Scegli un tema, poi ritocca i colori se vuoi: con «Salva come tema» li ritrovi qui." Classes="hint" />
+                        <WrapPanel x:Name="ThemePresets" Margin="0,0,0,10" />
+                        <TextBlock Text="Colori della nuvoletta" FontWeight="SemiBold" Margin="0,4,0,2" />
                         <TextBlock Text="Colori in formato #RRGGBB." Classes="hint" />
                         <Grid x:Name="ThemeColors">
                             <Grid.ColumnDefinitions>
@@ -270,6 +275,49 @@
                             <TextBox Text="{Binding Repo.Path}" />
                         </DockPanel>
 
+                        <TextBlock Text="Jira" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBlock Classes="hint" Text="Con «⬇ Jira» nella bacheca importi in To-Do le card assegnate a te. Jira Cloud: email e token API (id.atlassian.com → Sicurezza → Token API). Jira Server/Data Center: lascia vuota l'email e usa un token di accesso personale." />
+                        <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                            <TextBlock Text="Indirizzo" Classes="label" />
+                            <TextBox Grid.Column="1" Text="{Binding Jira.BaseUrl}" PlaceholderText="https://azienda.atlassian.net" />
+                            <TextBlock Grid.Row="1" Text="Email" Classes="label" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Jira.Email}" PlaceholderText="Solo per Jira Cloud" />
+                            <TextBlock Grid.Row="2" Text="Token API" Classes="label" />
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="JiraTokenBox" PasswordChar="•"
+                                     PlaceholderText="Salvato a parte, leggibile solo dal tuo utente" />
+                            <TextBlock Grid.Row="3" Text="Progetto Jira" Classes="label" />
+                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding JiraProject}"
+                                     PlaceholderText="Chiave del progetto (es. ABC), vale per questo progetto; vuoto = tutte le tue card" />
+                            <TextBlock Grid.Row="4" Text="JQL (facoltativa)" Classes="label" />
+                            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Jira.Jql}"
+                                     PlaceholderText="Vuoto = assegnate a me, non chiuse (del progetto scelto)" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                            <Button Content="Prova connessione" Click="OnJiraTestClick" />
+                            <TextBlock x:Name="JiraTestResult" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="480" Classes="hint" Margin="0" />
+                        </StackPanel>
+
+                        <TextBlock Text="Azure DevOps" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBlock Classes="hint" Text="Work item assegnati a te (con «⬇ Importa») e le tue PR con la CI. Organizzazione e progetto arrivano dal repository se è su Azure Repos; compilali solo se le board sono altrove. Token: dev.azure.com → Impostazioni utente → Personal access tokens, con Work Items (lettura) e Code (lettura)." />
+                        <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto">
+                            <TextBlock Text="Organizzazione" Classes="label" />
+                            <TextBox Grid.Column="1" Text="{Binding AzureDevOps.Organization}" PlaceholderText="https://dev.azure.com/organizzazione (vuoto = dal repository)" />
+                            <TextBlock Grid.Row="1" Text="Progetto" Classes="label" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding AzureProject}" PlaceholderText="Vale per questo progetto; vuoto = dal repository" />
+                            <TextBlock Grid.Row="2" Text="Token (PAT)" Classes="label" />
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="AzureTokenBox" PasswordChar="•"
+                                     PlaceholderText="Salvato a parte, leggibile solo dal tuo utente" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                            <Button Content="Prova connessione" Click="OnAzureTestClick" />
+                            <TextBlock x:Name="AzureTestResult" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="480" Classes="hint" Margin="0" />
+                        </StackPanel>
+
+                        <TextBlock Text="Risposte rapide" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <CheckBox IsChecked="{Binding Assistant.QuickReplies}"
+                                  Content="Sotto i messaggi che ti chiedono qualcosa, proponi 2-3 risposte da inviare con un clic" />
+                        <TextBlock Classes="hint" Text="Valgono per Claude, il modello locale e il mentore. Le propone il modello stesso alla fine del messaggio (costo trascurabile)." />
+
                         <TextBlock Text="Pulsanti del task" FontWeight="SemiBold" Margin="0,12,0,2" />
                         <TextBlock Classes="hint" Text="Uno per riga; {id} diventa l'ID del task. Vengono mandati a Claude (es. /lavora {id})." />
                         <TextBox Classes="multiline" x:Name="TaskActions"  Height="64" />
@@ -414,6 +462,9 @@
                             <TextBlock Grid.Row="1" Text="Lingua" Classes="label" />
                             <TextBox Grid.Row="1" Grid.Column="1" Width="60" HorizontalAlignment="Left" Text="{Binding Voice.Language}" />
                         </Grid>
+                        <CheckBox IsChecked="{Binding Voice.Live}" Margin="0,6,0,0"
+                                  Content="Trascrivi mentre parli: il testo compare nel riquadro mentre detti" />
+                        <TextBlock Classes="hint" Text="Usa di più il processore mentre registri; se il PC rallenta, toglila: il testo arriva tutto alla fine." />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

@@ -38,6 +38,32 @@ public sealed class MarkdownView : UserControl
             Source = new Uri("avares://Buddy.App/Chat/MarkdownTheme.axaml"),
         });
         Content = _viewer;
+
+        // Before the viewer's own copy: see SelectedText.
+        AddHandler(KeyDownEvent, OnCopyKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+    }
+
+    /// <summary>
+    /// The selected text, rebuilt from each paragraph's selection range. The library's own GetSelectedText is wrong
+    /// when a paragraph contains `inline code`: it keeps only the part between the first and the last code span.
+    /// </summary>
+    internal string SelectedText => string.Join("\n", _viewer.GetLogicalDescendants()
+        .OfType<ColorTextBlock.Avalonia.CTextBlock>()
+        .Select(block => (Selection: block.Selection, Text: block.Text ?? ""))
+        .Where(b => b.Selection is { } s && s.To > s.From && s.To <= b.Text.Length)
+        .Select(b => b.Text[b.Selection!.From..b.Selection.To]));
+
+    private async void OnCopyKey(object? sender, Avalonia.Input.KeyEventArgs e)
+    {
+        var copy = Application.Current?.PlatformSettings?.HotkeyConfiguration.Copy;
+        if (copy?.Any(gesture => gesture.Matches(e)) != true || SelectedText is not { Length: > 0 } text
+            || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, text);
     }
 
     /// <summary>Handles a clicked link instead of the desktop (returns true when handled), e.g. links between notes.</summary>

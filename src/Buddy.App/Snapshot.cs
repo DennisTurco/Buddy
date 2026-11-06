@@ -51,6 +51,18 @@ internal static class Snapshot
         conversation.Entries.Add(new ChatEntry(Speaker.Claude, "Leggo la voce e il codice. Piano:\n\n1. aggiorno `LoginFallito.vb`\n2. rigenero lo script\n\n| Task | Dove | Stato |\n|---|---|---|\n| T-010 | `To-Do` | da fare |\n| T-011 | `Da valutare` | idea |\n\n```sql\nselect * from utenti where bloccato = 1; -- da sbloccare\n```\n\n```csharp\npublic async Task<bool> ResetAsync(int id)\n{\n    // azzera i tentativi\n    return await _db.ExecuteAsync(\"update Utenti set Tentativi = 0\", id) > 0;\n}\n```\n\n> Nota: vedi [Stato attuale](obsidian://open?path=x)"));
         using var input = JsonDocument.Parse("""{"file_path":"/home/me/portale20/Common/Business/Accounts/Data/LoginFallito.vb"}""");
         conversation.Entries.Add(new PermissionEntry(new PermissionRequest("r1", "Edit", input.RootElement.Clone())));
+        using var question = JsonDocument.Parse("""
+            {"questions":[{"question":"T-004 è in Da valutare da 22 giorni. Cosa faccio?","header":"T-004","multiSelect":false,
+              "options":[{"label":"Rimanda","description":"Nuova data tra 30 giorni"},{"label":"Approva","description":"Va in To-Do con Fatto quando e stima"},
+                         {"label":"Rifiuta","description":"Va in To-Do Rifiutati con il motivo"},{"label":"Salta","description":"Non cambia niente"}]}]}
+            """);
+        var ask = new PermissionEntry(new PermissionRequest("r2", "AskUserQuestion", question.RootElement.Clone()));
+        ask.Questions[0].Options[1].IsSelected = true;
+        conversation.Entries.Add(ask);
+        conversation.Entries.Add(new ChatEntry(Speaker.Mentor, "Quale piccola funzione del tuo lavoro potresti provare con il TDD la prossima volta?")
+        {
+            Actions = [new ChatAction("Il calcolo dello sconto", "x"), new ChatAction("Non saprei da dove partire", "x"), new ChatAction("Fammi un esempio", "x")],
+        });
 
         pet.Show();
         bubble.Anchor = pet;
@@ -58,6 +70,23 @@ internal static class Snapshot
         await FlushAsync();
 
         Save(bubble, Path.Combine(folder, "bubble.png"));
+
+        // The chat in each built-in theme (only the snapshot's copy of the settings changes).
+        var looks = new AppearanceSettings();
+        foreach (var (name, create) in ThemeColors.BuiltIn)
+        {
+            looks.Theme = create();
+            Appearance.Apply(bubble, looks, font: false);
+            Appearance.ApplyControls(bubble, looks);
+            bubble.RequestedThemeVariant = Appearance.Variant(looks);
+            await FlushAsync();
+            Save(bubble, Path.Combine(folder, $"theme-{name}.png"));
+        }
+
+        var current = services.GetRequiredService<IOptions<BuddySettings>>().Value.Appearance;
+        Appearance.Apply(bubble, current, font: false);
+        Appearance.ApplyControls(bubble, current);
+        bubble.RequestedThemeVariant = Appearance.Variant(current);
 
         // The code blocks of Claude's answer (highlighted, with the copy button), scrolled into view.
         if (bubble.FindControl<ScrollViewer>("Scroller") is { } scroller
@@ -107,6 +136,38 @@ internal static class Snapshot
         await FlushAsync();
         Save(wizard, Path.Combine(folder, "first-run.png"));
         wizard.Close();
+
+        var newProject = new Settings.NewProjectWindow(new BuddySettings());
+        newProject.Show();
+        await FlushAsync();
+        Save(newProject, Path.Combine(folder, "new-project.png"));
+        newProject.Close();
+
+        var jira = new Project.TrackerImportWindow("Jira",
+        [
+            new("ABC-12", "Export CSV dei voti vuoto con più corsi", "", "High", "Bug", "To Do", "Persona A", new DateOnly(2026, 11, 20), ""),
+            new("ABC-15", "Filtro per anno accademico nella lista studenti", "", "Medium", "Story", "In Progress", "Persona B", null, ""),
+        ], 3);
+        jira.Show();
+        await FlushAsync();
+        Save(jira, Path.Combine(folder, "jira-import.png"));
+        jira.Close();
+
+        var issue = new Project.IssueFormWindow("DennisTurco/Buddy", new Buddy.Core.Tracker.IssueDraft("Export CSV dei voti vuoto",
+            "- **Contesto**: il file scaricato non ha righe\n- **Fatto quando**: il CSV contiene tutti i voti\n\n_Creata da Buddy dalla voce T-014._", ["bug"]));
+        issue.Show();
+        await FlushAsync();
+        Save(issue, Path.Combine(folder, "issue-form.png"));
+        issue.Close();
+
+        foreach (var kind in new[] { "appunti", "todo", "attesa", "controllare" })
+        {
+            var form = new Project.EntryFormWindow(kind, "T-014", Project.Tags.Defaults.Select(d => d.Name));
+            form.Show();
+            await FlushAsync();
+            Save(form, Path.Combine(folder, $"entry-{kind}.png"));
+            form.Close();
+        }
 
         // Project window on the configured vault: every view, an item in the side panel, and editing it.
         var project = new Project.ProjectWindow(
@@ -182,6 +243,20 @@ internal static class Snapshot
             await FlushAsync();
             Save(ideas, Path.Combine(folder, "ideas.png"));
             ideas.Close();
+        }
+
+        // A note in the editor: tool bar and live preview (nothing is saved).
+        project.ShowView("notes");
+        if (project.NotesList.Items.OfType<Project.NoteView>().FirstOrDefault(n => n.Title == "Stato attuale") is { } noteToEdit)
+        {
+            project.NotesList.SelectedItem = noteToEdit;
+            await FlushAsync();
+            project.EditNoteButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await FlushAsync();
+            await Task.Delay(400);
+            await FlushAsync();
+            Save(project, Path.Combine(folder, "project-note-edit.png"));
+            project.CancelNoteButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         }
 
         project.ShowView("board");

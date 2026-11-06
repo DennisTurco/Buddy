@@ -20,6 +20,9 @@ public interface IAudioCapture : IDisposable
 
     /// <summary>Stops and returns the raw PCM recorded since <see cref="Start"/>.</summary>
     Task<byte[]> StopAsync();
+
+    /// <summary>The PCM recorded so far, while recording goes on (for live transcription); empty when not recording.</summary>
+    byte[] Snapshot();
 }
 
 /// <summary>

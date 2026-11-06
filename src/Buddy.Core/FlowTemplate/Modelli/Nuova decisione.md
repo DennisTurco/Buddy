@@ -1,0 +1,1 @@
+- <% tp.date.now("YYYY-MM-DD") %> · <% tp.file.cursor(1) %> — Perché: <% tp.file.cursor(2) %> · <% tp.file.cursor(3) %>

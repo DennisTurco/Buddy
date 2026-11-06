@@ -39,5 +39,8 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            // Avalonia's own IBus client (X11) swallows the dead keys of layouts like US International and never
+            // returns the composed character: ' and ` typed nothing. Without it, X composes é, à, ' by itself.
+            .With(new X11PlatformOptions { EnableIme = false })
             .LogToTrace();
 }

@@ -98,6 +98,11 @@ public sealed class ColumnView(BoardColumn column, IReadOnlyList<CardView> cards
 
     public IReadOnlyList<FlowAction> Actions { get; } = actions;
 
+    /// <summary>The column takes items written by hand ("＋": appunti, Da fare, In attesa, Da controllare).</summary>
+    public bool CanAdd => Buddy.Core.Vault.BoardEntries.Sections.ContainsKey(Column.Key);
+
+    public string AddTip => Column.Key == "appunti" ? "Nuovo appunto: titolo, dettagli e tag" : $"Nuova voce in «{Column.Title}», con tutti i campi";
+
     public bool HasActions => Actions.Count > 0 && Column.Items.Count > 0;
 
     private static string EmptyFor(string key) => key switch
@@ -115,12 +120,23 @@ public sealed class CardView : INotifyPropertyChanged
     private static readonly CultureInfo Culture = CultureInfo.GetCultureInfo("it-IT");
     private bool _isSelected;
 
-    public CardView(BoardItem item, BoardColumn column, DateOnly today)
+    /// <param name="pullRequest">The open PR of the card's task, if known: its CI (and review) becomes a chip.</param>
+    public CardView(BoardItem item, BoardColumn column, DateOnly today, Buddy.Core.Repo.PullRequestInfo? pullRequest = null)
     {
         Item = item;
         Column = column;
         Accent = Flow.Accent(column.Key);
-        Chips = BuildChips(item, today);
+        PullRequest = pullRequest;
+        var chips = BuildChips(item, today);
+        if (pullRequest is { } pr)
+        {
+            chips.Insert(0, new Chip(
+                (pr.Checks switch { "success" => "✅ CI", "failure" => "❌ CI", "pending" => "⏳ CI", _ => "PR" }) + $" #{pr.Number}"
+                + (pr.Review == "CHANGES_REQUESTED" ? " · ✏" : pr.Review == "APPROVED" ? " · 👍" : ""),
+                pr.Checks switch { "success" => ChipKind.Good, "failure" => ChipKind.Hot, "pending" => ChipKind.Warm, _ => ChipKind.Plain }));
+        }
+
+        Chips = chips;
         Priority = item.Field("priorita", "priority") is { } p && Regex.Match(p, @"\d") is { Success: true } m ? int.Parse(m.Value, CultureInfo.InvariantCulture) : 9;
     }
 
@@ -136,12 +152,10 @@ public sealed class CardView : INotifyPropertyChanged
 
     public bool HasId => Item.Id is not null;
 
-    /// <summary>The item's tag ([tag:: bug]), shown as a coloured label next to the id.</summary>
-    public string? Tag => Item.Field("tag");
+    /// <summary>The item's tags ([tag:: bug] or [tag:: bug, ui]), shown as coloured labels next to the id.</summary>
+    public IReadOnlyList<TagOption> TagChips => Item.TagList.Select(t => new TagOption(t, Tags.Brush(t), false)).ToList();
 
-    public bool HasTag => Tag is not null;
-
-    public IBrush? TagBrush => Tag is { } tag ? Tags.Brush(tag) : null;
+    public bool HasTag => Item.TagList.Count > 0;
 
     public string Title => Item.Title.Replace("`", "");
 
@@ -154,6 +168,9 @@ public sealed class CardView : INotifyPropertyChanged
     public bool HasNote => !string.IsNullOrWhiteSpace(Item.Note);
 
     public IReadOnlyList<Chip> Chips { get; }
+
+    /// <summary>The open pull request of the card's task (GitHub or Azure Repos), when there is one.</summary>
+    public Buddy.Core.Repo.PullRequestInfo? PullRequest { get; }
 
     public bool HasChips => Chips.Count > 0;
 
@@ -282,7 +299,7 @@ public sealed record NoteView(VaultNote Note)
     /// <summary>The note for the viewer: no front matter, Obsidian links turned into clickable ones.</summary>
     public string Markdown => NoteLinks.ToMarkdown(StripFrontMatter(Note.Content));
 
-    private static string StripFrontMatter(string content)
+    internal static string StripFrontMatter(string content)
     {
         var text = content.Replace("\r\n", "\n");
         if (!text.StartsWith("---\n", StringComparison.Ordinal))

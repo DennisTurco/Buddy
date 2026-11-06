@@ -37,6 +37,16 @@ public sealed class SpeakerIs : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>A message's text without the hidden quick-replies line, also while it is still arriving.</summary>
+public sealed class HideQuickReplies : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is string text ? Buddy.Core.Chat.QuickReplies.Hide(text) : value;
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>An attached image (base64 in the attachment) as a small bitmap for the chat; decoded once per image.</summary>
 public sealed class ImageThumbnail : IValueConverter
 {

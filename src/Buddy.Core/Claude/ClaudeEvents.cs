@@ -27,7 +27,8 @@ public sealed record PermissionRequest(string RequestId, string ToolName, JsonEl
     public string Summary => ToolSummary.Describe(ToolName, Input);
 }
 
-public sealed record PermissionDecision(bool Allow, string? Message = null)
+/// <param name="UpdatedInput">Replaces the tool's input when allowed, e.g. AskUserQuestion with the user's answers.</param>
+public sealed record PermissionDecision(bool Allow, string? Message = null, System.Text.Json.Nodes.JsonNode? UpdatedInput = null)
 {
     public static PermissionDecision Allowed { get; } = new(true);
     /// <summary>

@@ -113,6 +113,20 @@ public sealed class GitRepo(IOptions<BuddySettings> options, TimeProvider clock)
         return result.Output.Trim() is { Length: > 0 } log ? log : "(nessun commit)";
     }
 
+    /// <summary>The URL of the "origin" remote, or null when there is none.</summary>
+    public async Task<string?> GetRemoteUrlAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["remote", "get-url", "origin"], cancellationToken);
+        return result.ExitCode == 0 && result.Output.Trim() is { Length: > 0 } url ? url : null;
+    }
+
+    /// <summary>The latest commits of the current branch (date and subject), newest first; empty outside a repository.</summary>
+    public async Task<string> GetRecentCommitsAsync(int count, CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["log", $"-n{count}", "--pretty=format:%ad %s", "--date=short"], cancellationToken);
+        return result.ExitCode == 0 ? result.Output.Trim() : "";
+    }
+
     /// <summary>Commits on any branch whose message mentions <paramref name="id"/> (date, subject), oldest first.</summary>
     public async Task<IReadOnlyList<(DateOnly Date, string Subject)>> GetCommitsMentioningAsync(string id, CancellationToken cancellationToken = default)
     {

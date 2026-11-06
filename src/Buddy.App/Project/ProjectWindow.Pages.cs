@@ -65,6 +65,40 @@ public partial class ProjectWindow
 
     private string _lastRealView = "overview";
 
+    internal async Task RenamePageAsync(string page)
+    {
+        if (await Settings.Dialogs.AskAsync(this, "Rinomina pagina", "Nuovo nome della pagina:", page) is not { } name)
+        {
+            return;
+        }
+
+        string renamed = page;
+        if (await WriteAsync(() => renamed = CustomPages.RenamePage(_settings.ProjectPath, page, name)))
+        {
+            _vault.Refresh();
+            Reload();
+            ShowView(PagePrefix + renamed);
+        }
+    }
+
+    internal async Task DeletePageAsync(string page)
+    {
+        var count = CustomPages.Notes(_vault, page).Count;
+        var what = count == 0 ? "La pagina è vuota." : $"Contiene {count} not{(count == 1 ? "a" : "e")}.";
+        if (!await Settings.Dialogs.ConfirmAsync(this,
+                $"Eliminare la pagina «{page}»? {what} Finisce nel cestino del vault (.trash), da cui si può recuperare.", "Elimina"))
+        {
+            return;
+        }
+
+        if (await WriteAsync(() => CustomPages.DeletePage(_settings.ProjectPath, page)))
+        {
+            _vault.Refresh();
+            Reload();
+            ShowView("overview");
+        }
+    }
+
     /// <summary>Fills the generic view for <paramref name="key"/>; slow sources (git, gh) are read in the background.</summary>
     private async Task RenderPageAsync(string key, bool refresh = false)
     {
@@ -173,6 +207,12 @@ public partial class ProjectWindow
             case "note:new" when _view.StartsWith(PagePrefix, StringComparison.Ordinal):
                 await NewPageNoteAsync(_view[PagePrefix.Length..]);
                 break;
+            case "page:rename" when _view.StartsWith(PagePrefix, StringComparison.Ordinal):
+                await RenamePageAsync(_view[PagePrefix.Length..]);
+                break;
+            case "page:delete" when _view.StartsWith(PagePrefix, StringComparison.Ordinal):
+                await DeletePageAsync(_view[PagePrefix.Length..]);
+                break;
             case "page:folder" when _view.StartsWith(PagePrefix, StringComparison.Ordinal):
                 var folder = Path.Combine(_settings.ProjectPath, CustomPages.Folder, _view[PagePrefix.Length..]);
                 Directory.CreateDirectory(folder);
@@ -209,6 +249,8 @@ public partial class ProjectWindow
             [
                 new PageButton("＋ Nuova nota", "note:new", "Scrivi una nota in questa pagina (titolo e testo, in markdown)"),
                 new PageButton("📂 Apri la cartella", "page:folder"),
+                new PageButton("✏ Rinomina", "page:rename", "Cambia il nome della pagina (e della sua cartella)"),
+                new PageButton("🗑 Elimina", "page:delete", "Sposta la pagina e le sue note nel cestino del vault (.trash)"),
             ],
             filter.Length > 0 ? "Nessuna nota corrisponde alla ricerca." : "Ancora nessuna nota: aggiungine una con «＋ Nuova nota».");
     }
@@ -545,11 +587,10 @@ public partial class ProjectWindow
 
     private async Task<PageContent> PullRequestsPageAsync(string filter, bool refresh)
     {
-        _repo ??= new GitRepo(Microsoft.Extensions.Options.Options.Create(_settings), TimeProvider.System);
-        if (refresh || _prs is not { } cached || DateTime.Now - cached.At > TimeSpan.FromMinutes(3))
+        await LoadPullRequestsAsync(refresh);
+        if (_prs is null)
         {
-            var (list, problem) = await PullRequests.ListAsync(_repo.RootPath, _settings.TaskIdPattern);
-            _prs = (DateTime.Now, list, problem);
+            return new PageContent("", null, [], [new PageButton("↻ Riprova", "refresh")], "Non riesco a leggere le PR.");
         }
 
         var (_, prs, error) = _prs!.Value;

@@ -249,7 +249,9 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         {
             ClearAwaitingReply();
             _pendingReply = onReply;
-            Entries.Add(new ChatEntry(Speaker.Mentor, markdown) { AwaitsReply = onReply is not null, Actions = actions ?? [] });
+            var entry = new ChatEntry(Speaker.Mentor, markdown) { AwaitsReply = onReply is not null, Actions = actions ?? [] };
+            ApplyQuickReplies(entry);
+            Entries.Add(entry);
             Notify(nameof(HasPendingReply));
             if (_petState == PetState.Idle)
             {
@@ -819,7 +821,11 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         }
         finally
         {
-            OnUi(() => answer.IsStreaming = false);
+            OnUi(() =>
+            {
+                ApplyQuickReplies(answer);
+                answer.IsStreaming = false;
+            });
             _localAnswer = null;
             stop.Dispose();
             if (!_claudeBusy)
@@ -978,6 +984,11 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 break;
 
             case ClaudeTurnCompleted done:
+                if (Entries.LastOrDefault(e => e.Speaker == Speaker.Claude && e is not PermissionEntry) is { } finalAnswer)
+                {
+                    ApplyQuickReplies(finalAnswer);
+                }
+
                 var lastAnswer = Entries.LastOrDefault(e => e.Speaker == Speaker.Claude && e is not PermissionEntry)?.Text;
                 CloseClaudeAnswer();
                 ClaudeBusy = false;
@@ -1306,6 +1317,25 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         Add(new ChatEntry(Speaker.System, text) { Actions = actions });
 
     /// <summary>A clicked action button: its command is sent like a typed one; the buttons of that message go away.</summary>
+    /// <summary>
+    /// Takes the replies proposed by the model out of the message (<see cref="QuickReplies"/>) and shows them as buttons
+    /// that send that text; the line is removed even when the setting is off, so it never shows.
+    /// </summary>
+    private void ApplyQuickReplies(ChatEntry entry)
+    {
+        var (text, replies) = QuickReplies.Extract(entry.Text);
+        if (text == entry.Text)
+        {
+            return;
+        }
+
+        entry.Text = text;
+        if (_options.Value.Assistant.QuickReplies && replies.Count > 0)
+        {
+            entry.Actions = [.. entry.Actions, .. replies.Select(r => new ChatAction(r, r, "Rispondi così (o scrivi la tua risposta)"))];
+        }
+    }
+
     public Task RunActionAsync(ChatEntry entry, ChatAction action)
     {
         entry.Actions = [];
