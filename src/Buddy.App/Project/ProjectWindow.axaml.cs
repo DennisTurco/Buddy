@@ -60,6 +60,7 @@ public partial class ProjectWindow : Window
     private string _view = "overview";
     private CardView? _selected;
     private bool _editingCard;
+    private bool _reloadPending; // the vault changed while a card was being edited
     private NoteView? _editedNote;
     private bool _switchingView;
     private string? _tagFilter;
@@ -111,9 +112,13 @@ public partial class ProjectWindow : Window
         _reload.Tick += (_, _) =>
         {
             _reload.Stop();
-            if (!IsEditing)
+            if (_editingCard)
             {
-                Reload(); // while editing it waits: rebuilding would throw away what is being typed (AfterEdit reloads)
+                _reloadPending = true; // rebuilding would throw away the card being typed: done when the editor closes
+            }
+            else
+            {
+                Reload(); // a note being edited is kept: the notes list stays as it is until the editor closes
             }
         };
         _quickNoteDone = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
@@ -199,8 +204,6 @@ public partial class ProjectWindow : Window
                + string.Join(", ", _projectMenu.Items.OfType<MenuItem>().Select(i => $"{i.Header}{(i.IsChecked ? " ✓" : "")}"));
     }
 
-    private bool IsEditing => _editingCard || _editedNote is not null;
-
     public void Reload()
     {
         if (!_vault.IsAvailable)
@@ -212,6 +215,7 @@ public partial class ProjectWindow : Window
             return;
         }
 
+        _reloadPending = false;
         _board = ProjectBoard.Load(_vault, _settings.TaskIdPattern);
         var selectedNote = (NotesList.SelectedItem as NoteView)?.Note.RelativePath;
         _notes = _board.Notes.Select(n => new NoteView(n)).ToList();
@@ -219,7 +223,12 @@ public partial class ProjectWindow : Window
         ApplyGraph();
         Render();
 
-        // Keep the note being read selected across reloads.
+        // Keep the note being read selected across reloads (while one is edited the list is left alone, see Render).
+        if (_editedNote is not null)
+        {
+            return;
+        }
+
         NotesList.SelectedItem = _notes.FirstOrDefault(n => n.Note.RelativePath == selectedNote)
                                  ?? (NotesList.ItemsSource as IEnumerable<NoteView>)?.FirstOrDefault();
     }
@@ -402,16 +411,20 @@ public partial class ProjectWindow : Window
         RecentList.ItemsSource = done.Take(3).ToList();
         RecentPanel.IsVisible = done.Count > 0;
 
-        // Notes
-        var notes = filter.Length == 0
-            ? _notes
-            : _notes.Where(n => n.Note.RelativePath.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
-                                || n.Note.Content.Contains(filter, StringComparison.CurrentCultureIgnoreCase)).ToList();
-        var currentNote = NotesList.SelectedItem;
-        NotesList.ItemsSource = notes;
-        if (currentNote is NoteView view && notes.Contains(view))
+        // Notes: not while one is edited, replacing the list would change the selection and close the editor.
+        // StopEditingNote reloads.
+        if (_editedNote is null)
         {
-            NotesList.SelectedItem = view;
+            var notes = filter.Length == 0
+                ? _notes
+                : _notes.Where(n => n.Note.RelativePath.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+                                    || n.Note.Content.Contains(filter, StringComparison.CurrentCultureIgnoreCase)).ToList();
+            var currentNote = NotesList.SelectedItem;
+            NotesList.ItemsSource = notes;
+            if (currentNote is NoteView view && notes.Contains(view))
+            {
+                NotesList.SelectedItem = view;
+            }
         }
 
         RenderTests(filter);
@@ -717,6 +730,10 @@ public partial class ProjectWindow : Window
         _selected = null;
         StopEditingCard();
         Detail.IsVisible = false;
+        if (_reloadPending)
+        {
+            Reload(); // the vault changed while the card was being edited
+        }
     }
 
     private void OnCardPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -1480,7 +1497,7 @@ public partial class ProjectWindow : Window
     /// <summary>After an edit: show the result now, plus anything that changed in the vault while editing.</summary>
     private void AfterEdit()
     {
-        if (!IsEditing)
+        if (!_editingCard)
         {
             Reload();
         }
