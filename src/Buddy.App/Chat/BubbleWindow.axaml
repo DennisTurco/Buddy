@@ -269,6 +269,9 @@
                             Click="OnMaximizeClick" ToolTip.Tip="Schermo intero (F11 o doppio click sul titolo)" />
                     <Button DockPanel.Dock="Right" Classes="flat" Content="↺" Width="24" Height="22" Margin="0,0,2,0"
                             Click="OnNewConversationClick" ToolTip.Tip="Nuova conversazione (/nuova); quella attuale resta salvata" />
+                    <!-- The mentor's pills, reviews and chats live in their own chat, out of the work one. -->
+                    <Button x:Name="SideButton" DockPanel.Dock="Right" Classes="flat" Content="☕" MinWidth="24" Height="22" Margin="0,0,2,0"
+                            Padding="3,0" Click="OnSideClick" />
                     <Button x:Name="HistoryButton" DockPanel.Dock="Right" Classes="flat" Content="🕘" Width="24" Height="22" Margin="0,0,2,0"
                             Click="OnHistoryClick" ToolTip.Tip="Conversazioni precedenti" />
                     <!-- A dock, not a stack: the cost text is the one that gets shortened when the bubble is narrow. -->

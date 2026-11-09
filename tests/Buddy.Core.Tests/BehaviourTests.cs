@@ -67,7 +67,8 @@ public class MentorBehaviourTests
             new IdleActivity(), clock, options, statePath: Path.Combine(_root, "mentor-state.json"));
     }
 
-    private static int MentorMessages(Conversation conversation) => conversation.Entries.Count(e => e.Speaker == Speaker.Mentor);
+    private static int MentorMessages(Conversation conversation) =>
+        conversation.Entries.Concat(conversation.SideEntries).Count(e => e.Speaker == Speaker.Mentor);
 
     [Test]
     public async Task Friendly_chats_wait_while_the_user_works_in_the_chat()
@@ -258,6 +259,38 @@ public class SmallFeatureTests
         conversation.ExplainItAsync().GetAwaiter().GetResult();
         Assert.That(answer, Is.EqualTo(Conversation.ExplainItReply));
         Assert.That(question.AwaitsReply, Is.False);
+    }
+
+    [Test]
+    public void Off_topic_mentor_messages_go_to_the_side_chat_and_only_answers_written_there_reach_them()
+    {
+        var conversation = ModelCommandTests.Create(new BuddySettings { ProjectPath = Path.Combine(Path.GetTempPath(), "buddy-missing-vault") });
+        string? answer = null;
+        conversation.PostMentor("Hai letto qualcosa di bello?", reply =>
+        {
+            answer = reply;
+            return Task.CompletedTask;
+        }, offTopic: true);
+
+        Assert.That(conversation.Entries, Is.Empty);
+        Assert.That(conversation.SideEntries.Single().AwaitsReply, Is.True);
+        Assert.That(conversation.UnreadSide, Is.EqualTo(1));
+        Assert.That(conversation.HasPendingReply, Is.False, "in the work chat the next message is not an answer to the mentor");
+
+        conversation.ShowingSide = true;
+        Assert.That(conversation.UnreadSide, Is.Zero);
+        Assert.That(conversation.HasPendingReply, Is.True);
+        Assert.That(conversation.VisibleEntries, Is.SameAs(conversation.SideEntries));
+
+        conversation.SendAsync("Sì, un libro sul DDD").GetAwaiter().GetResult();
+        Assert.That(answer, Is.EqualTo("Sì, un libro sul DDD"));
+        Assert.That(conversation.SideEntries.Last().Text, Is.EqualTo("Sì, un libro sul DDD"));
+        Assert.That(conversation.Entries, Is.Empty);
+
+        // Nothing to answer: the side chat says where to write to the models instead of sending it to them.
+        conversation.SendAsync("spiegami i record in C#").GetAwaiter().GetResult();
+        Assert.That(conversation.SideEntries.Last().Text, Is.EqualTo(Conversation.SideChatHint));
+        Assert.That(conversation.Entries, Is.Empty);
     }
 }
 

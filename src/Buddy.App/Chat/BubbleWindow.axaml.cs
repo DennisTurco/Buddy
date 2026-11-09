@@ -102,9 +102,11 @@ public partial class BubbleWindow : Window
 
         Appearance.Apply(this, _settings.Appearance);
         RequestedThemeVariant = Appearance.Variant(_settings.Appearance); // buttons and boxes readable on a dark chat
-        EntriesList.ItemsSource = conversation.Entries;
+        EntriesList.ItemsSource = conversation.VisibleEntries;
 
         conversation.Entries.CollectionChanged += OnEntriesChanged;
+        conversation.SideEntries.CollectionChanged += OnEntriesChanged;
+        UpdateSideButton();
         conversation.PropertyChanged += OnConversationChanged;
 
         // Tunnel: Enter must be seen before the text box handles it; the wheel before the markdown viewers eat it.
@@ -289,7 +291,7 @@ public partial class BubbleWindow : Window
         }
 
         var query = SearchBox.Text?.Trim() ?? "";
-        _hits = query.Length == 0 ? [] : _conversation.Entries.Where(e => e.Text.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        _hits = query.Length == 0 ? [] : _conversation.VisibleEntries.Where(e => e.Text.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
         foreach (var entry in _hits)
         {
             entry.IsHighlighted = true;
@@ -633,6 +635,8 @@ public partial class BubbleWindow : Window
         var cost = _conversation.Usage.AverageText(_conversation.ClaudeModel);
         Input.PlaceholderText = _conversation.HasPendingReply
             ? "Rispondi al mentore… (o /salta)"
+            : _conversation.ShowingSide
+                ? "Chiacchiere col mentore… (/chiacchiera, /pillola, /ripasso)"
             : _conversation.Mode == ChatMode.Claude
                 ? $"Scrivi a Claude ({Conversation.ClaudeModelLabel(_conversation.ClaudeModel).ToLowerInvariant()}{(cost.Length > 0 ? $", {cost}" : "")})… (/aiuto)"
                 : "Scrivi… (/aiuto per i comandi)";
@@ -905,6 +909,11 @@ public partial class BubbleWindow : Window
 
     private void OnEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (!ReferenceEquals(sender, _conversation.VisibleEntries))
+        {
+            return; // the other chat: the ☕ button counts what is new there
+        }
+
         if (e.Action is NotifyCollectionChangedAction.Reset or NotifyCollectionChangedAction.Remove || e.NewItems?.OfType<ChatEntry>().Any(n => n.IsPinned) == true)
         {
             UpdatePinned(); // a conversation reopened, or cleared
@@ -958,14 +967,45 @@ public partial class BubbleWindow : Window
             case nameof(Conversation.IsAnswering):
                 UpdateWorking();
                 break;
+            case nameof(Conversation.ShowingSide):
+                EntriesList.ItemsSource = _conversation.VisibleEntries;
+                UpdateSideButton();
+                UpdateModeText();
+                UpdatePlaceholder();
+                UpdateSearch();
+                ScrollToEnd(force: true);
+                break;
+            case nameof(Conversation.UnreadSide):
+                UpdateSideButton();
+                break;
         }
+    }
+
+    /// <summary>☕ opens the mentor's side chat (with how many messages are new there), 💬 goes back to the work chat.</summary>
+    private void OnSideClick(object? sender, RoutedEventArgs e)
+    {
+        _conversation.ShowingSide = !_conversation.ShowingSide;
+        Input.Focus();
+    }
+
+    private void UpdateSideButton()
+    {
+        var side = _conversation.ShowingSide;
+        var unread = _conversation.UnreadSide;
+        SideButton.Content = side ? "💬" : unread > 0 ? $"☕ {unread}" : "☕";
+        SideButton.Foreground = !side && unread > 0 ? (IBrush)Resources["MentorAccent"]! : (IBrush)Resources["Ink"]!;
+        ToolTip.SetTip(SideButton, side
+            ? "Torna alla chat di lavoro"
+            : "Chiacchiere del mentore: pillole, ripassi e chiacchierate, fuori dalla chat di lavoro"
+              + (unread > 0 ? $" ({unread} nuovi)" : ""));
     }
 
     private void UpdateModeText()
     {
         var claude = _conversation.Mode == ChatMode.Claude;
         var name = string.IsNullOrWhiteSpace(_settings.Appearance.Name) ? "Buddy" : _settings.Appearance.Name;
-        ModeText.Text = $"{name} · {(claude ? "Claude" : "Locale")}";
+        ModeText.Text = $"{name} · {(_conversation.ShowingSide ? "Chiacchiere" : claude ? "Claude" : "Locale")}";
+        ModelButton.IsVisible = !_conversation.ShowingSide;
         ModeDot.Fill = (IBrush)Resources[claude ? "ClaudeAccent" : "LocalAccent"]!;
         ModelButton.Content = (claude ? Conversation.ClaudeModelLabel(_conversation.ClaudeModel) : _conversation.LocalModel) + " ▾";
     }

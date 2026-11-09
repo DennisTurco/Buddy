@@ -97,8 +97,58 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
 
     private Func<string, Task>? _pendingReply;
 
-    /// <summary>True when the next message answers a question of the mentor.</summary>
-    public bool HasPendingReply => _pendingReply is not null;
+    /// <summary>True when the next message (in the chat on screen) answers a question of the mentor.</summary>
+    public bool HasPendingReply => (_showingSide ? _sidePendingReply : _pendingReply) is not null;
+
+    // ---- Side chat: the mentor's off-topic talk (pills, reviews, chats), kept out of the work chat ---------------
+
+    /// <summary>
+    /// The mentor's off-topic messages and the answers to them. They live apart from <see cref="Entries"/>, so a pill
+    /// or a chat never ends up in the middle of a task, nor does an answer to it go to the models by mistake.
+    /// </summary>
+    public ObservableCollection<ChatEntry> SideEntries { get; } = [];
+
+    private Func<string, Task>? _sidePendingReply;
+    private bool _showingSide;
+    private int _unreadSide;
+
+    /// <summary>The side chat is on screen (set by the bubble): what the user writes goes there.</summary>
+    public bool ShowingSide
+    {
+        get => _showingSide;
+        set
+        {
+            if (_showingSide == value)
+            {
+                return;
+            }
+
+            _showingSide = value;
+            if (value)
+            {
+                UnreadSide = 0;
+            }
+
+            Notify(nameof(ShowingSide));
+            Notify(nameof(HasPendingReply));
+        }
+    }
+
+    /// <summary>Messages posted in the side chat while it was not on screen.</summary>
+    public int UnreadSide
+    {
+        get => _unreadSide;
+        private set { _unreadSide = value; Notify(nameof(UnreadSide)); }
+    }
+
+    /// <summary>The messages of the chat on screen.</summary>
+    public ObservableCollection<ChatEntry> VisibleEntries => _showingSide ? SideEntries : Entries;
+
+    /// <summary>What the side chat is for, said when the user writes there without a question to answer.</summary>
+    public const string SideChatHint =
+        "Qui il mentore ti porta pillole, ripassi e chiacchierate, separati dalla chat di lavoro. "
+        + "Per scrivere a Claude o al modello locale torna alla chat di lavoro (💬 in alto); "
+        + "per cominciare qualcosa qui: /chiacchiera, /pillola o /ripasso (/nuova svuota questa chat).";
 
     /// <summary>Claude or the local model is working: the mentor waits.</summary>
     public bool IsBusy => _claudeBusy || _petState is PetState.Think or PetState.Work or PetState.Alert;
@@ -241,17 +291,32 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
 
     /// <summary>
     /// Posts a message of the mentor. With <paramref name="onReply"/> the next message the user writes
-    /// (not a command) is passed to it instead of the models.
+    /// (not a command) is passed to it instead of the models. <paramref name="offTopic"/> messages go to the side
+    /// chat (<see cref="SideEntries"/>), and only an answer written there reaches them.
     /// </summary>
-    public void PostMentor(string markdown, Func<string, Task>? onReply = null, IReadOnlyList<ChatAction>? actions = null)
+    public void PostMentor(string markdown, Func<string, Task>? onReply = null, IReadOnlyList<ChatAction>? actions = null, bool offTopic = false)
     {
         OnUi(() =>
         {
-            ClearAwaitingReply();
-            _pendingReply = onReply;
+            var entries = offTopic ? SideEntries : Entries;
+            ClearAwaitingReply(entries);
+            if (offTopic)
+            {
+                _sidePendingReply = onReply;
+            }
+            else
+            {
+                _pendingReply = onReply;
+            }
+
             var entry = new ChatEntry(Speaker.Mentor, markdown) { AwaitsReply = onReply is not null, Actions = actions ?? [] };
             ApplyQuickReplies(entry);
-            Entries.Add(entry);
+            entries.Add(entry);
+            if (offTopic && !_showingSide)
+            {
+                UnreadSide++;
+            }
+
             Notify(nameof(HasPendingReply));
             if (_petState == PetState.Idle)
             {
@@ -259,7 +324,10 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             }
 
             MentorPosted?.Invoke(markdown);
-            SaveToArchive();
+            if (!offTopic)
+            {
+                SaveToArchive();
+            }
         });
     }
 
@@ -324,9 +392,9 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         return true;
     }
 
-    private void ClearAwaitingReply() => OnUi(() =>
+    private void ClearAwaitingReply(ObservableCollection<ChatEntry>? entries = null) => OnUi(() =>
     {
-        foreach (var entry in Entries.Where(e => e.AwaitsReply))
+        foreach (var entry in (entries ?? Entries).Where(e => e.AwaitsReply))
         {
             entry.AwaitsReply = false;
         }
@@ -455,6 +523,12 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        if (_showingSide)
+        {
+            await SendSideAsync(input);
+            return;
+        }
+
         await RefreshCurrentTaskAsync();
         var (command, rest) = SplitCommand(input);
 
@@ -476,15 +550,9 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
-        if (command is not null && CommandHandler is { } handler)
+        if (command is not null && await RunCommandHandlerAsync(command, rest, input))
         {
-            // The handler may post its answer right away: the user's line is inserted before it.
-            var position = Entries.Count;
-            if (await handler(command, rest))
-            {
-                OnUi(() => Entries.Insert(Math.Min(position, Entries.Count), new ChatEntry(Speaker.User, input)));
-                return;
-            }
+            return;
         }
 
         switch (command)
@@ -655,6 +723,80 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         {
             await AskLocalAsync(input, attachment);
         }
+    }
+
+    /// <summary>
+    /// A message written in the side chat: the answer to the mentor's open question there, or one of the mentor's
+    /// commands. Anything else is not for the models from here: a line says where to write it.
+    /// </summary>
+    private async Task SendSideAsync(string input)
+    {
+        if (input.Length == 0)
+        {
+            return; // only an attachment: it waits for the work chat
+        }
+
+        var (command, rest) = SplitCommand(input);
+        if (_sidePendingReply is { } reply && (command is null || command == "/salta"))
+        {
+            _sidePendingReply = null;
+            ClearAwaitingReply(SideEntries);
+            Notify(nameof(HasPendingReply));
+            AddSide(new ChatEntry(Speaker.User, input));
+            await reply(command == "/salta" || input.Equals("salta", StringComparison.OrdinalIgnoreCase) ? "" : input);
+            return;
+        }
+
+        if (command == "/nuova")
+        {
+            OnUi(() =>
+            {
+                _sidePendingReply = null;
+                SideEntries.Clear();
+                Notify(nameof(HasPendingReply));
+            });
+            return;
+        }
+
+        if (command is not null && await RunCommandHandlerAsync(command, rest, input))
+        {
+            return;
+        }
+
+        AddSide(new ChatEntry(Speaker.User, input));
+        AddSide(new ChatEntry(Speaker.System, SideChatHint));
+    }
+
+    private void AddSide(ChatEntry entry) => OnUi(() => SideEntries.Add(entry));
+
+    /// <summary>
+    /// Runs one of the mentor's commands. The user's line goes before the answer, in the chat the answer went to; an
+    /// off-topic answer asked from the work chat (/pillola…) brings the side chat on screen.
+    /// </summary>
+    private async Task<bool> RunCommandHandlerAsync(string command, string rest, string input)
+    {
+        if (CommandHandler is not { } handler)
+        {
+            return false;
+        }
+
+        var (work, side) = (Entries.Count, SideEntries.Count);
+        if (!await handler(command, rest))
+        {
+            return false;
+        }
+
+        OnUi(() =>
+        {
+            var toSide = SideEntries.Count > side ? true : Entries.Count > work ? false : _showingSide;
+            var entries = toSide ? SideEntries : Entries;
+            entries.Insert(Math.Min(toSide ? side : work, entries.Count), new ChatEntry(Speaker.User, input));
+            if (toSide && !_showingSide)
+            {
+                ShowingSide = true;
+            }
+        });
+        return true;
     }
 
     /// <summary>
