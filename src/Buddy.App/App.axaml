@@ -5,5 +5,9 @@
     <Application.Styles>
         <FluentTheme />
         <StyleInclude Source="avares://Buddy.App/Theme.axaml" />
+        <!-- Every window (board, settings, dialogs…) gets the app icon, so the taskbar/dock shows it instead of a generic one. -->
+        <Style Selector="Window">
+            <Setter Property="Icon" Value="/buddy.ico" />
+        </Style>
     </Application.Styles>
 </Application>

@@ -311,7 +311,7 @@ public partial class ProjectWindow : Window
                 .Select(i => new CardView(i, column, today, PullRequestOf(i)));
             return key switch
             {
-                "todo" => cards.OrderBy(c => c.Priority).ThenBy(c => c.Item.Date ?? DateOnly.MaxValue).ToList(),
+                "todo" or "corso" => cards.OrderBy(c => c.Priority).ThenBy(c => c.Item.Date ?? DateOnly.MaxValue).ToList(),
                 "valutare" or "attesa" => cards.OrderBy(c => c.Item.Due ?? DateOnly.MaxValue).ToList(),
                 "fatti" or "rifiutati" => cards.OrderByDescending(c => c.Item.Date ?? DateOnly.MinValue).ToList(),
                 _ => cards.ToList(),
@@ -324,8 +324,12 @@ public partial class ProjectWindow : Window
         List<CardView> Shown(string key) => byKey.GetValueOrDefault(key) ?? [];
 
         // Board
-        BoardColumns.ItemsSource = columns.Where(c => Flow.Active.Contains(c.Key))
-            .Select(c => new ColumnView(c, Shown(c.Key), Flow.ColumnActions(c.Key, _skills)))
+        // Da fare also shows the ⏸ tasks, after the others and with a band: In attesa has no column of its own.
+        var waiting = columns.FirstOrDefault(c => c.Key == "attesa");
+        BoardColumns.ItemsSource = columns.Where(c => Flow.Board.Contains(c.Key))
+            .Select(c => c.Key == "todo" && waiting is not null
+                ? new ColumnView(c with { Items = c.Items.Concat(waiting.Items).ToList() }, Shown("todo").Concat(Shown("attesa")).ToList(), Flow.ColumnActions(c.Key, _skills))
+                : new ColumnView(c, Shown(c.Key), Flow.ColumnActions(c.Key, _skills)))
             .ToList();
 
         FitColumns();
@@ -578,7 +582,12 @@ public partial class ProjectWindow : Window
         Detail.DataContext = card;
         Detail.IsVisible = true;
 
-        var actions = card.HasId ? Flow.CardActions(card.Column.Key, _skills).ToList() : [];
+        var actions = card.Item.Raw.Length > 0 ? Flow.StateActions(card.Column.Key).ToList() : [];
+        if (card.HasId)
+        {
+            actions.AddRange(Flow.CardActions(card.Column.Key, _skills));
+        }
+
         if (card.HasId && card.Column.Key is not ("fatti" or "rifiutati"))
         {
             actions.Add(new FlowAction("💬 Chiedi in chat", "", "", "Apre la chat con una domanda su questa voce"));
@@ -755,6 +764,12 @@ public partial class ProjectWindow : Window
 
     private async void OnCardActionClick(object? sender, RoutedEventArgs e)
     {
+        if (sender is Control { DataContext: FlowAction { Skill: Flow.StateSkill } state } && _selected is { } selected)
+        {
+            await MoveCardAsync(selected, state.Command);
+            return;
+        }
+
         if (sender is not Control { DataContext: FlowAction action } || _selected is not { Id: { } id })
         {
             return;
@@ -948,8 +963,8 @@ public partial class ProjectWindow : Window
         var text = column.Key switch
         {
             "appunti" => BoardEntries.Appunto(entry, today),
-            "attesa" => BoardEntries.WaitingTask(entry, id),
             "controllare" => BoardEntries.ToReview(entry, id),
+            _ when entry.Waiting => BoardEntries.WaitingTask(entry, id),
             _ => BoardEntries.Task(entry, id, today),
         };
 
@@ -1555,7 +1570,45 @@ public partial class ProjectWindow : Window
         DetailRead.IsVisible = true;
     }
 
-    private void OnEditCardClick(object? sender, RoutedEventArgs e) => BeginEditSelected();
+    private async void OnEditCardClick(object? sender, RoutedEventArgs e) => await EditSelectedAsync();
+
+    /// <summary>
+    /// "✏ Modifica": the same form used to add the item, filled in with it; Fatti and Rifiutati (and "📝 Modifica il
+    /// testo" in the form) edit the markdown text instead.
+    /// </summary>
+    internal async Task EditSelectedAsync()
+    {
+        if (_selected is not { } card || card.Item.Raw.Length == 0 || _board is null)
+        {
+            return;
+        }
+
+        if (!BoardEdits.Editable.Contains(card.Column.Key))
+        {
+            BeginEditSelected();
+            return;
+        }
+
+        var before = BoardEdits.ToEntry(card.Item, card.Column.Key);
+        var knownTags = Tags.Defaults.Select(d => d.Name).Concat(_board.Columns.SelectMany(c => c.Items).SelectMany(i => i.TagList));
+        var form = new EntryFormWindow(BoardEdits.FormKind(card.Column.Key), card.Id ?? "", knownTags, before,
+            canWait: card.Column.Key is "todo" or "attesa" or "corso");
+        if (await (ShowEntryForm?.Invoke(form) ?? form.ShowAndWaitAsync(this)) is not { } after)
+        {
+            if (form.RawRequested)
+            {
+                BeginEditSelected();
+            }
+
+            return;
+        }
+
+        var text = BoardEdits.Apply(card.Item, card.Column.Key, before, after);
+        if (text != card.Item.Raw && await WriteAsync(() => VaultWriter.ReplaceBlock(FullPath(card.Column.NotePath), card.Item.Raw, text)))
+        {
+            AfterEdit();
+        }
+    }
 
     private void OnCancelCardClick(object? sender, RoutedEventArgs e)
     {

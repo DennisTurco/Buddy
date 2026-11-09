@@ -25,7 +25,7 @@ Per un task che l'utente vuole fare da sé c'è la skill `guidami`.
    - Leggi le righe `Assegnato da:`, `Indicazioni da:`, `Chi chiedere:` e `Accordi:`, se ci sono. Se durante il lavoro l'utente racconta un accordo preso a voce, aggiungilo subito in `Accordi:` con data e persona.
 3. Se il tipo di task ha una skill o una procedura nella `Scheda progetto`, usa quella.
 4. Apri solo le note collegate al task, le `Decisioni` pertinenti e, nella `Mappa codice`, la sezione dell'area o del tipo del task (cercala per titolo, non leggere tutta la nota).
-5. In `Stato attuale` scrivi "In lavorazione: <ID>".
+5. In `Stato attuale` scrivi "In lavorazione: <ID>" e, nella voce in `To-Do`, metti `▶ ` subito dopo `ID · ` (se non c'è già): il task risulta **in corso**.
 
 ## 2. Lavoro
 
@@ -51,7 +51,7 @@ Se è disponibile una revisione del codice (es. il plugin code-review), usala su
 ## 4. Consegna
 
 1. **Dimensione**: conta file e righe cambiati (`git diff --stat`). Se superano la soglia della `Scheda progetto` (se non c'è: 15 file o 400 righe), prima di preparare commit e PR proponi di dividere il lavoro in passi rilasciabili uno alla volta, con l'ordine, e chiedi come procedere.
-2. Sposta la voce da `To-Do` a `Da controllare`, nel formato della nota:
+2. Sposta la voce da `To-Do` a `Da controllare` (senza il ▶), nel formato della nota:
    - cosa è cambiato e file toccati;
    - come testare, in massimo 3 passi concreti (la prova rapida);
    - `Test manuali: [[…/Test manuali <ID>]]`, il link al documento completo del punto 2.5, con quanti casi ci sono e quanti sono da rifare;

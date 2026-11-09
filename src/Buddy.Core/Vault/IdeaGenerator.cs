@@ -48,7 +48,7 @@ public static partial class IdeaGenerator
 
         var columns = board.Columns.ToDictionary(c => c.Key, c => c.Items);
         IEnumerable<BoardItem> Items(params string[] keys) => keys.SelectMany(k => columns.GetValueOrDefault(k) ?? []);
-        Titles("Già in programma (non ripetere)", Items("appunti", "valutare", "todo", "attesa", "controllare"));
+        Titles("Già in programma (non ripetere)", Items("appunti", "valutare", "todo", "attesa", "corso", "controllare"));
         Titles("Già fatti", Items("fatti"));
         Titles("Rifiutati (non riproporre)", Items("rifiutati"));
 

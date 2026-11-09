@@ -18,17 +18,41 @@ public static class Flow
         ["valutare"] = "#F2B544",
         ["todo"] = "#7FD1AE",
         ["attesa"] = "#8AB4F8",
+        ["corso"] = "#FF8A65",
         ["controllare"] = "#B99BF5",
         ["fatti"] = "#5FBF77",
         ["rifiutati"] = "#E57373",
     };
 
-    /// <summary>Columns of the board; Fatti and Rifiutati go to the archive.</summary>
-    public static readonly string[] Active = ["appunti", "valutare", "todo", "attesa", "controllare"];
+    /// <summary>Steps of the open flow; Fatti and Rifiutati go to the archive.</summary>
+    public static readonly string[] Active = ["appunti", "valutare", "todo", "attesa", "corso", "controllare"];
+
+    /// <summary>The board's columns: In attesa has none, its cards sit in Da fare with a "⏸ In attesa" band.</summary>
+    public static readonly string[] Board = ["appunti", "valutare", "todo", "corso", "controllare"];
+
+    /// <summary><see cref="FlowAction.Skill"/> of the buttons that only change the task's state (⏸/▶), without Claude.</summary>
+    public const string StateSkill = "@stato";
+
+    /// <summary>Buttons that move a task between Da fare, In attesa and In corso; the command is the target column.</summary>
+    public static IReadOnlyList<FlowAction> StateActions(string key) => key switch
+    {
+        "todo" =>
+        [
+            new FlowAction("▶ Inizia", StateSkill, "corso", "Lo sposta in «In corso» (▶ nella voce)"),
+            new FlowAction("⏸ Metti in attesa", StateSkill, "attesa", "Resta in Da fare con la fascia «In attesa» (⏸ nella voce); cosa aspetta lo scrivi con ✏ Modifica"),
+        ],
+        "attesa" => [new FlowAction("▶ Non aspetta più", StateSkill, "todo", "Toglie ⏸: torna un task normale di Da fare")],
+        "corso" =>
+        [
+            new FlowAction("⏸ Metti in attesa", StateSkill, "attesa", "Si è bloccato: torna in Da fare con la fascia «In attesa»"),
+            new FlowAction("↩ Rimetti in Da fare", StateSkill, "todo", "Non ci stai più lavorando"),
+        ],
+        _ => [],
+    };
 
     public static IBrush Accent(string key) => new SolidColorBrush(Color.Parse(Accents.GetValueOrDefault(key, "#A29DB8")));
 
-    private const string RejectAsk = "Motivo del rifiuto (e, se vuoi, «Riconsiderare se: …»):";
+    internal const string RejectAsk = "Motivo del rifiuto (e, se vuoi, «Riconsiderare se: …»):";
 
     /// <summary>Buttons on a whole column (no task id).</summary>
     public static IReadOnlyList<FlowAction> ColumnActions(string key, IReadOnlySet<string> skills) => Filter(skills, key switch
@@ -52,6 +76,13 @@ public static class Flow
         "attesa" =>
         [
             new FlowAction("🛠 Lavora", "lavora", "/lavora {id}", "Non aspetta più: Claude lo implementa"),
+            new FlowAction("🚫 Rifiuta…", "rifiuta", "/rifiuta {id} {input}", "Lo sposta in To-Do Rifiutati con il motivo", RejectAsk),
+        ],
+        "corso" =>
+        [
+            new FlowAction("🛠 Lavora", "lavora", "/lavora {id}", "Claude riprende il task e lo porta in Da controllare"),
+            new FlowAction("🧭 Guidami", "guidami", "/guidami {id}", "Lo fai tu, con Claude che ti guida passo passo"),
+            new FlowAction("🧪 Test manuali", "test-manuali", "/test-manuali {id}", "Claude scrive o aggiorna il documento dei test manuali (Test manuali/Test manuali ID)"),
             new FlowAction("🚫 Rifiuta…", "rifiuta", "/rifiuta {id} {input}", "Lo sposta in To-Do Rifiutati con il motivo", RejectAsk),
         ],
         "valutare" =>
@@ -109,6 +140,7 @@ public sealed class ColumnView(BoardColumn column, IReadOnlyList<CardView> cards
     {
         "appunti" => "Inbox vuota ✨",
         "todo" => "Niente da fare: tutto in pari 🎉",
+        "corso" => "Niente in corso: trascina qui un task o usa ▶ Inizia",
         "controllare" => "Niente da rivedere",
         _ => "Vuota",
     };
@@ -137,6 +169,7 @@ public sealed class CardView : INotifyPropertyChanged
         }
 
         Chips = chips;
+        WaitingBanner = item.IsDue(today) ? "🔓 Non aspetta più" : "⏸ In attesa";
         Priority = item.Field("priorita", "priority") is { } p && Regex.Match(p, @"\d") is { Success: true } m ? int.Parse(m.Value, CultureInfo.InvariantCulture) : 9;
     }
 
@@ -158,6 +191,12 @@ public sealed class CardView : INotifyPropertyChanged
     public bool HasTag => Item.TagList.Count > 0;
 
     public string Title => Item.Title.Replace("`", "");
+
+    /// <summary>A ⏸ task, shown in Da fare with a band and its own colour.</summary>
+    public bool IsWaiting => Column.Key == "attesa";
+
+    /// <summary>"⏸ In attesa", or "🔓 Non aspetta più" once its "fino" day has come (the date itself is a chip).</summary>
+    public string WaitingBanner { get; }
 
     public bool IsClosed => Item.Done || Item.Rejected;
 

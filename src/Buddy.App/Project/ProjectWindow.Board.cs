@@ -10,7 +10,8 @@ using Buddy.Core.Vault;
 namespace Buddy.App.Project;
 
 /// <summary>
-/// Board extras: dragging a card to another column (written to the vault), reminders on a card ("ricordamelo il…"),
+/// Board extras: dragging a card to another column (written to the vault) or onto "Chiudi" / "Rifiuta" (sent to
+/// Claude as /chiudi or /rifiuta), reminders on a card ("ricordamelo il…"),
 /// and estimate against reality in the side panel.
 /// </summary>
 public partial class ProjectWindow
@@ -25,9 +26,11 @@ public partial class ProjectWindow
         BoardColumns.AddHandler(PointerPressedEvent, OnCardPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         BoardColumns.AddHandler(PointerMovedEvent, OnCardPointerMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
         BoardColumns.AddHandler(PointerReleasedEvent, (_, _) => _dragPress = null, RoutingStrategies.Tunnel, handledEventsToo: true);
-        BoardColumns.AddHandler(DragDrop.DragOverEvent, OnColumnDragOver);
-        BoardColumns.AddHandler(DragDrop.DragLeaveEvent, (_, _) => HighlightDrop(null));
-        BoardColumns.AddHandler(DragDrop.DropEvent, OnColumnDrop);
+
+        // On the whole page: the columns and, under them while dragging, the "close" and "refuse" zones.
+        BoardPage.AddHandler(DragDrop.DragOverEvent, OnColumnDragOver);
+        BoardPage.AddHandler(DragDrop.DragLeaveEvent, (_, _) => HighlightDrop(null));
+        BoardPage.AddHandler(DragDrop.DropEvent, OnColumnDrop);
     }
 
     private void OnCardPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -59,6 +62,7 @@ public partial class ProjectWindow
         _dragPress = null;
         var data = new DataTransfer();
         data.Add(DataTransferItem.CreateText("buddy-card"));
+        ShowCloseZones(_dragCard);
         try
         {
             await DragDrop.DoDragDropAsync(press, data, DragDropEffects.Move);
@@ -66,27 +70,53 @@ public partial class ProjectWindow
         finally
         {
             HighlightDrop(null);
+            CloseZones.IsVisible = false;
             _dragCard = null;
         }
     }
 
+    /// <summary>While dragging a task: "✅ Chiudi" and "🚫 Rifiuta" under the columns, when the card can go there.</summary>
+    private void ShowCloseZones(CardView card)
+    {
+        var close = card.HasId && BoardMoves.ClosingSkill(card.Column.Key, "fatti") is { } c && _skills.Contains(c);
+        var refuse = card.HasId && BoardMoves.ClosingSkill(card.Column.Key, "rifiutati") is { } r && _skills.Contains(r);
+        CloseZoneDone.IsVisible = close;
+        CloseZoneRejected.IsVisible = refuse;
+        CloseZones.IsVisible = close || refuse;
+    }
+
+    /// <summary>Dropped where it already is: its own column, or Da fare for a ⏸ task (it is shown there).</summary>
+    private static bool SameColumn(string from, string to) => from == to || (from, to) is ("attesa", "todo");
+
+    private bool CanDrop(CardView card, string to) =>
+        SameColumn(card.Column.Key, to) ? false
+        : to is "fatti" or "rifiutati" ? card.HasId && BoardMoves.ClosingSkill(card.Column.Key, to) is { } skill && _skills.Contains(skill)
+        : BoardMoves.Refusal(card.Column.Key, to) is null;
+
     private void OnColumnDragOver(object? sender, DragEventArgs e)
     {
-        var column = ColumnUnder(e.Source);
-        var allowed = _dragCard is not null && column is { } target && BoardMoves.Refusal(_dragCard.Column.Key, target.View.Column.Key) is null;
+        var target = DropTargetUnder(e.Source);
+        var allowed = _dragCard is { } card && target is { } t && CanDrop(card, t.Key);
         e.DragEffects = allowed ? DragDropEffects.Move : DragDropEffects.None;
-        HighlightDrop(allowed ? column!.Value.Border : null);
+        HighlightDrop(allowed ? target!.Value.Border : null);
     }
 
     private async void OnColumnDrop(object? sender, DragEventArgs e)
     {
         HighlightDrop(null);
-        if (_dragCard is not { } card || ColumnUnder(e.Source) is not { } column)
+        CloseZones.IsVisible = false;
+        if (_dragCard is not { } card || DropTargetUnder(e.Source) is not { } target || SameColumn(card.Column.Key, target.Key))
         {
             return;
         }
 
-        if (BoardMoves.Refusal(card.Column.Key, column.View.Column.Key) is { } refusal)
+        if (target.Key is "fatti" or "rifiutati")
+        {
+            await CloseWithSkillAsync(card, target.Key);
+            return;
+        }
+
+        if (BoardMoves.Refusal(card.Column.Key, target.Key) is { } refusal)
         {
             if (refusal.Length > 0)
             {
@@ -96,10 +126,51 @@ public partial class ProjectWindow
             return;
         }
 
-        if (await WriteAsync(() => BoardMoves.Move(_settings.ProjectPath, card.Column, card.Item, column.View.Column)))
+        await MoveCardAsync(card, target.Key);
+    }
+
+    /// <summary>Moves a card to the column <paramref name="key"/> (Da fare, In attesa, In corso…), in the vault.</summary>
+    private async Task MoveCardAsync(CardView card, string key)
+    {
+        if (_board?.Columns.FirstOrDefault(c => c.Key == key) is not { } target)
+        {
+            return;
+        }
+
+        if (await WriteAsync(() => BoardMoves.Move(_settings.ProjectPath, card.Column, card.Item, target)))
         {
             AfterEdit();
         }
+    }
+
+    /// <summary>
+    /// A task dropped on "Chiudi" or "Rifiuta": not moved by hand but sent to Claude as /chiudi ID PR or
+    /// /rifiuta ID motivo, so the closed task gets its PR, cost, documentation, and the refused one its reason.
+    /// </summary>
+    internal async Task CloseWithSkillAsync(CardView card, string key)
+    {
+        if (card.Id is not { } id || BoardMoves.ClosingSkill(card.Column.Key, key) is not { } skill)
+        {
+            return;
+        }
+
+        var (title, question, command) = skill == "chiudi"
+            ? ("Chiudi", card.Column.Key == "controllare"
+                    ? "Link o numero della PR:"
+                    : $"{id} non è passato da «Da controllare». Link o numero della PR (vuoto se non ce n'è una):",
+                "/chiudi {id} {input}")
+            : ("Rifiuta", Flow.RejectAsk, "/rifiuta {id} {input}");
+        if (await Settings.Dialogs.AskAsync(this, $"{title} {id}", question) is not { } answer)
+        {
+            return;
+        }
+
+        if (skill == "chiudi" && card.Column.Key != "controllare" && answer.Trim().Length == 0)
+        {
+            answer = "senza PR";
+        }
+
+        ClaudeRequested?.Invoke(command.Replace("{id}", id).Replace("{input}", answer.Trim()).Trim());
     }
 
     private void HighlightDrop(Border? border)
@@ -126,11 +197,17 @@ public partial class ProjectWindow
     private static CardView? CardUnder(object? source) =>
         (source as Visual)?.GetSelfAndVisualAncestors().OfType<Control>().Select(c => c.DataContext).OfType<CardView>().FirstOrDefault();
 
-    private static (ColumnView View, Border Border)? ColumnUnder(object? source)
+    /// <summary>The column (its key) or close zone (Tag "fatti" / "rifiutati") under the pointer.</summary>
+    private static (string Key, Border Border)? DropTargetUnder(object? source)
     {
         var border = (source as Visual)?.GetSelfAndVisualAncestors().OfType<Border>()
-            .FirstOrDefault(b => b.DataContext is ColumnView && DragDrop.GetAllowDrop(b));
-        return border is { DataContext: ColumnView view } ? (view, border) : null;
+            .FirstOrDefault(b => DragDrop.GetAllowDrop(b) && (b.Tag is string || b.DataContext is ColumnView));
+        return border switch
+        {
+            { Tag: string key } => (key, border),
+            { DataContext: ColumnView view } => (view.Column.Key, border),
+            _ => null,
+        };
     }
 
     // ---- Reminders --------------------------------------------------------------------------------------------

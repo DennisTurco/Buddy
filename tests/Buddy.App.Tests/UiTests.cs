@@ -430,6 +430,45 @@ public class PagesAndPaletteTests
     }
 
     [AvaloniaTest]
+    public async Task Modifica_opens_the_add_form_filled_in_and_saves_only_what_changed()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-edit-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var todoPath = Path.Combine(project, "To-Do.md");
+            File.AppendAllText(todoPath, "\n- [ ] T-001 · 2026-11-01 · Login [priorita:: P2] [stima:: 2h] [tag:: feature]\n  - Accordi: 2026-11-02 con Persona A\n  - Fatto quando: si entra\n");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            var todo = window.Board!.Columns.First(c => c.Key == "todo");
+            window.Select(new CardView(todo.Items.Single(i => i.Id == "T-001"), todo, DateOnly.FromDateTime(DateTime.Today)));
+            string? shownTitle = null;
+            window.ShowEntryForm = form =>
+            {
+                shownTitle = form.TitleBox.Text;
+                Assert.That(form.DoneWhenBox.Text, Is.EqualTo("si entra"));
+                Assert.That(form.TagButtons.First(b => (string)b.Content! == "feature").IsChecked, Is.True);
+                form.TitleBox.Text = "Login con SSO";
+                return Task.FromResult<Buddy.Core.Vault.NewEntry?>(form.Entry);
+            };
+            await window.EditSelectedAsync();
+
+            Assert.That(shownTitle, Is.EqualTo("Login"));
+            var content = File.ReadAllText(todoPath);
+            Assert.That(content, Does.Contain("- [ ] T-001 · 2026-11-01 · Login con SSO [priorita:: P2] [stima:: 2h] [tag:: feature]\n  - Accordi: 2026-11-02 con Persona A\n  - Fatto quando: si entra\n"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
     public async Task A_page_note_is_edited_with_the_tool_bar_and_renamed_but_flow_notes_are_protected()
     {
         var root = Directory.CreateTempSubdirectory("buddy-editor-").FullName;

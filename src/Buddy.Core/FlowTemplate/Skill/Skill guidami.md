@@ -21,7 +21,7 @@ Questa nota **è** il file `SKILL.md`: per installarla, copiarla in `~/.claude/s
 
 1. Leggi la `Scheda progetto` e `Stato attuale`.
 2. Trova il task **per ID** in `To-Do`, senza leggere tutta la nota. Se il "Fatto quando" non è chiaro, chiariscilo insieme all'utente prima di iniziare.
-3. In `Stato attuale` scrivi "In lavorazione (guidato): <ID>".
+3. In `Stato attuale` scrivi "In lavorazione (guidato): <ID>" e, nella voce in `To-Do`, metti `▶ ` subito dopo `ID · ` (se non c'è già): il task risulta **in corso**.
 4. Chiedi quanto aiuto vuole (predefinito: **didattico**):
    - **didattico**: spiegazione dei concetti, domande guida, indizi graduali, esempi di codice simili presi dal progetto (non la soluzione);
    - **passo passo**: un passo alla volta, con un suggerimento per ciascuno; il codice solo se lo chiede;
