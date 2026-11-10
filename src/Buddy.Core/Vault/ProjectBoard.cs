@@ -6,7 +6,7 @@ namespace Buddy.Core.Vault;
 
 /// <summary>
 /// The project's flow notes read as a board: one column per flow note (Appunti, Da valutare, To-Do, In attesa,
-/// Da controllare, Fatti, Rifiutati), with the items parsed from their list lines
+/// In corso, Da controllare, Fatti, Rifiutati; In attesa and In corso are To-Do items marked "⏸" or "▶"), with the items parsed from their list lines
 /// ("- [ ] T-004 · 2026-10-15 · Titolo — Dubbio: … [rivedere:: 2026-10-29]"), plus the "Stato attuale" summary.
 /// Notes that do not exist are left out, so a vault without this flow simply gets fewer columns.
 /// </summary>
@@ -22,6 +22,7 @@ public sealed partial record ProjectBoard(
         ("valutare", "Da valutare", "Da valutare", "🤔"),
         ("todo", "To-Do", "Da fare", "📋"),
         ("attesa", "To-Do", "In attesa", "⏸"),
+        ("corso", "To-Do", "In corso", "▶"),
         ("controllare", "Da controllare", "Da controllare", "🔍"),
         ("fatti", "To-Do Fatti", "Fatti", "✅"),
         ("rifiutati", "To-Do Rifiutati", "Rifiutati", "🚫"),
@@ -46,8 +47,9 @@ public sealed partial record ProjectBoard(
             var items = ParseItems(note.Content, idPattern).ToList();
             items = key switch
             {
-                "todo" => items.Where(i => !i.Waiting).ToList(),
+                "todo" => items.Where(i => !i.Waiting && !i.InProgress).ToList(),
                 "attesa" => items.Where(i => i.Waiting).ToList(),
+                "corso" => items.Where(i => i.InProgress && !i.Waiting).ToList(),
                 _ => items,
             };
             columns.Add(new BoardColumn(key, title, icon, note.RelativePath, items));
@@ -156,6 +158,7 @@ public sealed partial record ProjectBoard(
         string? id = null;
         DateOnly? date = null;
         var waiting = false;
+        var inProgress = false;
         var rest = new List<string>();
         foreach (var raw in text.Split(" · ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
@@ -164,6 +167,16 @@ public sealed partial record ProjectBoard(
             {
                 waiting = true;
                 part = part.TrimStart('⏸').Trim();
+                if (part.Length == 0)
+                {
+                    continue;
+                }
+            }
+
+            if (part.StartsWith('▶'))
+            {
+                inProgress = true;
+                part = part.TrimStart('▶', '\uFE0F').Trim();
                 if (part.Length == 0)
                 {
                     continue;
@@ -219,7 +232,7 @@ public sealed partial record ProjectBoard(
             .ToList();
 
         return new BoardItem(id, date, title, note, rest.Skip(1).ToList(), details,
-            Done: mark is "x" or "X", Rejected: mark == "-", waiting, due, dueLabel, rework, block.Text, fields);
+            Done: mark is "x" or "X", Rejected: mark == "-", waiting, due, dueLabel, rework, block.Text, fields, inProgress);
     }
 
     [GeneratedRegex(@"^[-*] (?:\[(?<mark>[ xX-])\] )?(?<text>.+)$")]
@@ -243,6 +256,7 @@ public sealed record BoardColumn(string Key, string Title, string Icon, string N
 /// <param name="Rework">How many times the item came back from review (🔁).</param>
 /// <param name="Fields">Dataview inline fields ([priorita:: P1], [stima:: 2h], [consiglio:: 🟢]…), keys as written.</param>
 /// <param name="Raw">The item's lines as written in the note, to edit it in place (<see cref="VaultWriter.ReplaceBlock"/>).</param>
+/// <param name="InProgress">Marked "▶" in To-Do: someone (or Claude) is working on it now.</param>
 public sealed partial record BoardItem(
     string? Id,
     DateOnly? Date,
@@ -257,7 +271,8 @@ public sealed partial record BoardItem(
     string? DueLabel,
     int Rework,
     string Raw = "",
-    IReadOnlyDictionary<string, string>? Fields = null)
+    IReadOnlyDictionary<string, string>? Fields = null,
+    bool InProgress = false)
 {
     /// <summary>A field by name, ignoring case and accents typed or not ("priorita" finds "priorità").</summary>
     public string? Field(params string[] names) =>

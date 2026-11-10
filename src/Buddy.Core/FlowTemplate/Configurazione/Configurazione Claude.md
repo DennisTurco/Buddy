@@ -44,7 +44,7 @@ Esempi di riferimento per i file di configurazione di Claude Code. Al setup Clau
 - Any text I will send to others (card comments, PR texts, questions, chat messages, also my own drafts) follows the "Regole per i testi" section of the `lavora` skill: no curt closings, a mistake is admitted first with the fix (process causes go to `Da valutare` as `#proposta-team`, never in the same text), a disagreement is stated once with one argument.
 
 ## Flow
-To-do Appunti → Da valutare → To-Do (⏸ waiting) → Da controllare → To-Do Fatti | To-Do Rifiutati
+To-do Appunti → Da valutare → To-Do (⏸ waiting, ▶ in progress) → Da controllare → To-Do Fatti | To-Do Rifiutati
 - Skills: /smista, /lavora, /chiudi, /rifiuta, /valuta, /guidami, /manutenzione, /contesto, /analisi, plus the task-type skills listed in the project sheet.
 - Three ways to handle a task: `/lavora ID` (you work, ask for approval on the plan when the change is large), `/lavora ID autonomo` (full delegation: stop only for ambiguity, forbidden commands or shared data), `/guidami ID` (I write the code, you guide and review read-only).
 - After a change visible in the browser, ask me whether to run /verifica-web and state the estimated cost (🟢 saved script, 🟡/🔴 exploration). Never on production.

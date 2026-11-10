@@ -36,6 +36,12 @@ public sealed record NewEntry
 
     public DateOnly? Until { get; init; }
 
+    /// <summary>A task of Da fare marked ⏸ (the form's "In attesa" box): written with <see cref="BoardEntries.WaitingTask"/>.</summary>
+    public bool Waiting { get; init; }
+
+    /// <summary>When editing: the text after " — " on the item's line ("Dubbio: …"), kept as it is unless changed.</summary>
+    public string Note { get; init; } = "";
+
     public string Changed { get; init; } = "";
 
     public string Files { get; init; } = "";
@@ -101,8 +107,11 @@ public static partial class BoardEntries
         }
 
         text.Append(Field("priorita", entry.Priority)).Append(Field("stima", entry.Estimate)).Append(TagField(entry.Tags));
+        text.Append(Field("tipo", entry.Type));
         AppendDetail(text, "Contesto", entry.Context);
+        AppendDetail(text, "Dove", entry.Where);
         AppendDetail(text, "Fatto quando", entry.DoneWhen);
+        AppendDetail(text, "Assegnato da", entry.AssignedBy);
         return text.ToString();
     }
 
@@ -159,9 +168,9 @@ public static partial class BoardEntries
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    private static string TagField(IReadOnlyList<string> tags) => tags.Count == 0 ? "" : Field("tag", string.Join(", ", tags));
+    internal static string TagField(IReadOnlyList<string> tags) => tags.Count == 0 ? "" : Field("tag", string.Join(", ", tags));
 
-    private static string Field(string key, string? value) =>
+    internal static string Field(string key, string? value) =>
         Line(value ?? "").Replace("[", "").Replace("]", "") is { Length: > 0 } clean ? $" [{key}:: {clean}]" : "";
 
     private static void AppendDetail(StringBuilder text, string label, string value)
@@ -173,9 +182,9 @@ public static partial class BoardEntries
     }
 
     /// <summary>One line: the note's list syntax would break on a newline.</summary>
-    private static string Line(string text) => string.Join(' ', Lines(text));
+    internal static string Line(string text) => string.Join(' ', Lines(text));
 
-    private static IEnumerable<string> Lines(string text) =>
+    internal static IEnumerable<string> Lines(string text) =>
         text.Replace("\r\n", "\n").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     private static int Number(string id) => int.Parse(id[2..], CultureInfo.InvariantCulture);

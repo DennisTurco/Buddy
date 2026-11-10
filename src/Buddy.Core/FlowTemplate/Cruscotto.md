@@ -89,10 +89,10 @@ sezione("📋 Da fare", ["ID", "Titolo", "Priorità", "Stima", "Aggiunto", "Note
 dv.paragraph(`**Totale stimato da fare (esclusi ⏸):** ${daFare.array().reduce((s, t) => s + (numOre(t.stima) ?? 0), 0)}h`);
 
 sezione("❓ Senza \"Fatto quando\"", ["ID", "Titolo", "Note"],
-  senzaCriterio.map((t) => [id(t), pezzi(t).titolo.replace(/^⏸\s*/, ""), note(t)]).array());
+  senzaCriterio.map((t) => [id(t), pezzi(t).titolo.replace(/^(⏸|▶\uFE0F?)\s*/, ""), note(t)]).array());
 
 sezione("🔓 In attesa ma sbloccati", ["ID", "Titolo", "Fino al", "Note"],
-  sbloccati.map((t) => [id(t), pezzi(t).titolo.replace(/^⏸\s*/, ""), t.fino, note(t)]).array());
+  sbloccati.map((t) => [id(t), pezzi(t).titolo.replace(/^(⏸|▶\uFE0F?)\s*/, ""), t.fino, note(t)]).array());
 
 sezione("⏰ Valutazioni scadute", ["ID", "Idea", "Aggiunta", "Rivedere", "Note"],
   scadute.map((t) => [id(t), pezzi(t).titolo.split(" — Dubbio:")[0], pezzi(t).data ?? "—", t.rivedere, note(t)]).array());
@@ -105,7 +105,7 @@ sezione("🔍 Da controllare", ["ID", "Titolo", "Note"],
 
 sezione("⏸ In attesa", ["ID", "Titolo", "In attesa di", "Note"],
   attesa.map((t) => {
-    const [titolo, motivo] = pezzi(t).titolo.replace(/^⏸\s*/, "").split(" — In attesa di: ");
+    const [titolo, motivo] = pezzi(t).titolo.replace(/^(⏸|▶\uFE0F?)\s*/, "").split(" — In attesa di: ");
     return [id(t), titolo, motivo ?? (t.fino ? `fino al ${t.fino.toFormat("yyyy-MM-dd")}` : "—"), note(t)];
   }).array());
 

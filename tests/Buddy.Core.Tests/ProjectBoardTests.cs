@@ -73,7 +73,7 @@ public class ProjectBoardTests
 
         var board = ProjectBoard.Load(vault, new BuddySettings().TaskIdPattern);
 
-        Assert.That(board.Columns.Select(c => c.Key), Is.EqualTo(new[] { "appunti", "todo", "attesa", "controllare", "fatti" }),
+        Assert.That(board.Columns.Select(c => c.Key), Is.EqualTo(new[] { "appunti", "todo", "attesa", "corso", "controllare", "fatti" }),
             "missing notes (Da valutare, Rifiutati) give no column");
         var column = (string key) => board.Columns.Single(c => c.Key == key).Items;
 

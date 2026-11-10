@@ -35,6 +35,7 @@ public sealed class MentorService : IDisposable
         /competenze — cosa sai bene e cosa ripassare, dalle pillole
         /obiettivi — gli obiettivi del trimestre (/obiettivi nuovi per sceglierli)
         /salta — ignora la domanda in sospeso
+        Pillole, ripassi e chiacchierate stanno in una chat a parte (☕ in alto), fuori da quella di lavoro.
         """;
 
     private static readonly string DefaultStatePath =
@@ -543,7 +544,7 @@ public sealed class MentorService : IDisposable
                         ?? (chatKind == "fuori tema" && interest is not null
                             ? $"Pausa chiacchiera: parlando di {interest}, c'è qualcosa che ti ha colpito ultimamente?"
                             : "Ehi, una curiosità: stai leggendo qualcosa in questo periodo, o c'è qualcosa che stai imparando per conto tuo?");
-                    Ask(question, $"chiacchierata ({chatKind})");
+                    Ask(question, $"chiacchierata ({chatKind})", offTopic: true);
                     break;
 
                 case MentorEvent.Pill:
@@ -552,7 +553,7 @@ public sealed class MentorService : IDisposable
                     if (await GenerateAsync(MentorPrompts.Pill(Settings, Today, topics, kind, await CurrentWorkAsync())) is { } pill)
                     {
                         Week.Pills++;
-                        Ask(pill, "pillola");
+                        Ask(pill, "pillola", offTopic: true);
                     }
                     break;
 
@@ -591,7 +592,7 @@ public sealed class MentorService : IDisposable
         {
             if (manual)
             {
-                _conversation.PostMentor("Nessuna pillola da ripassare oggi: i ripassi arrivano 2, 7, 21 e 60 giorni dopo. 👍");
+                _conversation.PostMentor("Nessuna pillola da ripassare oggi: i ripassi arrivano 2, 7, 21 e 60 giorni dopo. 👍", offTopic: true);
             }
 
             return;
@@ -600,7 +601,8 @@ public sealed class MentorService : IDisposable
         Week.Reviews++;
         _conversation.PostMentor(question, answer => answer.Length == 0
             ? Task.CompletedTask
-            : SaveWithClaudeAsync(MentorPrompts.ReviewAnswer(Settings, question, answer, Today), "ripasso", [new(question, answer)]));
+            : SaveWithClaudeAsync(MentorPrompts.ReviewAnswer(Settings, question, answer, Today), "ripasso", [new(question, answer)], offTopic: true),
+            offTopic: true);
     }
 
     /// <summary>After the first-run wizard: seeds the profile with the interests and introduces itself.</summary>
@@ -611,11 +613,15 @@ public sealed class MentorService : IDisposable
         Ask(welcome, "benvenuto");
     }
 
-    /// <summary>Posts a question; the next message the user writes is the answer, saved to the journal.</summary>
-    private void Ask(string text, string kind) =>
+    /// <summary>
+    /// Posts a question; the next message the user writes is the answer, saved to the journal. Off-topic dialogues
+    /// (pills, chats) go to the side chat, so they do not mix with the work.
+    /// </summary>
+    private void Ask(string text, string kind, bool offTopic = false) =>
         _conversation.PostMentor(text, answer => answer.Length == 0
             ? Task.CompletedTask
-            : SaveWithClaudeAsync(MentorPrompts.SaveAnswer(Settings, kind, text, answer, Today), kind, [new(text, answer)]));
+            : SaveWithClaudeAsync(MentorPrompts.SaveAnswer(Settings, kind, text, answer, Today), kind, [new(text, answer)], offTopic),
+            offTopic: offTopic);
 
     /// <summary>How many times the mentor follows up in one dialogue before letting it rest.</summary>
     private const int MaxFollowUps = 5;
@@ -625,11 +631,11 @@ public sealed class MentorService : IDisposable
     /// something, the mentor keeps listening: the next message continues the same dialogue (<paramref name="thread"/>)
     /// instead of going to the models, so "non lo so, dimmelo tu" gets an explanation from the mentor.
     /// </summary>
-    private async Task SaveWithClaudeAsync(string prompt, string kind, IReadOnlyList<MentorExchange> thread)
+    private async Task SaveWithClaudeAsync(string prompt, string kind, IReadOnlyList<MentorExchange> thread, bool offTopic = false)
     {
         if (!HasJournal)
         {
-            _conversation.PostMentor("Grazie! (Per ricordarmelo imposta la cartella del diario in Impostazioni → Mentore.)");
+            _conversation.PostMentor("Grazie! (Per ricordarmelo imposta la cartella del diario in Impostazioni → Mentore.)", offTopic: offTopic);
             return;
         }
 
@@ -640,21 +646,22 @@ public sealed class MentorService : IDisposable
         _conversation.SetThinking(false);
         if (!result.Success)
         {
-            _conversation.PostMentor($"Non sono riuscito a salvarlo nel diario: {result.Text}");
+            _conversation.PostMentor($"Non sono riuscito a salvarlo nel diario: {result.Text}", offTopic: offTopic);
             return;
         }
 
         var reply = result.Text;
         if (thread.Count > MaxFollowUps || !MentorPrompts.AsksSomething(reply))
         {
-            _conversation.PostMentor(reply);
+            _conversation.PostMentor(reply, offTopic: offTopic);
             return;
         }
 
         _conversation.PostMentor(reply, answer => answer.Length == 0
             ? Task.CompletedTask
             : SaveWithClaudeAsync(MentorPrompts.FollowUp(Settings, kind, thread, reply, answer, Today), kind,
-                [.. thread, new MentorExchange(reply, answer)]));
+                [.. thread, new MentorExchange(reply, answer)], offTopic),
+            offTopic: offTopic);
     }
 
     private async Task SaveApproachAsync(string action, string approach)
@@ -734,7 +741,7 @@ public sealed class MentorService : IDisposable
                 GoalsCommand(argument);
                 return true;
             case "/competenze":
-                _conversation.PostMentor($"**Mappa delle competenze** (dalle pillole e dai ripassi)\n\n{SkillsMarkdown()}");
+                _conversation.PostMentor($"**Mappa delle competenze** (dalle pillole e dai ripassi)\n\n{SkillsMarkdown()}", offTopic: true);
                 return true;
             case "/lavora" or "/guidami":
                 OnTaskDelegated($"{command} {argument}");

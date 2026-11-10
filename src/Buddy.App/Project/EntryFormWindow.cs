@@ -9,13 +9,18 @@ using Buddy.Core.Vault;
 namespace Buddy.App.Project;
 
 /// <summary>
-/// "＋" on a board column: an appunto (title, details, tags) or a card for Da fare, In attesa or Da controllare,
-/// with the same fields Claude writes (priority, estimate, Fatto quando, Come testare…). The result is turned into
-/// the note's format by <see cref="BoardEntries"/>.
+/// "＋" on a board column: an appunto (title, details, tags) or a card for Da fare (with "⏸ In attesa" for a task on
+/// hold) or Da controllare, with the same fields Claude writes (priority, estimate, Fatto quando, Come testare…). The
+/// result is turned into the note's format by <see cref="BoardEntries"/>. "✏ Modifica" on a card opens the same form
+/// filled in with the item (<see cref="BoardEdits"/>), with "Salva" instead of "Aggiungi".
 /// </summary>
 public sealed class EntryFormWindow : Window
 {
     private readonly string _kind;
+    private readonly bool _editing;
+    private readonly CheckBox _waiting = new() { Content = "⏸ In attesa: deciso, ma non per ora", Margin = new Thickness(0, 8, 0, 0) };
+    private readonly StackPanel _waitingFields = new() { Spacing = 2 };
+    private readonly TextBox _note = Box("Il testo dopo « — » nella voce (es. Dubbio: …)");
     private readonly TextBox _title = Box("Titolo breve");
 
     internal TextBox TitleBox => _title;
@@ -26,6 +31,9 @@ public sealed class EntryFormWindow : Window
     private readonly TextBox _details = Box("Scrivi liberamente: ogni riga diventa una riga dell'appunto", multiline: true);
     private readonly TextBox _id;
     private readonly ComboBox _priority = new() { ItemsSource = BoardEntries.Priorities, SelectedIndex = 1, MinWidth = 80 };
+
+    /// <summary>"—" in the priority list when editing: an item without priority keeps having none.</summary>
+    private const string NoPriority = "—";
     private readonly TextBox _estimate = new() { Text = "1h", Width = 80, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly TextBox _type = Box("Facoltativo: uno dei tipi della Scheda progetto");
     private readonly TextBox _context = Box("Link a una nota o una frase");
@@ -43,18 +51,23 @@ public sealed class EntryFormWindow : Window
     private readonly TextBlock _error = new() { Foreground = Brushes.IndianRed, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private NewEntry? _result;
 
-    /// <param name="kind">The column: appunti, todo, attesa or controllare.</param>
+    /// <param name="kind">The form: appunti, todo, attesa (todo with "In attesa" ticked) or controllare.</param>
     /// <param name="nextId">The id used when the ID field is left empty.</param>
     /// <param name="knownTags">The common tags plus those already used on the board.</param>
-    public EntryFormWindow(string kind, string nextId, IEnumerable<string> knownTags)
+    /// <param name="existing">When editing: the item as an entry (<see cref="BoardEdits.ToEntry"/>), shown in the fields.</param>
+    /// <param name="canWait">Whether "In attesa" is offered (not for an idea of Da valutare).</param>
+    public EntryFormWindow(string kind, string nextId, IEnumerable<string> knownTags, NewEntry? existing = null, bool canWait = true)
     {
-        _kind = kind;
+        _kind = kind == "attesa" ? "todo" : kind;
+        _editing = existing is not null;
         _id = Box($"Vuoto = {nextId} (o la chiave del tracker)");
-        Title = kind switch
+        var editName = existing is { Id.Length: > 0 } ? existing.Id : existing?.Title;
+        Title = (_editing, kind) switch
         {
-            "appunti" => "Nuovo appunto",
-            "attesa" => "Nuovo task in attesa ⏸",
-            "controllare" => "Nuova voce da controllare",
+            (true, _) => $"Modifica {editName}",
+            (_, "appunti") => "Nuovo appunto",
+            (_, "attesa") => "Nuovo task in attesa ⏸",
+            (_, "controllare") => "Nuova voce da controllare",
             _ => "Nuovo task",
         };
         Width = 560;
@@ -71,27 +84,39 @@ public sealed class EntryFormWindow : Window
         }
 
         Add(form, "Titolo *", _title);
-        switch (kind)
+        if (existing is { Note.Length: > 0 })
+        {
+            Add(form, "Nota", _note);
+        }
+
+        switch (_kind)
         {
             case "appunti":
                 Add(form, "Dettagli", _details);
                 break;
             case "todo":
+                if (canWait)
+                {
+                    form.Children.Add(_waiting);
+                    Add(_waitingFields, "In attesa di", _waitingFor);
+                    Add(_waitingFields, "Oppure fino al", _until);
+                    _waitingFields.Children.Add(new TextBlock { Classes = { "hint" }, Text = "Se scrivi cosa aspetta, la data non viene usata." });
+                    form.Children.Add(_waitingFields);
+                    _waitingFields.IsVisible = false;
+                    _waiting.IsCheckedChanged += (_, _) => _waitingFields.IsVisible = _waiting.IsChecked == true;
+                    if (kind == "attesa")
+                    {
+                        _priority.SelectedIndex = 2;
+                        _waiting.IsChecked = true;
+                    }
+                }
+
                 Add(form, "Priorità e stima", Pair(_priority, _estimate));
                 Add(form, "Fatto quando", _doneWhen);
                 Add(form, "Contesto", _context);
                 Add(form, "Dove", _where);
                 Add(form, "Assegnato da", _assignedBy);
                 Add(form, "Tipo", _type);
-                break;
-            case "attesa":
-                _priority.SelectedIndex = 2;
-                Add(form, "In attesa di", _waitingFor);
-                Add(form, "Oppure fino al", _until);
-                form.Children.Add(new TextBlock { Classes = { "hint" }, Text = "Se scrivi cosa aspetta, la data non viene usata." });
-                Add(form, "Priorità e stima", Pair(_priority, _estimate));
-                Add(form, "Fatto quando", _doneWhen);
-                Add(form, "Contesto", _context);
                 break;
             case "controllare":
                 Add(form, "Cambiato", _changed);
@@ -122,13 +147,29 @@ public sealed class EntryFormWindow : Window
         form.Children.Add(_otherTags);
         form.Children.Add(_error);
 
-        var create = new Button { Content = "Aggiungi", IsDefault = true, Margin = new Thickness(0, 0, 6, 0) };
+        var create = new Button { Content = _editing ? "Salva" : "Aggiungi", IsDefault = true, Margin = new Thickness(0, 0, 6, 0) };
         var cancel = new Button { Content = "Annulla", IsCancel = true };
         create.Click += (_, _) => Confirm();
         cancel.Click += (_, _) => Close();
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
-        buttons.Children.Add(create);
-        buttons.Children.Add(cancel);
+        var buttons = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
+        var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        right.Children.Add(create);
+        right.Children.Add(cancel);
+        if (_editing)
+        {
+            // Everything the form does not show (Accordi, Costo, links…) stays as it is; the text is there for the rest.
+            var raw = new Button { Content = "📝 Modifica il testo", Classes = { "small" }, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(raw, "Apre la voce come testo markdown, con tutte le sue righe");
+            raw.Click += (_, _) =>
+            {
+                RawRequested = true;
+                Close();
+            };
+            DockPanel.SetDock(raw, Dock.Left);
+            buttons.Children.Add(raw);
+        }
+
+        buttons.Children.Add(right);
 
         var root = new DockPanel { Margin = new Thickness(18, 14) };
         DockPanel.SetDock(buttons, Dock.Bottom);
@@ -149,6 +190,47 @@ public sealed class EntryFormWindow : Window
             }
         };
         Opened += (_, _) => _title.Focus();
+        if (existing is not null)
+        {
+            Fill(existing);
+        }
+    }
+
+    /// <summary>"📝 Modifica il testo" was chosen: the caller opens the item as markdown instead.</summary>
+    public bool RawRequested { get; private set; }
+
+    private void Fill(NewEntry entry)
+    {
+        _id.Text = entry.Id;
+        _id.IsReadOnly = true;
+        _title.Text = entry.Title;
+        _note.Text = entry.Note;
+        _details.Text = entry.Details;
+        _priority.ItemsSource = BoardEntries.Priorities.Prepend(NoPriority).ToList();
+        _priority.SelectedItem = BoardEntries.Priorities.Contains(entry.Priority) ? entry.Priority : NoPriority;
+        _estimate.Text = entry.Estimate;
+        _type.Text = entry.Type;
+        _context.Text = entry.Context;
+        _where.Text = entry.Where;
+        _doneWhen.Text = entry.DoneWhen;
+        _assignedBy.Text = entry.AssignedBy;
+        _waiting.IsChecked = entry.Waiting;
+        _waitingFor.Text = entry.WaitingFor;
+        if (entry.Until is { } until)
+        {
+            _until.SelectedDate = until.ToDateTime(TimeOnly.MinValue);
+        }
+
+        _changed.Text = entry.Changed;
+        _files.Text = entry.Files;
+        _howToTest.Text = entry.HowToTest;
+        _commit.Text = entry.Commit;
+        foreach (var button in _tagButtons)
+        {
+            button.IsChecked = entry.Tags.Contains((string)button.Content!, StringComparer.OrdinalIgnoreCase);
+        }
+
+        _otherTags.Text = string.Join(", ", entry.Tags.Where(t => !_tagButtons.Any(b => string.Equals((string)b.Content!, t, StringComparison.OrdinalIgnoreCase))));
     }
 
     /// <summary>What was filled in, or null if cancelled.</summary>
@@ -167,15 +249,17 @@ public sealed class EntryFormWindow : Window
         Tags = _tagButtons.Where(b => b.IsChecked == true).Select(b => (string)b.Content!)
             .Concat(BoardEntries.ParseTags(_otherTags.Text ?? ""))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-        Priority = _priority.SelectedItem as string ?? "P2",
+        Priority = _priority.SelectedItem as string is { } priority ? (priority == NoPriority ? "" : priority) : _editing ? "" : "P2",
+        Note = Text(_note),
         Estimate = Text(_estimate),
         Type = Text(_type),
         Context = Text(_context),
         Where = Text(_where),
         DoneWhen = _doneWhen.Text ?? "",
         AssignedBy = Text(_assignedBy),
-        WaitingFor = Text(_waitingFor),
-        Until = _kind == "attesa" && _until.SelectedDate is { } until ? DateOnly.FromDateTime(until) : null,
+        Waiting = _kind == "todo" && _waiting.IsChecked == true,
+        WaitingFor = _waiting.IsChecked == true ? Text(_waitingFor) : "",
+        Until = _waiting.IsChecked == true && _until.SelectedDate is { } until ? DateOnly.FromDateTime(until) : null,
         Changed = _changed.Text ?? "",
         Files = Text(_files),
         HowToTest = _howToTest.Text ?? "",

@@ -7,7 +7,7 @@ prossimo_id: T-001
 updated: 2026-10-16
 ---
 
-Task da fare. **Non leggere tutto: cercare per ID.** Il formato dell'ID è nella [[Intelligenza Artificiale/Template flusso/Scheda progetto]] (es. chiave Jira); `T-001`… per i task senza card. La proprietà `prossimo_id` dice il prossimo ID libero ed è un **contatore unico** per tutti i `T-…`, anche per le voci di `Da valutare` (l'ID non cambia quando passano da una nota all'altra); la aggiorna `/smista`. I task ⏸ sono decisi ma non per ora: `/lavora` li salta.
+Task da fare. **Non leggere tutto: cercare per ID.** Il formato dell'ID è nella [[Intelligenza Artificiale/Template flusso/Scheda progetto]] (es. chiave Jira); `T-001`… per i task senza card. La proprietà `prossimo_id` dice il prossimo ID libero ed è un **contatore unico** per tutti i `T-…`, anche per le voci di `Da valutare` (l'ID non cambia quando passano da una nota all'altra); la aggiorna `/smista`. I task ⏸ sono decisi ma non per ora: `/lavora` li salta. I task ▶ sono **in corso**: `/lavora` e `/guidami` mettono ▶ dopo l'ID quando iniziano (la bacheca di Buddy li mostra nella colonna «In corso»); il ▶ sparisce quando la voce passa in `Da controllare`.
 
 > [!example] Formato
 > ```
@@ -18,6 +18,7 @@ Task da fare. **Non leggere tutto: cercare per ID.** Il formato dell'ID è nella
 >   - Assegnato da: Persona A · Indicazioni da: Persona B
 >   - Chi chiedere: Persona C (come testare l'import)
 >   - Accordi: 2026-10-15 con Persona A — il caso X resta fuori, card separata
+> - [ ] T-006 · ▶ 2026-10-14 · Titolo breve del task in corso [priorita:: P1] [stima:: 2h] [tag:: bug]
 > - [ ] T-002 · ⏸ Titolo breve — In attesa di: rilascio 2.0 [priorita:: P3] [stima:: 2h]
 > - [ ] T-005 · ⏸ Titolo breve — In attesa di: chiusura da Persona B (verificare che sia chiuso) [priorita:: P2] [stima:: 0.5h]
 > - [ ] T-003 · ⏸ Titolo breve — In attesa di: #145 [priorita:: P2] [stima:: 1h]
