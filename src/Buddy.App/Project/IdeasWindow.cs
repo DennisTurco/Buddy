@@ -6,6 +6,8 @@ using Avalonia.Media;
 using Buddy.Core;
 using Buddy.Core.Vault;
 
+using Buddy.App.Chat;
+
 namespace Buddy.App.Project;
 
 /// <summary>Asks the AI for ideas: the prompt and whether to use Claude; returns its answer or why it failed.</summary>
@@ -31,7 +33,7 @@ public sealed class IdeasWindow : Window
 
     private readonly ComboBox _count = new() { ItemsSource = new[] { 3, 5, 8 }, SelectedIndex = 1, MinWidth = 70 };
     private readonly ComboBox _model = new() { ItemsSource = new[] { "Claude", "Modello locale" }, SelectedIndex = 0, MinWidth = 150 };
-    private readonly Button _generate = new() { Content = "💡 Genera e aggiungi agli appunti", IsDefault = true };
+    private readonly Button _generate = new() { Content = Icons.Label("💡 Genera e aggiungi agli appunti"), IsDefault = true };
     private readonly ProgressBar _busy = new() { IsIndeterminate = true, IsVisible = false, Margin = new Thickness(0, 10, 0, 0) };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
     private readonly StackPanel _results = new() { Spacing = 6, Margin = new Thickness(0, 8, 0, 0) };
@@ -59,7 +61,7 @@ public sealed class IdeasWindow : Window
 
         var undo = new Button { Content = "Togli queste idee" };
         undo.Click += async (_, _) => await UndoAsync();
-        var sort = new Button { Content = "🗂 Smista ora con Claude" };
+        var sort = new Button { Content = Icons.Label("🗂 Smista ora con Claude") };
         sort.Click += (_, _) =>
         {
             SortRequested?.Invoke();

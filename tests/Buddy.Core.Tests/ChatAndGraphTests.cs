@@ -84,26 +84,89 @@ public class NoteGraphTests
 
 public class ChatCommandsTests
 {
+    private static CommandRegistry Registry()
+    {
+        var registry = new CommandRegistry();
+        registry.Add(new ChatCommand("/stato", "scheda del task", "[ID]"), _ => Task.CompletedTask);
+        registry.Add(new ChatCommand("/riapri", "riapre", Hidden: true), _ => Task.CompletedTask);
+        foreach (var name in new[] { "/checkin", "/checkout", "/chiacchiera" })
+        {
+            registry.Add(new ChatCommand(name, "mentore", Group: CommandGroup.Mentor), _ => Task.CompletedTask);
+        }
+
+        return registry;
+    }
+
     [Test]
     public void A_typo_of_a_known_command_is_caught()
     {
-        Assert.That(ChatCommands.Closest("/chiacchera", []), Is.EqualTo("/chiacchiera"));
-        Assert.That(ChatCommands.Closest("/lavoar", ["lavora"]), Is.EqualTo("/lavora"));
+        Assert.That(Registry().Closest("/chiacchera", []), Is.EqualTo("/chiacchiera"));
+        Assert.That(Registry().Closest("/lavoar", ["lavora"]), Is.EqualTo("/lavora"));
     }
 
     [Test]
     public void Known_and_unrelated_commands_are_left_alone()
     {
-        Assert.That(ChatCommands.Closest("/chiacchiera", []), Is.Null);
-        Assert.That(ChatCommands.Closest("/compact", []), Is.Null);
+        Assert.That(Registry().Closest("/chiacchiera", []), Is.Null);
+        Assert.That(Registry().Closest("/riapri", []), Is.Null);
+        Assert.That(Registry().Closest("/compact", []), Is.Null);
     }
 
     [Test]
     public void Suggestions_match_the_prefix()
     {
-        var matches = ChatCommands.Matching("/ch", ["chiudi"]).Select(c => c.Name).ToList();
+        var matches = Registry().Matching("/ch", ["chiudi"]).Select(c => c.Name).ToList();
 
         Assert.That(matches, Is.EquivalentTo(new[] { "/checkin", "/checkout", "/chiacchiera", "/chiudi" }));
+    }
+
+    [Test]
+    public void Hidden_commands_run_but_are_not_suggested_nor_listed()
+    {
+        var registry = Registry();
+
+        Assert.That(registry.Find("/riapri"), Is.Not.Null);
+        Assert.That(registry.Matching("/ri", []), Is.Empty);
+        Assert.That(registry.Help(CommandGroup.Chat), Does.Not.Contain("/riapri"));
+    }
+
+    [Test]
+    public void A_command_is_registered_only_once()
+    {
+        var registry = Registry();
+
+        Assert.Throws<InvalidOperationException>(() => registry.Add(new ChatCommand("/STATO", "doppione"), _ => Task.CompletedTask));
+    }
+
+    [Test]
+    public void Help_lists_each_command_with_its_arguments()
+    {
+        Assert.That(Registry().Help(CommandGroup.Chat), Is.EqualTo("/stato [ID] — scheda del task"));
+    }
+
+    [Test]
+    public async Task Aiuto_lists_every_command_of_the_chat()
+    {
+        var conversation = ModelCommandTests.Create(new BuddySettings { ProjectPath = Path.Combine(Path.GetTempPath(), "buddy-missing-vault") });
+
+        await conversation.SendAsync("/aiuto");
+
+        var help = conversation.Entries.Last(e => e.Speaker == Speaker.System).Text;
+        foreach (var command in conversation.Commands.All.Where(c => c.Group == CommandGroup.Chat))
+        {
+            Assert.That(help, Does.Contain(command.Usage + " — "));
+        }
+    }
+
+    [Test]
+    public async Task Salta_without_a_question_stays_in_the_buddy()
+    {
+        var conversation = ModelCommandTests.Create(new BuddySettings { ProjectPath = Path.Combine(Path.GetTempPath(), "buddy-missing-vault") });
+
+        await conversation.SendAsync("/salta");
+
+        Assert.That(conversation.Mode, Is.EqualTo(ChatMode.Local));
+        Assert.That(conversation.Entries.Select(e => e.Text), Is.EqualTo(new[] { "/salta", "Nessuna domanda da saltare." }));
     }
 }
 

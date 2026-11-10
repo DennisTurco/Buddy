@@ -32,12 +32,24 @@ public static class SettingsStore
         Platform.PlatformServices.SetStartAtLogin(settings.Pet.StartWithWindows);
     }
 
-    public static (double Left, double Top)? LoadPosition()
+    public static (double Left, double Top)? LoadPosition() =>
+        LoadState() is { Left: { } left, Top: { } top } ? (left, top) : null;
+
+    public static void SavePosition(double left, double top) =>
+        SaveState((LoadState() ?? new WindowState()) with { Left = left, Top = top });
+
+    /// <summary>The chat bubble's size chosen by dragging its edges, or null for the default one.</summary>
+    public static (double Width, double Height)? LoadBubbleSize() =>
+        LoadState() is { BubbleWidth: { } width, BubbleHeight: { } height } ? (width, height) : null;
+
+    public static void SaveBubbleSize(double width, double height) =>
+        SaveState((LoadState() ?? new WindowState()) with { BubbleWidth = width, BubbleHeight = height });
+
+    private static WindowState? LoadState()
     {
         try
         {
-            var state = JsonSerializer.Deserialize<WindowState>(File.ReadAllText(StatePath));
-            return state is null ? null : (state.Left, state.Top);
+            return JsonSerializer.Deserialize<WindowState>(File.ReadAllText(StatePath));
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -45,20 +57,21 @@ public static class SettingsStore
         }
     }
 
-    public static void SavePosition(double left, double top)
+    private static void SaveState(WindowState state)
     {
         try
         {
             Directory.CreateDirectory(Folder);
-            File.WriteAllText(StatePath, JsonSerializer.Serialize(new WindowState(left, top)));
+            File.WriteAllText(StatePath, JsonSerializer.Serialize(state));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Position is a convenience: losing it is harmless.
+            // Position and size are a convenience: losing them is harmless.
         }
     }
 
-    private sealed record WindowState(double Left, double Top);
+    /// <summary>The pet's position and the bubble's size (each missing until first saved).</summary>
+    private sealed record WindowState(double? Left = null, double? Top = null, double? BubbleWidth = null, double? BubbleHeight = null);
 
     private static string UsageFoldedPath => Path.Combine(Folder, "usage-folded");
 

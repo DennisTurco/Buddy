@@ -130,17 +130,71 @@ public partial class ProjectWindow
     }
 
     /// <summary>Moves a card to the column <paramref name="key"/> (Da fare, In attesa, In corso…), in the vault.</summary>
-    private async Task MoveCardAsync(CardView card, string key)
+    internal async Task MoveCardAsync(CardView card, string key)
     {
         if (_board?.Columns.FirstOrDefault(c => c.Key == key) is not { } target)
         {
             return;
         }
 
-        if (await WriteAsync(() => BoardMoves.Move(_settings.ProjectPath, card.Column, card.Item, target)))
+        MoveUndo? undo = null;
+        if (await WriteAsync(() => undo = BoardMoves.MoveWithUndo(_settings.ProjectPath, card.Column, card.Item, target)))
         {
             AfterEdit();
+            if (undo is not null)
+            {
+                OfferUndo(undo);
+            }
         }
+    }
+
+    /// <summary>The last move, while its "Annulla" is offered.</summary>
+    private MoveUndo? _undo;
+
+    private Avalonia.Threading.DispatcherTimer? _undoTimer;
+
+    private static readonly TimeSpan UndoTime = TimeSpan.FromSeconds(8);
+
+    private void OfferUndo(MoveUndo undo)
+    {
+        _undo = undo;
+        UndoText.Text = $"Spostata: {undo.Description}";
+        UndoToast.IsVisible = true;
+        _undoTimer ??= new Avalonia.Threading.DispatcherTimer(UndoTime, Avalonia.Threading.DispatcherPriority.Normal, (_, _) => HideUndo());
+        _undoTimer.Stop();
+        _undoTimer.Start();
+    }
+
+    private void HideUndo()
+    {
+        _undoTimer?.Stop();
+        _undo = null;
+        UndoToast.IsVisible = false;
+    }
+
+    private void OnUndoMoveClick(object? sender, RoutedEventArgs e) => _ = UndoMoveAsync();
+
+    /// <summary>Puts the last moved card back (button or Ctrl+Z); false when there is nothing to undo.</summary>
+    internal async Task<bool> UndoMoveAsync()
+    {
+        if (_undo is not { } undo)
+        {
+            return false;
+        }
+
+        HideUndo();
+        string? problem = null;
+        if (await WriteAsync(() => problem = undo.Undo()))
+        {
+            if (problem is not null)
+            {
+                await Settings.Dialogs.ShowMessageAsync(this, problem);
+            }
+
+            AfterEdit();
+        }
+
+        return true;
     }
 
     /// <summary>

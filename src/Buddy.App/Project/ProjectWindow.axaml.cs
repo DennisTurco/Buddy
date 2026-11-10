@@ -65,6 +65,9 @@ public partial class ProjectWindow : Window
     private bool _switchingView;
     private string? _tagFilter;
     private List<ManualDocView> _manualDocs = [];
+
+    /// <summary>All the manual tests documents, read once per render (see <see cref="Render"/>).</summary>
+    private IReadOnlyList<ManualTestDoc> _allManualTests = [];
     private ManualDocView? _shownManual;
     private List<CheckView> _shownChecks = [];
     private List<ManualTestLine> _shownLines = [];
@@ -300,6 +303,11 @@ public partial class ProjectWindow : Window
         var today = DateOnly.FromDateTime(DateTime.Today);
         var columns = _board?.Columns ?? [];
 
+        // The manual tests, read once: their progress goes on the cards, the documents on the Test manuali page.
+        _allManualTests = _vault.IsAvailable ? TestNotes.ManualTests(_vault, _settings.TaskIdPattern) : [];
+        var manualByTask = _allManualTests.Where(d => d.TaskId is not null).GroupBy(d => d.TaskId!)
+            .ToDictionary(g => g.Key, g => (Done: g.Sum(d => d.Done), Total: g.Sum(d => d.Total)));
+
         List<CardView> CardsOf(string key)
         {
             if (columns.FirstOrDefault(c => c.Key == key) is not { } column)
@@ -309,7 +317,8 @@ public partial class ProjectWindow : Window
 
             var cards = column.Items.Where(i => i.Matches(filter))
                 .Where(i => _tagFilter is null || !Flow.Active.Contains(key) || i.TagList.Contains(_tagFilter, StringComparer.OrdinalIgnoreCase))
-                .Select(i => new CardView(i, column, today, PullRequestOf(i)));
+                .Select(i => new CardView(i, column, today, PullRequestOf(i),
+                    i.Id is { } id && manualByTask.TryGetValue(id, out var manual) ? manual : null));
             return key switch
             {
                 "todo" or "corso" => cards.OrderBy(c => c.Priority).ThenBy(c => c.Item.Date ?? DateOnly.MaxValue).ToList(),
@@ -387,7 +396,7 @@ public partial class ProjectWindow : Window
         RenderHealth(today);
         var inbox = Total("appunti");
         SortInboxButton.IsVisible = inbox > 0 && _skills.Contains("smista");
-        SortInboxButton.Content = $"🗂 Smista {(inbox == 1 ? "l'appunto" : $"i {inbox} appunti")} con Claude";
+        SortInboxButton.Content = Icons.Label($"🗂 Smista {(inbox == 1 ? "l'appunto" : $"i {inbox} appunti")} con Claude");
         NothingUrgent.IsVisible = attention.Count == 0 && !SortInboxButton.IsVisible;
 
         // Flow bar: how the items spread over the steps, and how much is done.
@@ -469,15 +478,23 @@ public partial class ProjectWindow : Window
         }
     }
 
-    /// <summary>Columns share the board's width, never narrower than <see cref="ColumnMinWidth"/> (then it scrolls).</summary>
+    /// <summary>
+    /// Columns share the board's width, never narrower than <see cref="ColumnMinWidth"/> (then it scrolls); empty ones
+    /// are narrow strips (<c>EmptyColumnWidth</c>) and leave their room to the others.
+    /// </summary>
     private void FitColumns()
     {
-        var count = (BoardColumns.ItemsSource as IReadOnlyCollection<ColumnView>)?.Count ?? 0;
-        if (count > 0 && BoardView.Bounds.Width > 0)
+        var columns = BoardColumns.ItemsSource as IReadOnlyCollection<ColumnView> ?? [];
+        var empty = columns.Count(c => c.IsEmpty);
+        var full = columns.Count - empty;
+        if (full > 0 && BoardView.Bounds.Width > 0)
         {
-            Resources["ColumnWidth"] = Math.Max(ColumnMinWidth, Math.Floor((BoardView.Bounds.Width - count * 10) / count));
+            var room = BoardView.Bounds.Width - columns.Count * 10 - empty * EmptyColumnWidth;
+            Resources["ColumnWidth"] = Math.Max(ColumnMinWidth, Math.Floor(room / full));
         }
     }
+
+    private const double EmptyColumnWidth = 54;
 
     private const double ColumnMinWidth = 200;
 
@@ -567,7 +584,12 @@ public partial class ProjectWindow : Window
         ToolTip.SetTip(UsageCard, usage.Describe().Replace("**", ""));
         var limits = usage.Limits.Select(LimitView.From).ToList();
         UsageLimits.ItemsSource = limits;
-        UsageNoLimits.IsVisible = limits.Count == 0;
+
+        // Why they are missing or old: no login, too many requests… ("not read yet" only before the first answer).
+        UsageNoLimits.Text = usage.LimitsProblem is { } problem
+            ? problem + (limits.Count > 0 && usage.LimitsReadAt is { } read ? $" Dati delle {read.ToLocalTime():H:mm}." : "")
+            : "Limiti non ancora letti.";
+        UsageNoLimits.IsVisible = limits.Count == 0 || usage.LimitsProblem is not null;
 
         // Folded: one line with today's cost and the 5-hour share, instead of the whole card.
         var folded = SettingsStore.UsageFolded;
@@ -628,7 +650,7 @@ public partial class ProjectWindow : Window
 
         var manual = card.Id is { } taskId ? _manualDocs.FirstOrDefault(d => d.TaskId == taskId) : null;
         CardManualTestsButton.IsVisible = manual is not null;
-        CardManualTestsButton.Content = manual is null ? "" : $"🧪 Test manuali {manual.Doc.Done}/{manual.Doc.Total}";
+        CardManualTestsButton.Content = manual is null ? null : (object)Icons.Label($"🧪 Test manuali {manual.Doc.Done}/{manual.Doc.Total}");
         _ = UpdateIssueButtonAsync(card);
     }
 
@@ -673,7 +695,7 @@ public partial class ProjectWindow : Window
 
         if (Buddy.Core.Tracker.IssueFromCard.LinkOf(card.Item) is { } link)
         {
-            CardIssueButton.Content = $"↗ Issue {Buddy.Core.Tracker.IssueFromCard.Number(link)}";
+            CardIssueButton.Content = Icons.Label($"↗ Issue {Buddy.Core.Tracker.IssueFromCard.Number(link)}");
             ToolTip.SetTip(CardIssueButton, link);
             CardIssueButton.IsVisible = true;
             return;
@@ -684,7 +706,7 @@ public partial class ProjectWindow : Window
             return;
         }
 
-        CardIssueButton.Content = "✚ Crea issue GitHub";
+        CardIssueButton.Content = Icons.Label("✚ Crea issue GitHub");
         ToolTip.SetTip(CardIssueButton, $"Crea un'issue in {repository} da questa voce e ci mette il link");
         CardIssueButton.IsVisible = true;
     }
@@ -722,7 +744,7 @@ public partial class ProjectWindow : Window
 
         string url;
         CardIssueButton.IsEnabled = false;
-        CardIssueButton.Content = "✚ Creo l'issue…";
+        CardIssueButton.Content = Icons.Label("✚ Creo l'issue…");
         try
         {
             var repoPath = _repo?.RootPath ?? "";
@@ -733,7 +755,7 @@ public partial class ProjectWindow : Window
         catch (Buddy.Core.Tracker.TrackerException ex)
         {
             await Settings.Dialogs.ShowMessageAsync(this, $"GitHub non ha creato l'issue: {ex.Message}");
-            CardIssueButton.Content = "✚ Crea issue GitHub";
+            CardIssueButton.Content = Icons.Label("✚ Crea issue GitHub");
             return;
         }
         finally
@@ -1108,7 +1130,7 @@ public partial class ProjectWindow : Window
 
         // Manual tests
         _manualDocs = _vault.IsAvailable
-            ? TestNotes.ManualTests(_vault, _settings.TaskIdPattern)
+            ? _allManualTests
                 .Select(d => new ManualDocView(d, d.TaskId is { } id ? titles.GetValueOrDefault(id) : null))
                 .Where(d => filter.Length == 0 || d.Title.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
                             || d.Doc.Sections.SelectMany(s => s.Lines).Any(l => l.Text.Contains(filter, StringComparison.CurrentCultureIgnoreCase)))
@@ -2151,8 +2173,8 @@ public partial class ProjectWindow : Window
     }
 
     /// <summary>
-    /// Esc: leave the edit, then the side panel, then the window. Ctrl+F search, Ctrl+N new appunto, Ctrl+1…4 views,
-    /// Ctrl+S save the note being edited.
+    /// Esc: leave the edit, then the side panel, then the window (in the chat: close the chat). Ctrl+F search, Ctrl+N
+    /// new appunto, Ctrl+Z undo the last card moved, Ctrl+1…4 views, Ctrl+S save the note being edited, Ctrl+J open or close the chat.
     /// </summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
@@ -2162,8 +2184,19 @@ public partial class ProjectWindow : Window
             case Key.K when ctrl:
                 OpenPalette();
                 break;
+            case Key.Z when ctrl && _undo is not null && BoardPage.IsVisible
+                                 && TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not TextBox:
+                _ = UndoMoveAsync();
+                e.Handled = true;
+                break;
             case Key.Escape when Palette.IsVisible:
                 ClosePalette();
+                break;
+            case Key.Escape when ChatHasFocus:
+                HideChat();
+                break;
+            case Key.J when ctrl:
+                ToggleChat();
                 break;
             case Key.Escape when PageFindBar.IsVisible:
                 ClosePageFind();

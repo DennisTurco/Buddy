@@ -13,6 +13,7 @@ public sealed class EntryTemplateSelector : IDataTemplate
     public IDataTemplate? Assistant { get; set; }
     public IDataTemplate? System { get; set; }
     public IDataTemplate? Permission { get; set; }
+    public IDataTemplate? ToolActivity { get; set; }
 
     public Control? Build(object? param) => Select(param)?.Build(param);
 
@@ -21,10 +22,23 @@ public sealed class EntryTemplateSelector : IDataTemplate
     private IDataTemplate? Select(object? item) => item switch
     {
         PermissionEntry => Permission,
+        ToolActivityEntry => ToolActivity ?? System,
         ChatEntry { Speaker: Speaker.User } => User,
         ChatEntry { Speaker: Speaker.System } => System,
         _ => Assistant,
     };
+}
+
+/// <summary>The tooltip of a tool-calls line: only a list of several opens.</summary>
+public sealed class ToolActivityTip : IValueConverter
+{
+    public static readonly ToolActivityTip Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? "Mostra o nascondi tutte le azioni" : null;
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
 }
 
 /// <summary>True when the bound <see cref="Speaker"/> equals the parameter (e.g. "Claude"): drives the card style classes.</summary>

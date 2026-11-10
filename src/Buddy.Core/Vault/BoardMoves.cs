@@ -37,6 +37,23 @@ public static partial class BoardMoves
         _ => null,
     };
 
+    /// <summary>
+    /// <see cref="Move"/>, keeping what the two notes looked like before: the returned <see cref="MoveUndo"/> puts
+    /// them back, as long as nothing else changed them in between.
+    /// </summary>
+    public static MoveUndo MoveWithUndo(string projectPath, BoardColumn from, BoardItem item, BoardColumn to)
+    {
+        var paths = new[] { from.NotePath, to.NotePath }
+            .Select(p => Path.Combine(projectPath, p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var before = paths.ToDictionary(p => p, Read);
+        Move(projectPath, from, item, to);
+        return new MoveUndo(item.Id ?? item.Title, to.Title, paths.Select(p => (p, before[p], Read(p))).ToList());
+    }
+
+    private static byte[]? Read(string path) => File.Exists(path) ? File.ReadAllBytes(path) : null;
+
     /// <summary>Moves <paramref name="item"/> from <paramref name="from"/> to <paramref name="to"/>, in the vault.</summary>
     public static void Move(string projectPath, BoardColumn from, BoardItem item, BoardColumn to)
     {
@@ -109,4 +126,41 @@ public static partial class BoardMoves
 
     [GeneratedRegex(@"^\s*- (?:\[[ xX]\] )?")]
     private static partial Regex Box();
+}
+
+/// <summary>
+/// Undoes a card moved by hand: the notes it touched get back their exact previous content. Refused (nothing written)
+/// when one of them changed after the move — by Obsidian, Claude or another edit — so nothing is ever overwritten.
+/// </summary>
+public sealed class MoveUndo(string item, string column, IReadOnlyList<(string Path, byte[]? Before, byte[]? After)> notes)
+{
+    /// <summary>"T-026 → Da fare", for the message that offers the undo.</summary>
+    public string Description => $"{item} → {column}";
+
+    /// <summary>Puts the notes back; returns null when done, or why it was not.</summary>
+    public string? Undo()
+    {
+        foreach (var (path, _, after) in notes)
+        {
+            var now = File.Exists(path) ? File.ReadAllBytes(path) : null;
+            if (!(now is null ? after is null : after is not null && now.AsSpan().SequenceEqual(after)))
+            {
+                return $"«{Path.GetFileNameWithoutExtension(path)}» è cambiata dopo lo spostamento: non la tocco, sistemala a mano.";
+            }
+        }
+
+        foreach (var (path, before, _) in notes)
+        {
+            if (before is null)
+            {
+                File.Delete(path);
+            }
+            else
+            {
+                File.WriteAllBytes(path, before);
+            }
+        }
+
+        return null;
+    }
 }

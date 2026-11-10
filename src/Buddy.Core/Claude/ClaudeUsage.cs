@@ -28,6 +28,32 @@ public sealed class ClaudeUsage(TimeProvider clock)
 
     public DateOnly Day { get; private set; }
 
+    /// <summary>When the plan limits were last read from the usage endpoint (kept across restarts).</summary>
+    public DateTimeOffset? LimitsReadAt { get; private set; }
+
+    /// <summary>Why the plan limits could not be read just now (no login, too many requests…), or null.</summary>
+    public string? LimitsProblem { get; private set; }
+
+    /// <summary>The limits were read from the endpoint now: kept, with the time, for the next start.</summary>
+    public void LimitsRead(DateTimeOffset at)
+    {
+        LimitsReadAt = at;
+        LimitsProblem = null;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public void SetLimitsProblem(string? problem)
+    {
+        if (problem == LimitsProblem)
+        {
+            return;
+        }
+
+        LimitsProblem = problem;
+        Changed?.Invoke();
+    }
+
     public decimal TodayCost { get; private set; }
 
     public int TodayTurns { get; private set; }
@@ -61,6 +87,18 @@ public sealed class ClaudeUsage(TimeProvider clock)
             {
                 _days[day] = stat;
             }
+
+            // The last limits read survive a restart, but not a window that has already reset.
+            var now = clock.GetUtcNow();
+            foreach (var limit in saved?.Limits ?? [])
+            {
+                if (limit.ResetsAt is not { } reset || reset > now)
+                {
+                    _limits[limit.Type] = new ClaudeRateLimit(limit.Type, limit.Status, limit.Utilization, limit.ResetsAt) { Model = limit.Model };
+                }
+            }
+
+            LimitsReadAt = _limits.Count > 0 ? saved?.LimitsReadAt : null;
 
             if (saved is not null && saved.Day == Today)
             {
@@ -152,6 +190,11 @@ public sealed class ClaudeUsage(TimeProvider clock)
             lines.Add($"**{limit.Label}**: {limit.LongStatus}");
         }
 
+        if (LimitsProblem is { } problem)
+        {
+            lines.Add($"⚠ {problem}" + (limits.Count > 0 && LimitsReadAt is { } read ? $" (dati delle {read.ToLocalTime():H:mm})" : ""));
+        }
+
         return string.Join("\n", lines);
     }
 
@@ -166,8 +209,14 @@ public sealed class ClaudeUsage(TimeProvider clock)
 
         try
         {
+            List<SavedLimit> limits;
+            lock (_gate)
+            {
+                limits = _limits.Values.Select(l => new SavedLimit(l.Type, l.Status, l.Utilization, l.ResetsAt, l.Model)).ToList();
+            }
+
             File.WriteAllText(_path, JsonSerializer.Serialize(new Saved(Day, TodayCost, TodayTurns, new Dictionary<string, ModelStat>(_models),
-                new Dictionary<DateOnly, ModelStat>(_days.Where(d => d.Key.DayNumber >= Today.DayNumber - KeptDays))), Json));
+                new Dictionary<DateOnly, ModelStat>(_days.Where(d => d.Key.DayNumber >= Today.DayNumber - KeptDays)), limits, LimitsReadAt), Json));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -175,7 +224,9 @@ public sealed class ClaudeUsage(TimeProvider clock)
     }
 
     private sealed record Saved(DateOnly Day, decimal Cost, int Turns, Dictionary<string, ModelStat>? Models = null,
-        Dictionary<DateOnly, ModelStat>? Days = null);
+        Dictionary<DateOnly, ModelStat>? Days = null, List<SavedLimit>? Limits = null, DateTimeOffset? LimitsReadAt = null);
+
+    private sealed record SavedLimit(string Type, string Status, double? Utilization, DateTimeOffset? ResetsAt, string? Model);
 
     /// <summary>How many days of spending are kept for the Costi and Settimana pages.</summary>
     public const int KeptDays = 120;

@@ -82,6 +82,8 @@ public partial class App : Application
         conversation.Archive = new ConversationArchive(Path.Combine(SettingsStore.Folder, "conversations"));
         conversation.LogFolder = _logs.Folder;
         var pet = _host.Services.GetRequiredService<PetWindow>();
+        // The buddy's own sprite next to the mentor's messages in the chat (bubble and board).
+        Resources["MentorAvatar"] = pet.Sprites.Frames(PetState.Idle, ChatMode.Local)[0];
         var bubble = _host.Services.GetRequiredService<BubbleWindow>();
         var settings = _host.Services.GetRequiredService<IOptions<BuddySettings>>().Value;
 
@@ -137,6 +139,7 @@ public partial class App : Application
         pet.AttachmentDropped += (_, _) => bubble.ShowAndFocus();
         bubble.Anchor = pet;
         bubble.LocalModelsSource = () => _host.Services.GetRequiredService<Buddy.Core.Llm.OllamaClient>().ListModelsAsync();
+        bubble.ChatShownElsewhere = () => _project is { IsChatOpen: true };
         pet.HoldStill = () => bubble.IsVisible;
         pet.Moved += (_, _) =>
         {
@@ -198,7 +201,7 @@ public partial class App : Application
 
         conversation.LongTurnCompleted += turn =>
         {
-            if (!bubble.IsActive)
+            if (!bubble.IsActive && _project is not { IsActive: true, IsChatOpen: true })
             {
                 var title = turn.Success ? $"Claude ha finito ({turn.Elapsed.TotalMinutes:0.#} min)" : "Claude si è fermato con un errore";
                 _tray?.Notify(title, turn.Answer ?? turn.Request, turn.Success);
@@ -238,7 +241,7 @@ public partial class App : Application
         conversation.MentorPosted += text =>
         {
             // Out of sight: a notification, so a check-in or a question is not missed.
-            if (!bubble.IsVisible)
+            if (!bubble.IsVisible && _project is not { IsChatOpen: true })
             {
                 _tray?.Notify(name, text.Replace("**", ""), success: true);
             }
@@ -343,7 +346,8 @@ public partial class App : Application
             services.GetRequiredService<IOptions<BuddySettings>>(),
             services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
             services.GetRequiredService<PetWindow>().Sprites.Frames(PetState.Idle, ChatMode.Local)[0]);
-        _project.PresetRequested += async name => await SwitchPresetAsync(name, _project);
+        _project.Commands = services.GetRequiredService<Conversation>().Commands;
+        _project.PresetRequested +=async name => await SwitchPresetAsync(name, _project);
         _project.IdeaSource = async (prompt, useClaude, cancellationToken) =>
         {
             var settings = services.GetRequiredService<IOptions<BuddySettings>>().Value;
@@ -365,19 +369,42 @@ public partial class App : Application
 
             return (true, answer.ToString());
         };
-        _project.AskRequested += question => services.GetRequiredService<BubbleWindow>().ShowWithText(question);
-        _project.ChatCommandRequested += async command =>
+        // The board's own chat: the same conversation as the bubble, in a panel next to the board.
+        var project = _project;
+        var bubble = services.GetRequiredService<BubbleWindow>();
+        project.AttachChat(services.GetRequiredService<Conversation>(), services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
+            _voice, bubble.LocalModelsSource);
+
+        // What the board sends to the chat goes to its own chat while that is open, to the bubble otherwise.
+        async Task SendToChatAsync(string text)
         {
-            // From Ctrl+K: reopen a saved conversation, or run a chat command, in the chat.
-            services.GetRequiredService<BubbleWindow>().ShowAndFocus();
-            await services.GetRequiredService<Conversation>().SendAsync(command);
-        };
-        _project.ClaudeRequested += async command =>
+            if (project.IsChatOpen)
+            {
+                await project.SendInChatAsync(text);
+                return;
+            }
+
+            bubble.ShowAndFocus();
+            await services.GetRequiredService<Conversation>().SendAsync(text);
+        }
+
+        project.AskRequested += question =>
         {
-            // The skill runs in the chat with Claude, where its questions and permission requests show up.
-            services.GetRequiredService<BubbleWindow>().ShowAndFocus();
-            await services.GetRequiredService<Conversation>().SendAsync($"/c {command}");
+            if (project.IsChatOpen)
+            {
+                project.ShowChatWithText(question);
+            }
+            else
+            {
+                bubble.ShowWithText(question);
+            }
         };
+
+        // From Ctrl+K: reopen a saved conversation, or run a chat command, in the chat.
+        project.ChatCommandRequested += async command => await SendToChatAsync(command);
+
+        // The skill runs in the chat with Claude, where its questions and permission requests show up.
+        project.ClaudeRequested += async command => await SendToChatAsync($"/c {command}");
         _project.Closed += (_, _) => _project = null;
         _project.Show();
     }

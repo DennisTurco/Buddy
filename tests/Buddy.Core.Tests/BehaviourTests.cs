@@ -71,6 +71,25 @@ public class MentorBehaviourTests
         conversation.Entries.Concat(conversation.SideEntries).Count(e => e.Speaker == Speaker.Mentor);
 
     [Test]
+    public async Task The_mentor_registers_its_commands_and_mentore_lists_them()
+    {
+        var settings = Settings(quietMinutes: 0);
+        var conversation = ModelCommandTests.Create(settings);
+        using var mentor = Mentor(conversation, settings, new StoppedClock(LateMonday));
+
+        var names = conversation.Commands.All.Where(c => c.Group == CommandGroup.Mentor).Select(c => c.Name).ToList();
+        Assert.That(names, Is.SupersetOf(new[] { "/checkin", "/checkout", "/pillola", "/ripasso", "/chiacchiera", "/retro",
+            "/focus", "/andamento", "/competenze", "/obiettivi", "/mentore", "/salta" }));
+        Assert.That(conversation.Commands.Find("/lavora")?.Command.Hidden, Is.True);
+
+        await conversation.SendAsync("/mentore");
+
+        var help = conversation.Entries.Concat(conversation.SideEntries).Last(e => e.Speaker == Speaker.Mentor).Text;
+        Assert.That(names, Has.All.Matches<string>(name => help.Contains(name)));
+        Assert.That(conversation.Entries.Any(e => e.Speaker == Speaker.User && e.Text == "/mentore"), Is.True);
+    }
+
+    [Test]
     public async Task Friendly_chats_wait_while_the_user_works_in_the_chat()
     {
         var settings = Settings(quietMinutes: 20);

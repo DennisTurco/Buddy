@@ -27,16 +27,8 @@ public interface IActivityMonitor
 /// </summary>
 public sealed class MentorService : IDisposable
 {
-    public const string Commands = """
-        Mentore:
-        /checkin · /checkout · /pillola · /ripasso · /chiacchiera · /retro — li avvia subito
-        /focus [minuti] — blocco di concentrazione (niente messaggi del mentore fino alla fine)
-        /andamento — le ultime settimane in numeri (con le competenze)
-        /competenze — cosa sai bene e cosa ripassare, dalle pillole
-        /obiettivi — gli obiettivi del trimestre (/obiettivi nuovi per sceglierli)
-        /salta — ignora la domanda in sospeso
-        Pillole, ripassi e chiacchierate stanno in una chat a parte (☕ in alto), fuori da quella di lavoro.
-        """;
+    /// <summary>Closes /mentore, after the list of the mentor's commands.</summary>
+    private const string CommandsFooter = "Pillole, ripassi e chiacchierate stanno in una chat a parte (☕ in alto), fuori da quella di lavoro.";
 
     private static readonly string DefaultStatePath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Buddy", "mentor-state.json");
@@ -83,7 +75,7 @@ public sealed class MentorService : IDisposable
         _schedule = new MentorSchedule(_settings.Mentor);
         _state = LoadState();
 
-        _conversation.CommandHandler = HandleCommandAsync;
+        RegisterCommands();
         _conversation.ApproachGiven += (action, approach) => _ = SaveApproachAsync(action, approach);
         _conversation.TaskActionRun += OnTaskDelegated;
     }
@@ -710,55 +702,73 @@ public sealed class MentorService : IDisposable
         return text.Length > 600 ? text[..600] + "…" : text;
     }
 
-    private async Task<bool> HandleCommandAsync(string command, string argument)
+    /// <summary>The mentor's "/" commands, in the conversation's registry (/salta is the conversation's own).</summary>
+    private void RegisterCommands()
     {
-        switch (command)
+        var commands = _conversation.Commands;
+        void Add(string name, string description, Func<CommandCall, Task> run, string? arguments = null) =>
+            commands.Add(new ChatCommand(name, description, arguments, CommandGroup.Mentor), run);
+
+        Add("/checkin", "piano della giornata", _ => RunAsync(MentorEvent.CheckIn));
+        Add("/checkout", "com'è andata oggi", _ => RunAsync(MentorEvent.CheckOut));
+        Add("/pillola", "una pillola di conoscenza", _ => RunAsync(MentorEvent.Pill));
+        Add("/ripasso", "ripasso di una pillola vista giorni fa", async _ =>
         {
-            case "/checkin": await RunAsync(MentorEvent.CheckIn); return true;
-            case "/checkout": await RunAsync(MentorEvent.CheckOut); return true;
-            case "/pillola": await RunAsync(MentorEvent.Pill); return true;
-            case "/chiacchiera": await RunAsync(MentorEvent.Chat); return true;
-            case "/retro": await RunAsync(MentorEvent.Retro); return true;
-            case "/ripasso":
-                if (await _busy.WaitAsync(0))
+            if (await _busy.WaitAsync(0))
+            {
+                try
                 {
-                    try
-                    {
-                        await ReviewAsync(manual: true);
-                    }
-                    finally
-                    {
-                        SaveState();
-                        _busy.Release();
-                    }
+                    await ReviewAsync(manual: true);
                 }
-                return true;
-            case "/andamento":
-                _conversation.PostMentor($"**Le ultime settimane**\n\n{MentorStats.ToMarkdown(_state, Now)}\n\n{DelegationLine()}"
-                    + $"Umore e abitudini sono in Andamento.md, aggiornato dalla retro del venerdì.\n\n**Competenze**\n\n{SkillsMarkdown()}");
-                return true;
-            case "/obiettivi":
-                GoalsCommand(argument);
-                return true;
-            case "/competenze":
-                _conversation.PostMentor($"**Mappa delle competenze** (dalle pillole e dai ripassi)\n\n{SkillsMarkdown()}", offTopic: true);
-                return true;
-            case "/lavora" or "/guidami":
-                OnTaskDelegated($"{command} {argument}");
-                return false; // still goes to Claude
-            case "/focus":
-                var minutes = int.TryParse(argument, out var m) && m > 0 ? m : Settings.FocusMinutes;
-                _focusUntil = Now.AddMinutes(minutes);
-                Week.FocusBlocks++;
-                Week.FocusMinutes += minutes;
-                SaveState();
-                _conversation.PostMentor($"Blocco di focus di {minutes} minuti iniziato (fino alle {_focusUntil:HH:mm}). Niente interruzioni da parte mia. 🎯 Qual è l'unica cosa da portare a termine?");
-                return true;
-            case "/mentore":
-                _conversation.PostMentor(Commands);
-                return true;
-            default:
-                return false;
+                finally
+                {
+                    SaveState();
+                    _busy.Release();
+                }
+            }
+        });
+        Add("/chiacchiera", "due chiacchiere", _ => RunAsync(MentorEvent.Chat));
+        Add("/retro", "retrospettiva settimanale", _ => RunAsync(MentorEvent.Retro));
+        Add("/focus", "blocco di concentrazione: niente messaggi del mentore fino alla fine", call =>
+        {
+            var minutes = int.TryParse(call.Rest, out var m) && m > 0 ? m : Settings.FocusMinutes;
+            _focusUntil = Now.AddMinutes(minutes);
+            Week.FocusBlocks++;
+            Week.FocusMinutes += minutes;
+            SaveState();
+            _conversation.PostMentor($"Blocco di focus di {minutes} minuti iniziato (fino alle {_focusUntil:HH:mm}). Niente interruzioni da parte mia. 🎯 Qual è l'unica cosa da portare a termine?");
+            return Task.CompletedTask;
+        }, "[minuti]");
+        Add("/andamento", "le ultime settimane in numeri (con le competenze)", _ =>
+        {
+            _conversation.PostMentor($"**Le ultime settimane**\n\n{MentorStats.ToMarkdown(_state, Now)}\n\n{DelegationLine()}"
+                + $"Umore e abitudini sono in Andamento.md, aggiornato dalla retro del venerdì.\n\n**Competenze**\n\n{SkillsMarkdown()}");
+            return Task.CompletedTask;
+        });
+        Add("/competenze", "cosa sai bene e cosa ripassare, dalle pillole", _ =>
+        {
+            _conversation.PostMentor($"**Mappa delle competenze** (dalle pillole e dai ripassi)\n\n{SkillsMarkdown()}", offTopic: true);
+            return Task.CompletedTask;
+        });
+        Add("/obiettivi", "gli obiettivi del trimestre", call =>
+        {
+            GoalsCommand(call.Rest);
+            return Task.CompletedTask;
+        }, "[nuovi]");
+        Add("/mentore", "i comandi del mentore", _ =>
+        {
+            _conversation.PostMentor($"Mentore:\n{commands.Help(CommandGroup.Mentor)}\n{CommandsFooter}");
+            return Task.CompletedTask;
+        });
+
+        // Skills of Claude: the mentor only counts what is delegated, the message still goes to Claude.
+        foreach (var skill in new[] { "/lavora", "/guidami" })
+        {
+            commands.AddConditional(new ChatCommand(skill, "skill di Claude", Group: CommandGroup.Mentor, Hidden: true), call =>
+            {
+                OnTaskDelegated($"{call.Command} {call.Rest}");
+                return Task.FromResult(false);
+            });
         }
     }
 

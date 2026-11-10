@@ -16,6 +16,9 @@ public partial class ProjectWindow
     /// <summary>A chat command chosen in Ctrl+K (e.g. "/riapri …", "/checkin"): the app sends it and shows the chat.</summary>
     public event Action<string>? ChatCommandRequested;
 
+    /// <summary>The chat's "/" commands, set by the app; Ctrl+K lists them.</summary>
+    public CommandRegistry? Commands { get; set; }
+
     internal void OpenPalette()
     {
         Palette.IsVisible = true;
@@ -173,7 +176,7 @@ public partial class ProjectWindow
         }
 
         // Chat commands.
-        foreach (var command in ChatCommands.BuiltIn)
+        foreach (var command in Commands?.All ?? [])
         {
             if (Score(query.TrimStart('/'), command.Name.TrimStart('/'), command.Description) is var s and > 0)
             {

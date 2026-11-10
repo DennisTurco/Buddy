@@ -21,6 +21,7 @@
 
     <Window.Resources>
         <x:Double x:Key="ColumnWidth">230</x:Double>
+        <x:Double x:Key="EmptyColumnWidth">54</x:Double>
         <!-- Width of a generic page's cards: two or three per row, set by the page's width (FitPageCards). -->
         <x:Double x:Key="PageCardWidth">380</x:Double>
         <DataTemplate x:Key="ChipTemplate" x:DataType="p:Chip">
@@ -57,10 +58,12 @@
                         <TextBlock Text="{Binding DateText}" Classes="muted" FontSize="11" VerticalAlignment="Center"
                                    HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
                     </DockPanel>
+                    <!-- Long titles and notes are cut: the whole text is in the tooltip. -->
                     <TextBlock Classes="title" Text="{Binding Title}" TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis"
-                               FontWeight="SemiBold" Margin="0,2,0,0" />
+                               FontWeight="SemiBold" Margin="0,2,0,0" ToolTip.Tip="{Binding Title}" ToolTip.ShowDelay="600" />
                     <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" TextWrapping="Wrap" MaxLines="2"
-                               TextTrimming="CharacterEllipsis" Classes="muted" FontSize="12" Margin="0,3,0,0" />
+                               TextTrimming="CharacterEllipsis" Classes="muted" FontSize="12" Margin="0,3,0,0"
+                               ToolTip.Tip="{Binding Note}" ToolTip.ShowDelay="600" />
                     <ItemsControl ItemsSource="{Binding Chips}" IsVisible="{Binding HasChips}" ItemTemplate="{StaticResource ChipTemplate}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -300,9 +303,15 @@
         <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UserBubble}" />
         </Style>
+        <Style Selector="Border.column">
+            <Setter Property="Width" Value="{DynamicResource ColumnWidth}" />
+        </Style>
+        <Style Selector="Border.column.empty">
+            <Setter Property="Width" Value="{DynamicResource EmptyColumnWidth}" />
+        </Style>
     </Window.Styles>
 
-    <Grid ColumnDefinitions="220,*,Auto">
+    <Grid ColumnDefinitions="220,*,Auto,Auto">
 
         <!-- ============ Side bar ============ -->
         <Border Background="{DynamicResource InputBack}" Padding="12,16,12,12">
@@ -352,13 +361,15 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <TextBlock x:Name="UsageNoLimits" Classes="muted" FontSize="10.5" TextWrapping="Wrap"
-                                       Text="Limiti non ancora letti: serve il login di Claude Code (claude, poi /login)." />
+                                       Text="Limiti non ancora letti." />
                             </StackPanel>
                         </StackPanel>
                     </Border>
                     <Button Classes="action" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,0,4"
-                            Content="💡 Nuove idee…" Click="OnIdeasClick"
-                            ToolTip.Tip="Descrivi cosa vorresti aggiungere: l'AI propone idee che finiscono negli appunti (Ctrl+I)" />
+                            Click="OnIdeasClick"
+                            ToolTip.Tip="Descrivi cosa vorresti aggiungere: l'AI propone idee che finiscono negli appunti (Ctrl+I)">
+                        <chat:IconLabel Label="💡 Nuove idee…" />
+                    </Button>
                     <TextBlock Text="Nuovo appunto" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0" />
                     <TextBox x:Name="QuickNote" PlaceholderText="✍ Scrivi e premi Invio (Ctrl+N)" TextWrapping="Wrap" MaxHeight="120"
                              KeyDown="OnQuickNoteKeyDown" />
@@ -366,20 +377,28 @@
                     <Grid ColumnDefinitions="*,6,Auto" Margin="0,6,0,0">
                         <Button Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                 Content="Apri in Obsidian" Click="OnOpenVaultClick" />
-                        <Button Grid.Column="2" Classes="small" Content="⟳" Click="OnRefreshClick"
-                                ToolTip.Tip="Rileggi le note (si aggiorna anche da sola)" />
+                        <Button Grid.Column="2" Classes="small" Click="OnRefreshClick"
+                                ToolTip.Tip="Rileggi le note (si aggiorna anche da sola)">
+                            <chat:IconLabel Label="⟳" />
+                        </Button>
                     </Grid>
                     <!-- Feedback: a new GitHub issue (on Buddy or on the project) and donations. -->
                     <Grid ColumnDefinitions="*,4,*,4,*" Margin="0,4,0,0">
                         <Button x:Name="BugButton" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Content="🐞 Bug" Click="OnReportClick" Tag="bug"
-                                ToolTip.Tip="Segnala un bug: apre una issue su GitHub, su Buddy o sul progetto" />
+                                Click="OnReportClick" Tag="bug"
+                                ToolTip.Tip="Segnala un bug: apre una issue su GitHub, su Buddy o sul progetto">
+                            <chat:IconLabel Label="🐞 Bug" />
+                        </Button>
                         <Button Grid.Column="2" x:Name="FeatureButton" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Content="✨ Idea" Click="OnReportClick" Tag="feature"
-                                ToolTip.Tip="Chiedi una funzionalità: apre una issue su GitHub, su Buddy o sul progetto" />
+                                Click="OnReportClick" Tag="feature"
+                                ToolTip.Tip="Chiedi una funzionalità: apre una issue su GitHub, su Buddy o sul progetto">
+                            <chat:IconLabel Label="✨ Idea" />
+                        </Button>
                         <Button Grid.Column="4" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Content="❤ Dona" Click="OnDonateClick"
-                                ToolTip.Tip="Sostieni Buddy con una donazione su PayPal" />
+                                Click="OnDonateClick"
+                                ToolTip.Tip="Sostieni Buddy con una donazione su PayPal">
+                            <chat:IconLabel Label="❤ Dona" />
+                        </Button>
                     </Grid>
                 </StackPanel>
 
@@ -402,6 +421,12 @@
         <!-- ============ Content ============ -->
         <DockPanel Grid.Column="1" Margin="22,16,22,16">
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+                <!-- The buddy's chat, the same as the bubble's, in a panel on the right (Ctrl+J). -->
+                <Button x:Name="ChatToggle" DockPanel.Dock="Right" Classes="small" Margin="8,0,0,0"
+                        VerticalAlignment="Center" Click="OnChatToggleClick" IsVisible="False"
+                        ToolTip.Tip="La chat con il buddy, la stessa della nuvoletta, qui accanto (Ctrl+J)">
+                    <chat:IconLabel Label="💬 Chat" />
+                </Button>
                 <TextBox x:Name="Filter" DockPanel.Dock="Right" Width="280" VerticalAlignment="Center"
                          PlaceholderText="🔍 Cerca ID, titolo, testo… (Ctrl+F)"
                          ToolTip.Tip="Filtra le liste. Con una nota o una checklist aperta Ctrl+F cerca nella pagina; Ctrl+Shift+F torna qui" />
@@ -588,8 +613,10 @@
                      project's trackers (Jira, GitHub issues, Azure Boards) imported into To-Do. -->
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                     <Button x:Name="JiraImportButton" DockPanel.Dock="Right" Classes="small" VerticalAlignment="Top"
-                            Content="⬇ Importa" Click="OnJiraImportClick"
-                            ToolTip.Tip="Importa in To-Do le card assegnate a te (Jira, issue di GitHub, Azure Boards) che non sono ancora nella bacheca" />
+                            Click="OnJiraImportClick"
+                            ToolTip.Tip="Importa in To-Do le card assegnate a te (Jira, issue di GitHub, Azure Boards) che non sono ancora nella bacheca">
+                        <chat:IconLabel Label="⬇ Importa" />
+                    </Button>
                     <ItemsControl x:Name="TagBar">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -623,6 +650,7 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+                <Panel>
                 <ScrollViewer x:Name="BoardView" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <ItemsControl x:Name="BoardColumns">
                     <ItemsControl.ItemsPanel>
@@ -632,9 +660,29 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="p:ColumnView">
-                            <Border Width="{DynamicResource ColumnWidth}" CornerRadius="12" Padding="8" Margin="0,0,10,0" Background="{DynamicResource InputBack}"
-                                    DragDrop.AllowDrop="True">
-                                <DockPanel>
+                            <Border Classes="column" Classes.empty="{Binding IsEmpty}" CornerRadius="12" Padding="8" Margin="0,0,10,0"
+                                    Background="{DynamicResource InputBack}" DragDrop.AllowDrop="True">
+                                <Panel>
+                                <!-- An empty column is a narrow strip (count, ＋, title down the side): the others get its room.
+                                     Still a place to drop a card. -->
+                                <StackPanel IsVisible="{Binding IsEmpty}" Spacing="8" HorizontalAlignment="Center" Background="Transparent"
+                                            ToolTip.Tip="{Binding EmptyText}">
+                                    <Border Height="3" Width="22" CornerRadius="2" Margin="0,0,0,2" Background="{Binding Accent}" />
+                                    <Border CornerRadius="9" Padding="7,0" Background="{DynamicResource Paper}" HorizontalAlignment="Center">
+                                        <TextBlock Text="{Binding Count}" FontSize="11.5" FontWeight="SemiBold" />
+                                    </Border>
+                                    <Button Classes="small" Content="＋" Padding="7,0" HorizontalAlignment="Center"
+                                            IsVisible="{Binding CanAdd}" ToolTip.Tip="{Binding AddTip}" Click="OnColumnAddClick" />
+                                    <LayoutTransformControl HorizontalAlignment="Center">
+                                        <LayoutTransformControl.LayoutTransform>
+                                            <RotateTransform Angle="90" />
+                                        </LayoutTransformControl.LayoutTransform>
+                                        <Button Classes="link" Click="OnColumnTitleClick" ToolTip.Tip="{Binding NoteTip}">
+                                            <TextBlock Text="{Binding Column.Title}" FontWeight="SemiBold" FontSize="13" Classes="muted" />
+                                        </Button>
+                                    </LayoutTransformControl>
+                                </StackPanel>
+                                <DockPanel IsVisible="{Binding !IsEmpty}">
                                     <Border DockPanel.Dock="Top" Height="3" CornerRadius="2" Margin="2,0,2,10" Background="{Binding Accent}" />
                                     <DockPanel DockPanel.Dock="Top" Margin="4,0,4,8">
                                         <Button DockPanel.Dock="Right" Classes="small" Content="＋" Padding="7,0" Margin="6,0,0,0" VerticalAlignment="Center"
@@ -643,7 +691,11 @@
                                             <TextBlock Text="{Binding Count}" FontSize="11.5" FontWeight="SemiBold" />
                                         </Border>
                                         <Button Classes="link" Click="OnColumnTitleClick" ToolTip.Tip="{Binding NoteTip}">
-                                            <TextBlock Text="{Binding Header}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                            <!-- A dot of the column's colour, the same as the flow bar in Panoramica. -->
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Ellipse Width="9" Height="9" Fill="{Binding Accent}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Column.Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
                                         </Button>
                                     </DockPanel>
                                     <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}" Margin="2,0,0,4">
@@ -654,7 +706,9 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="p:FlowAction">
-                                                <Button Classes="action" Content="{Binding Label}" ToolTip.Tip="{Binding Tip}" Click="OnColumnActionClick" FontSize="12" />
+                                                <Button Classes="action" ToolTip.Tip="{Binding Tip}" Click="OnColumnActionClick" FontSize="12">
+                                                    <chat:IconLabel Label="{Binding Label}" />
+                                                </Button>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -664,11 +718,23 @@
                                         <ItemsControl ItemsSource="{Binding Cards}" ItemTemplate="{StaticResource CardTemplate}" />
                                     </ScrollViewer>
                                 </DockPanel>
+                                </Panel>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 </ScrollViewer>
+                <!-- After a card is dragged: what moved and "Annulla" (also Ctrl+Z), for a few seconds. -->
+                <Border x:Name="UndoToast" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,14" Padding="14,8,8,8"
+                        CornerRadius="10" Background="{DynamicResource Frame}" BoxShadow="0 4 16 0 #50000000" IsVisible="False">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock x:Name="UndoText" VerticalAlignment="Center" Foreground="{DynamicResource Paper}" FontSize="13" />
+                        <Button Classes="small" Click="OnUndoMoveClick" ToolTip.Tip="Rimette la voce dov'era (Ctrl+Z)">
+                            <chat:IconLabel Label="↶ Annulla" />
+                        </Button>
+                    </StackPanel>
+                </Border>
+                </Panel>
                 </DockPanel>
 
                 <!-- ====== Archivio ====== -->
@@ -721,17 +787,24 @@
                     <Border x:Name="ManualDocPanel" Grid.Column="2" Classes="panel" Padding="22,14">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                <DockPanel>
-                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
-                                        <Button x:Name="ManualUpdateButton" Classes="action" Content="🧪 Aggiorna con Claude" Margin="0" Click="OnManualUpdateClick"
-                                                ToolTip.Tip="/test-manuali ID: Claude aggiunge i casi nuovi senza togliere le spunte" />
-                                        <Button Classes="small" Content="📄 Esporta in Word" Click="OnManualExportClick"
-                                                ToolTip.Tip="Un documento .docx con i soli casi spuntati, da allegare alla card (Jira)" />
-                                        <Button Classes="small" Content="✏ Modifica" Click="OnManualEditClick" ToolTip.Tip="Apri il testo nella vista Note" />
-                                        <Button Classes="small" Content="Obsidian" Click="OnManualObsidianClick" />
-                                    </StackPanel>
+                                <!-- The title gets the whole width; the buttons go on their own row underneath. -->
+                                <StackPanel Spacing="10">
                                     <TextBlock x:Name="ManualTitle" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
-                                </DockPanel>
+                                    <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+                                        <Button x:Name="ManualUpdateButton" Classes="action" Margin="0" Click="OnManualUpdateClick"
+                                                ToolTip.Tip="/test-manuali ID: Claude aggiunge i casi nuovi senza togliere le spunte">
+                                            <chat:IconLabel Label="🧪 Aggiorna con Claude" />
+                                        </Button>
+                                        <Button Classes="small" Click="OnManualExportClick"
+                                                ToolTip.Tip="Un documento .docx con i soli casi spuntati, da allegare alla card (Jira)">
+                                            <chat:IconLabel Label="📄 Esporta in Word" />
+                                        </Button>
+                                        <Button Classes="small" Click="OnManualEditClick" ToolTip.Tip="Apri il testo nella vista Note">
+                                            <chat:IconLabel Label="✏ Modifica" />
+                                        </Button>
+                                        <Button Classes="small" Content="Obsidian" Click="OnManualObsidianClick" />
+                                    </WrapPanel>
+                                </StackPanel>
                                 <DockPanel Margin="0,10,0,0">
                                     <TextBlock x:Name="ManualProgress" DockPanel.Dock="Right" Classes="muted" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
                                     <ProgressBar x:Name="ManualBar" Classes="limit big" />
@@ -779,10 +852,16 @@
                             <StackPanel>
                                 <DockPanel Margin="0,0,0,8">
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
-                                        <Button x:Name="RunStopButton" Classes="small" Content="■ Ferma" Click="OnStopRunClick" />
-                                        <Button x:Name="RunAskButton" Classes="action" Margin="0" Content="🧠 Chiedi a Claude" Click="OnAskAboutRunClick"
-                                                IsVisible="False" ToolTip.Tip="Manda a Claude l'output del test fallito" />
-                                        <Button x:Name="RunCloseButton" Classes="small" Content="✕" Click="OnCloseRunClick" ToolTip.Tip="Chiudi il pannello" />
+                                        <Button x:Name="RunStopButton" Classes="small" Click="OnStopRunClick">
+                                            <chat:IconLabel Label="■ Ferma" />
+                                        </Button>
+                                        <Button x:Name="RunAskButton" Classes="action" Margin="0" Click="OnAskAboutRunClick"
+                                                IsVisible="False" ToolTip.Tip="Manda a Claude l'output del test fallito">
+                                            <chat:IconLabel Label="🧠 Chiedi a Claude" />
+                                        </Button>
+                                        <Button x:Name="RunCloseButton" Classes="small" Click="OnCloseRunClick" ToolTip.Tip="Chiudi il pannello">
+                                            <chat:IconLabel Label="✕" />
+                                        </Button>
                                     </StackPanel>
                                     <StackPanel>
                                         <TextBlock x:Name="RunTitle" FontSize="15" FontWeight="SemiBold" />
@@ -816,8 +895,10 @@
                                             <Border Classes="card" Width="400" Margin="0,0,10,10" BorderBrush="#8AB4F8" Cursor="Arrow">
                                                 <StackPanel>
                                                     <DockPanel>
-                                                        <Button DockPanel.Dock="Right" Classes="action" Margin="8,0,0,0" Padding="10,3" Content="▶ Esegui"
-                                                                Click="OnRunScriptClick" ToolTip.Tip="{Binding RunTip}" />
+                                                        <Button DockPanel.Dock="Right" Classes="action" Margin="8,0,0,0" Padding="10,3"
+                                                                Click="OnRunScriptClick" ToolTip.Tip="{Binding RunTip}">
+                                                            <chat:IconLabel Label="▶ Esegui" />
+                                                        </Button>
                                                         <TextBlock Text="{Binding Name}" Classes="id" FontSize="13.5" Foreground="#8AB4F8" VerticalAlignment="Center" />
                                                     </DockPanel>
                                                     <!-- Markdown: the descriptions use **bold** and `code` like the note. -->
@@ -894,14 +975,20 @@
                         <DockPanel>
                             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <Button x:Name="EditNoteButton" Classes="small" Content="✏ Modifica" Click="OnEditNoteClick" />
+                                    <Button x:Name="EditNoteButton" Classes="small" Click="OnEditNoteClick">
+                                        <chat:IconLabel Label="✏ Modifica" />
+                                    </Button>
                                     <Button x:Name="RenameNoteButton" Classes="small" Content="Rinomina" Click="OnRenameNoteClick"
                                             ToolTip.Tip="Cambia il titolo: rinomina il file e aggiorna i link che puntano alla nota" />
-                                    <Button x:Name="DeleteNoteButton" Classes="small" Content="🗑" Click="OnDeleteNoteClick"
-                                            ToolTip.Tip="Sposta la nota nel cestino del vault (.trash)" />
+                                    <Button x:Name="DeleteNoteButton" Classes="small" Click="OnDeleteNoteClick"
+                                            ToolTip.Tip="Sposta la nota nel cestino del vault (.trash)">
+                                        <chat:IconLabel Label="🗑" />
+                                    </Button>
                                     <Button x:Name="SaveNoteButton" Classes="small" Content="Salva" Click="OnSaveNoteClick" IsVisible="False" ToolTip.Tip="Ctrl+S" />
                                     <Button x:Name="CancelNoteButton" Classes="small" Content="Annulla" Click="OnCancelNoteClick" IsVisible="False" ToolTip.Tip="Esc" />
-                                    <Button Classes="small" Content="🕸 Grafo" Click="OnShowNoteInGraphClick" ToolTip.Tip="Mostra la nota e i suoi collegamenti nel grafo" />
+                                    <Button Classes="small" Click="OnShowNoteInGraphClick" ToolTip.Tip="Mostra la nota e i suoi collegamenti nel grafo">
+                                        <chat:IconLabel Label="🕸 Grafo" />
+                                    </Button>
                                     <Button Classes="small" Content="Obsidian" Click="OnOpenSelectedNoteClick" ToolTip.Tip="Apri la nota in Obsidian" />
                                 </StackPanel>
                                 <TextBlock x:Name="NoteTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -938,15 +1025,25 @@
                                         <Button Classes="small" Content="H2" Tag="h2" Click="OnFormatClick" ToolTip.Tip="Sottotitolo" Margin="0,0,4,4" />
                                         <Button Classes="small" Content="•" Tag="list" Click="OnFormatClick" ToolTip.Tip="Elenco puntato" Margin="0,0,4,4" />
                                         <Button Classes="small" Content="1." Tag="numbered" Click="OnFormatClick" ToolTip.Tip="Elenco numerato" Margin="0,0,4,4" />
-                                        <Button Classes="small" Content="☐" Tag="check" Click="OnFormatClick" ToolTip.Tip="Lista di cose da fare" Margin="0,0,4,4" />
-                                        <Button Classes="small" Content="❝" Tag="quote" Click="OnFormatClick" ToolTip.Tip="Citazione" Margin="0,0,4,4" />
+                                        <Button Classes="small" Tag="check" Click="OnFormatClick" ToolTip.Tip="Lista di cose da fare" Margin="0,0,4,4">
+                                            <chat:IconLabel Label="☐" />
+                                        </Button>
+                                        <Button Classes="small" Tag="quote" Click="OnFormatClick" ToolTip.Tip="Citazione" Margin="0,0,4,4">
+                                            <chat:IconLabel Label="❝" />
+                                        </Button>
                                         <Button Classes="small" Content="&lt;/&gt;" Tag="code" Click="OnFormatClick" ToolTip.Tip="Codice (Ctrl+E); su più righe diventa un blocco" Margin="0,0,4,4" />
                                         <Button Classes="small" Content="[[ ]]" Tag="wikilink" Click="OnFormatClick" ToolTip.Tip="Link a un'altra nota" Margin="0,0,4,4" />
-                                        <Button Classes="small" Content="🔗" Tag="link" Click="OnFormatClick" ToolTip.Tip="Link a un indirizzo (Ctrl+K)" Margin="0,0,4,4" />
-                                        <Button Classes="small" Content="▦" Tag="table" Click="OnFormatClick" ToolTip.Tip="Tabella" Margin="0,0,4,4" />
+                                        <Button Classes="small" Tag="link" Click="OnFormatClick" ToolTip.Tip="Link a un indirizzo (Ctrl+K)" Margin="0,0,4,4">
+                                            <chat:IconLabel Label="🔗" />
+                                        </Button>
+                                        <Button Classes="small" Tag="table" Click="OnFormatClick" ToolTip.Tip="Tabella" Margin="0,0,4,4">
+                                            <chat:IconLabel Label="▦" />
+                                        </Button>
                                         <Button Classes="small" Content="―" Tag="rule" Click="OnFormatClick" ToolTip.Tip="Linea di separazione" Margin="0,0,12,4" />
-                                        <ToggleButton x:Name="NotePreviewToggle" Classes="small" Content="👁 Anteprima" IsChecked="True"
-                                                      IsCheckedChanged="OnNotePreviewToggled" ToolTip.Tip="Mostra il risultato accanto, mentre scrivi" Margin="0,0,4,4" />
+                                        <ToggleButton x:Name="NotePreviewToggle" Classes="small" IsChecked="True"
+                                                      IsCheckedChanged="OnNotePreviewToggled" ToolTip.Tip="Mostra il risultato accanto, mentre scrivi" Margin="0,0,4,4">
+                                            <chat:IconLabel Label="👁 Anteprima" />
+                                        </ToggleButton>
                                     </WrapPanel>
                                     <Grid x:Name="NoteEditorGrid" ColumnDefinitions="*,12,*">
                                         <TextBox x:Name="NoteEditor" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
@@ -977,7 +1074,9 @@
                                 <CheckBox x:Name="GraphMissing" Content="Note da creare" IsCheckedChanged="OnGraphOptionChanged"
                                           ToolTip.Tip="Mostra i link a note che non esistono ancora (cerchi vuoti)" />
                                 <Button Classes="small" Content="⊡ Adatta" Click="OnGraphFitClick" ToolTip.Tip="Mostra tutto il grafo" />
-                                <Button Classes="small" Content="↻ Riordina" Click="OnGraphRelayoutClick" ToolTip.Tip="Ricalcola la disposizione" />
+                                <Button Classes="small" Click="OnGraphRelayoutClick" ToolTip.Tip="Ricalcola la disposizione">
+                                    <chat:IconLabel Label="↻ Riordina" />
+                                </Button>
                             </StackPanel>
                             <ItemsControl x:Name="GraphLegend" VerticalAlignment="Center">
                                 <ItemsControl.ItemsPanel>
@@ -1077,7 +1176,9 @@
                         <TextBlock x:Name="PageFindCount" MinWidth="40" VerticalAlignment="Center" Classes="muted" FontSize="12" />
                         <Button Classes="small" Content="↑" Click="OnPageFindPreviousClick" ToolTip.Tip="Precedente (Shift+Invio)" />
                         <Button Classes="small" Content="↓" Click="OnPageFindNextClick" ToolTip.Tip="Successivo (Invio)" />
-                        <Button Classes="small" Content="✕" Click="OnPageFindCloseClick" ToolTip.Tip="Chiudi (Esc)" />
+                        <Button Classes="small" Click="OnPageFindCloseClick" ToolTip.Tip="Chiudi (Esc)">
+                            <chat:IconLabel Label="✕" />
+                        </Button>
                     </StackPanel>
                 </Border>
             </Panel>
@@ -1088,7 +1189,9 @@
                 BorderBrush="{DynamicResource UserBubble}" BorderThickness="1,0,0,0">
             <DockPanel Margin="20,16,20,16" x:DataType="p:CardView">
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <Button DockPanel.Dock="Right" Classes="link" Content="✕" FontSize="15" Click="OnCloseDetailClick" ToolTip.Tip="Chiudi (Esc)" />
+                    <Button DockPanel.Dock="Right" Classes="link" FontSize="15" Click="OnCloseDetailClick" ToolTip.Tip="Chiudi (Esc)">
+                        <chat:IconLabel Label="✕" />
+                    </Button>
                     <Border CornerRadius="9" Padding="9,2" Background="{Binding Accent}" HorizontalAlignment="Left">
                         <TextBlock Text="{Binding ColumnLabel}" FontSize="11.5" FontWeight="SemiBold" Foreground="#1F1C2C" />
                     </Border>
@@ -1168,7 +1271,9 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <Button Classes="tagpick" Content="＋ altro…" FontSize="11.5" Click="OnTagOtherClick" />
-                                <Button x:Name="TagRemoveButton" Classes="tagpick" Content="✕ togli" FontSize="11.5" Click="OnTagRemoveClick" />
+                                <Button x:Name="TagRemoveButton" Classes="tagpick" FontSize="11.5" Click="OnTagRemoveClick">
+                                    <chat:IconLabel Label="✕ togli" />
+                                </Button>
                             </WrapPanel>
                         </StackPanel>
 
@@ -1182,7 +1287,9 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="p:FlowAction">
-                                        <Button Classes="action" Content="{Binding Label}" ToolTip.Tip="{Binding Tip}" Click="OnCardActionClick" />
+                                        <Button Classes="action" ToolTip.Tip="{Binding Tip}" Click="OnCardActionClick">
+                                            <chat:IconLabel Label="{Binding Label}" />
+                                        </Button>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -1190,17 +1297,37 @@
 
                         <TextBlock Text="Voce" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,14,0,6" />
                         <WrapPanel>
-                            <Button Classes="small" Content="✏ Modifica" Click="OnEditCardClick" Margin="0,0,6,6" />
+                            <Button Classes="small" Click="OnEditCardClick" Margin="0,0,6,6">
+                                <chat:IconLabel Label="✏ Modifica" />
+                            </Button>
                             <Button x:Name="CardManualTestsButton" Classes="small" Click="OnCardManualTestsClick" Margin="0,0,6,6" IsVisible="False" />
                             <Button Classes="small" Content="Apri in Obsidian" Click="OnOpenCardNoteClick" Margin="0,0,6,6" />
                             <Button x:Name="CardIssueButton" Classes="small" Click="OnCardIssueClick" Margin="0,0,6,6" IsVisible="False" />
-                            <Button Classes="small" Content="🔔 Ricordamelo…" Click="OnRemindClick" Margin="0,0,6,6"
-                                    ToolTip.Tip="Scrive [promemoria:: data] nella voce: quel giorno il Buddy te la ripropone in chat" />
-                            <Button Classes="small" Content="🗑 Elimina" Click="OnDeleteCardClick" Margin="0,0,6,6" />
+                            <Button Classes="small" Click="OnRemindClick" Margin="0,0,6,6"
+                                    ToolTip.Tip="Scrive [promemoria:: data] nella voce: quel giorno il Buddy te la ripropone in chat">
+                                <chat:IconLabel Label="🔔 Ricordamelo…" />
+                            </Button>
+                            <Button Classes="small" Click="OnDeleteCardClick" Margin="0,0,6,6">
+                                <chat:IconLabel Label="🗑 Elimina" />
+                            </Button>
                         </WrapPanel>
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>
+        </Border>
+
+        <!-- ============ Chat ============ -->
+        <!-- The buddy's chat: the same ChatView as the bubble, on the same conversation (messages, side chat ☕, state). -->
+        <Border x:Name="ChatPanel" Grid.Column="3" Width="420" IsVisible="False" Background="{DynamicResource Paper}"
+                BorderBrush="{DynamicResource UserBubble}" BorderThickness="1,0,0,0">
+            <chat:ChatView x:Name="Chat" Margin="12,14,12,10">
+                <chat:ChatView.HeaderButtons>
+                    <Button Classes="link" Width="24" Height="22" HorizontalContentAlignment="Center"
+                            Click="OnCloseChatClick" ToolTip.Tip="Chiudi la chat (Esc; Ctrl+J la riapre)">
+                        <chat:LineIcon Data="{StaticResource IconClose}" />
+                    </Button>
+                </chat:ChatView.HeaderButtons>
+            </chat:ChatView>
         </Border>
     </Grid>
 </Window>

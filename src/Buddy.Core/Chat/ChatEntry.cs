@@ -124,6 +124,24 @@ public class ChatEntry(Speaker speaker, string text = "") : INotifyPropertyChang
         }
     }
 
+    /// <summary>The message before is by the same speaker: drawn close to it, as one group (see <see cref="ChatGrouping"/>).</summary>
+    public bool JoinsPrevious
+    {
+        get => _joinsPrevious;
+        set => Set(ref _joinsPrevious, value);
+    }
+
+    private bool _joinsPrevious;
+
+    /// <summary>The message after is by the same speaker: no tail on this bubble, the last of the group has it.</summary>
+    public bool JoinsNext
+    {
+        get => _joinsNext;
+        set => Set(ref _joinsNext, value);
+    }
+
+    private bool _joinsNext;
+
     /// <summary>Matches the search in the chat (Ctrl+F): drawn with a frame.</summary>
     public bool IsHighlighted
     {
@@ -248,3 +266,69 @@ public sealed class PermissionEntry : ChatEntry
 
 /// <summary>A button under a chat message: the label shown and the command sent when it is clicked.</summary>
 public sealed record ChatAction(string Label, string Command, string? Tip = null);
+
+/// <summary>
+/// What Claude did between two pieces of text (read a file, ran a command…): consecutive tool calls go in one entry,
+/// shown as a single line ("🔧 5 azioni · last one") that opens to the whole list. <see cref="ChatEntry.Text"/> keeps
+/// every step, one "🔧 …" line each, so search, copy and the saved conversations still see them all.
+/// </summary>
+public sealed class ToolActivityEntry : ChatEntry
+{
+    public const string Mark = "🔧 ";
+
+    private readonly System.Collections.ObjectModel.ObservableCollection<string> _steps = [];
+    private bool _isExpanded;
+
+    public ToolActivityEntry(string step)
+        : base(Speaker.System)
+    {
+        Steps = new(_steps);
+        Add(step);
+    }
+
+    public System.Collections.ObjectModel.ReadOnlyObservableCollection<string> Steps { get; }
+
+    /// <summary>"🔧 Legge Conversation.cs" for one step, "🔧 5 azioni" for more.</summary>
+    public string Title => _steps.Count == 1 ? Mark + _steps[0] : $"{Mark}{_steps.Count} azioni";
+
+    /// <summary>"· latest step" next to the title while a list of several is closed (what Claude is doing now).</summary>
+    public string Latest => _steps.Count > 1 && !_isExpanded ? "· " + _steps[^1] : "";
+
+    public bool HasMany => _steps.Count > 1;
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            Set(ref _isExpanded, value);
+            RaisePropertyChanged(nameof(Chevron));
+            RaisePropertyChanged(nameof(Latest));
+        }
+    }
+
+    public string Chevron => _isExpanded ? "▾" : "▸";
+
+    public void Add(string step)
+    {
+        _steps.Add(step);
+        Text = string.Join('\n', _steps.Select(s => Mark + s));
+        RaisePropertyChanged(nameof(Title));
+        RaisePropertyChanged(nameof(Latest));
+        RaisePropertyChanged(nameof(HasMany));
+    }
+
+    /// <summary>The steps of a saved entry's text, or null when it is not (only) tool calls.</summary>
+    public static IReadOnlyList<string>? StepsOf(Speaker speaker, string text)
+    {
+        if (speaker != Speaker.System)
+        {
+            return null;
+        }
+
+        var lines = text.ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        return lines.Length > 0 && lines.All(l => l.StartsWith(Mark, StringComparison.Ordinal))
+            ? lines.Select(l => l[Mark.Length..]).ToList()
+            : null;
+    }
+}

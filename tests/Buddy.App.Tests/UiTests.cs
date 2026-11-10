@@ -50,14 +50,16 @@ public class UiTests
     public void SetUp()
     {
         _root = Directory.CreateTempSubdirectory("buddy-ui-").FullName;
-        BubbleWindow.HistoryFile = Path.Combine(_root, "history.jsonl");
-        BubbleWindow.SaveSettings = _ => { }; // never the user's settings file
+        ChatView.HistoryFile = Path.Combine(_root, "history.jsonl");
+        ChatView.SaveSettings = _ => { }; // never the user's settings file
+        BubbleWindow.LoadSize = () => null; // never the user's window state
+        BubbleWindow.SaveSize = (_, _) => { };
     }
 
     [TearDown]
     public void TearDown()
     {
-        BubbleWindow.HistoryFile = null;
+        ChatView.HistoryFile = null;
         try
         {
             Directory.Delete(_root, recursive: true);
@@ -225,21 +227,21 @@ public class UiTests
         var settings = Settings();
         var bubble = new BubbleWindow(Conversation(settings), Options.Create(settings));
         bubble.Show();
-        bubble.Input.Focus();
+        bubble.Chat.Input.Focus();
 
         Type(bubble, "prima domanda");
         Press(bubble, Key.Enter);
         await SettleAsync();
-        Assert.That(bubble.Input.Text, Is.Empty.Or.Null, "sent");
+        Assert.That(bubble.Chat.Input.Text, Is.Empty.Or.Null, "sent");
 
         Type(bubble, "bozza");
-        bubble.Input.CaretIndex = 0;
+        bubble.Chat.Input.CaretIndex = 0;
         Press(bubble, Key.Up);
-        Assert.That(bubble.Input.Text, Is.EqualTo("prima domanda"));
+        Assert.That(bubble.Chat.Input.Text, Is.EqualTo("prima domanda"));
 
         Press(bubble, Key.Down);
-        Assert.That(bubble.Input.Text, Is.EqualTo("bozza"), "↓ goes back to what was being typed");
-        Assert.That(File.ReadAllText(BubbleWindow.HistoryFile!), Does.Contain("prima domanda"), "kept for the next start");
+        Assert.That(bubble.Chat.Input.Text, Is.EqualTo("bozza"), "↓ goes back to what was being typed");
+        Assert.That(File.ReadAllText(ChatView.HistoryFile!), Does.Contain("prima domanda"), "kept for the next start");
     }
 
     [AvaloniaTest]
@@ -248,14 +250,15 @@ public class UiTests
         var settings = Settings();
         var bubble = new BubbleWindow(Conversation(settings), Options.Create(settings));
         bubble.Show();
-        bubble.Input.Focus();
+        bubble.Chat.Input.Focus();
 
-        Type(bubble, "/chiacc");
-        Assert.That(bubble.SuggestionsPanel.IsVisible, Is.True);
+        // A command of the chat itself: the mentor's are registered only when the mentor runs.
+        Type(bubble, "/riprend");
+        Assert.That(bubble.Chat.SuggestionsPanel.IsVisible, Is.True);
 
         Press(bubble, Key.Tab);
-        Assert.That(bubble.Input.Text, Is.EqualTo("/chiacchiera "));
-        Assert.That(bubble.SuggestionsPanel.IsVisible, Is.False);
+        Assert.That(bubble.Chat.Input.Text, Is.EqualTo("/riprendi "));
+        Assert.That(bubble.Chat.SuggestionsPanel.IsVisible, Is.False);
     }
 
     [AvaloniaTest]
@@ -268,14 +271,14 @@ public class UiTests
         Press(bubble, Key.OemPlus, RawInputModifiers.Control);
         Press(bubble, Key.OemPlus, RawInputModifiers.Control);
         Assert.That(settings.Appearance.ChatZoom, Is.EqualTo(1.2).Within(0.001));
-        Assert.That((bubble.EntriesZoom.LayoutTransform as Avalonia.Media.ScaleTransform)?.ScaleX, Is.EqualTo(1.2).Within(0.001));
+        Assert.That((bubble.Chat.EntriesZoom.LayoutTransform as Avalonia.Media.ScaleTransform)?.ScaleX, Is.EqualTo(1.2).Within(0.001));
 
         Press(bubble, Key.OemMinus, RawInputModifiers.Control);
         Assert.That(settings.Appearance.ChatZoom, Is.EqualTo(1.1).Within(0.001));
 
         Press(bubble, Key.D0, RawInputModifiers.Control);
         Assert.That(settings.Appearance.ChatZoom, Is.EqualTo(1));
-        Assert.That(bubble.EntriesZoom.LayoutTransform, Is.Null);
+        Assert.That(bubble.Chat.EntriesZoom.LayoutTransform, Is.Null);
         bubble.Close(); // before the delayed save, which writes the user's settings file
     }
 
@@ -291,14 +294,14 @@ public class UiTests
         bubble.Show();
 
         Press(bubble, Key.F, RawInputModifiers.Control);
-        Assert.That(bubble.SearchBar.IsVisible, Is.True);
+        Assert.That(bubble.Chat.SearchBar.IsVisible, Is.True);
         Type(bubble, "taskexecutor");
 
         Assert.That(conversation.Entries.Count(e => e.IsHighlighted), Is.EqualTo(2));
-        Assert.That(bubble.SearchCount.Text, Is.EqualTo("2/2"));
+        Assert.That(bubble.Chat.SearchCount.Text, Is.EqualTo("2/2"));
 
         Press(bubble, Key.Escape);
-        Assert.That(bubble.SearchBar.IsVisible, Is.False);
+        Assert.That(bubble.Chat.SearchBar.IsVisible, Is.False);
         Assert.That(conversation.Entries.Any(e => e.IsHighlighted), Is.False);
     }
 
@@ -590,7 +593,7 @@ public class PagesAndPaletteTests
             await Settle();
             var button = window.FindControl<Button>("CardIssueButton")!;
             Assert.That(button.IsVisible, Is.True);
-            Assert.That(button.Content, Is.EqualTo("✚ Crea issue GitHub"));
+            Assert.That(button.Content?.ToString(), Is.EqualTo("✚ Crea issue GitHub"));
 
             await window.CreateIssueAsync(card);
             await Settle();
@@ -599,7 +602,7 @@ public class PagesAndPaletteTests
             Assert.That(created!.Title, Is.EqualTo("Export CSV senza righe"));
             Assert.That(created.Labels, Is.EqualTo(new[] { "bug" }));
             Assert.That(File.ReadAllText(Path.Combine(project, "To-Do.md")), Does.Contain("[tag:: bug] [issue:: https://github.com/o/r/issues/42]"));
-            Assert.That(button.Content, Is.EqualTo("↗ Issue #42"), "the card stays selected and now points to its issue");
+            Assert.That(button.Content?.ToString(), Is.EqualTo("↗ Issue #42"), "the card stays selected and now points to its issue");
         }
         finally
         {

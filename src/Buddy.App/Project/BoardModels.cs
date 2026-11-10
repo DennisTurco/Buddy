@@ -153,7 +153,9 @@ public sealed class CardView : INotifyPropertyChanged
     private bool _isSelected;
 
     /// <param name="pullRequest">The open PR of the card's task, if known: its CI (and review) becomes a chip.</param>
-    public CardView(BoardItem item, BoardColumn column, DateOnly today, Buddy.Core.Repo.PullRequestInfo? pullRequest = null)
+    /// <param name="manualTests">Cases ticked and total in the task's manual tests document, if it has one.</param>
+    public CardView(BoardItem item, BoardColumn column, DateOnly today, Buddy.Core.Repo.PullRequestInfo? pullRequest = null,
+        (int Done, int Total)? manualTests = null)
     {
         Item = item;
         Column = column;
@@ -166,6 +168,13 @@ public sealed class CardView : INotifyPropertyChanged
                 (pr.Checks switch { "success" => "✅ CI", "failure" => "❌ CI", "pending" => "⏳ CI", _ => "PR" }) + $" #{pr.Number}"
                 + (pr.Review == "CHANGES_REQUESTED" ? " · ✏" : pr.Review == "APPROVED" ? " · 👍" : ""),
                 pr.Checks switch { "success" => ChipKind.Good, "failure" => ChipKind.Hot, "pending" => ChipKind.Warm, _ => ChipKind.Plain }));
+        }
+
+        // Manual tests of an open task: how far along, without opening it (green when all ticked).
+        if (manualTests is { Total: > 0 } manual && !item.Done && !item.Rejected)
+        {
+            chips.Insert(0, new Chip($"🧪 {manual.Done}/{manual.Total}",
+                manual.Done == manual.Total ? ChipKind.Good : manual.Done > 0 ? ChipKind.Warm : ChipKind.Plain));
         }
 
         Chips = chips;

@@ -38,6 +38,7 @@ internal static class Snapshot
             Attachment.FromText("System.NullReferenceException: Object reference not set to an instance of an object.\n   at LoginFallito.Registra()", "appunti"),
             Attachment.FromImage(pet.Sprites.IconPng(96), "immagine dagli appunti"));
         conversation.Entries.Add(new ChatEntry(Speaker.Mentor, "**TCP o UDP?** TCP garantisce ordine e consegna (handshake, ritrasmissioni); UDP spedisce e basta, più veloce. Nel tuo lavoro, dove sceglieresti UDP?"));
+        conversation.Entries.Add(new ChatEntry(Speaker.Mentor, "Se vuoi, domani ne riparliamo con un esempio dal tuo codice."));
         conversation.Entries.Add(new ChatEntry(Speaker.User, "a che punto è NUSR-2367?"));
         conversation.Entries.Add(new ChatEntry(Speaker.Local, "È in **Da controllare**: mancano i test di\n- riattivazione NUSR-2370\n- report *Account bloccati*\n\nFonti: [To-Do.md (NUSR-2367)](obsidian://open?path=x) · [Stato attuale.md](obsidian://open?path=y)")
         {
@@ -48,6 +49,10 @@ internal static class Snapshot
         var screenshot = Attachment.FromImage(pet.Sprites.IconPng(128), "immagine dagli appunti");
         conversation.Entries.Add(new ChatEntry(Speaker.User, "perché il pulsante è verde?\n📎 1 immagine") { Images = screenshot.Images });
         conversation.Entries.Add(new ChatEntry(Speaker.User, "/lavora NUSR-2367"));
+        var tools = new ToolActivityEntry("Legge To-Do.md");
+        tools.Add("Legge LoginFallito.vb");
+        tools.Add("Esegue dotnet build");
+        conversation.Entries.Add(tools);
         conversation.Entries.Add(new ChatEntry(Speaker.Claude, "Leggo la voce e il codice. Piano:\n\n1. aggiorno `LoginFallito.vb`\n2. rigenero lo script\n\n| Task | Dove | Stato |\n|---|---|---|\n| T-010 | `To-Do` | da fare |\n| T-011 | `Da valutare` | idea |\n\n```sql\nselect * from utenti where bloccato = 1; -- da sbloccare\n```\n\n```csharp\npublic async Task<bool> ResetAsync(int id)\n{\n    // azzera i tentativi\n    return await _db.ExecuteAsync(\"update Utenti set Tentativi = 0\", id) > 0;\n}\n```\n\n> Nota: vedi [Stato attuale](obsidian://open?path=x)"));
         using var input = JsonDocument.Parse("""{"file_path":"/home/me/portale20/Common/Business/Accounts/Data/LoginFallito.vb"}""");
         conversation.Entries.Add(new PermissionEntry(new PermissionRequest("r1", "Edit", input.RootElement.Clone())));
@@ -104,7 +109,7 @@ internal static class Snapshot
         bubble.RequestedThemeVariant = Appearance.Variant(current);
 
         // The code blocks of Claude's answer (highlighted, with the copy button), scrolled into view.
-        if (bubble.FindControl<ScrollViewer>("Scroller") is { } scroller
+        if (bubble.Chat.Scroller is { } scroller
             && bubble.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("CodeBlock")) is { } code
             && code.TranslatePoint(new Point(0, 0), scroller.Content as Visual ?? scroller) is { } top)
         {

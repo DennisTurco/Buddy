@@ -6,6 +6,8 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Buddy.Core.Vault;
 
+using Buddy.App.Chat;
+
 namespace Buddy.App.Project;
 
 /// <summary>
@@ -158,7 +160,7 @@ public sealed class EntryFormWindow : Window
         if (_editing)
         {
             // Everything the form does not show (Accordi, Costo, links…) stays as it is; the text is there for the rest.
-            var raw = new Button { Content = "📝 Modifica il testo", Classes = { "small" }, VerticalAlignment = VerticalAlignment.Center };
+            var raw = new Button { Content = Icons.Label("📝 Modifica il testo"), Classes = { "small" }, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(raw, "Apre la voce come testo markdown, con tutte le sue righe");
             raw.Click += (_, _) =>
             {

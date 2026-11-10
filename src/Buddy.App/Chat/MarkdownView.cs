@@ -17,6 +17,17 @@ public sealed class MarkdownView : UserControl
     public static readonly StyledProperty<string?> MarkdownProperty =
         AvaloniaProperty.Register<MarkdownView, string?>(nameof(Markdown));
 
+    /// <summary>
+    /// The text is still arriving (a streamed answer): it is drawn as markdown a few times a second instead of on
+    /// every chunk, so headings, lists and code take their shape as they come without re-laying out each word.
+    /// </summary>
+    public static readonly StyledProperty<bool> IsLiveProperty =
+        AvaloniaProperty.Register<MarkdownView, bool>(nameof(IsLive));
+
+    private static readonly TimeSpan LiveInterval = TimeSpan.FromMilliseconds(250);
+
+    private Avalonia.Threading.DispatcherTimer? _liveTimer;
+
     private readonly MarkdownScrollViewer _viewer = new()
     {
         // FluentTheme follows the light/dark theme variant; "Standard" (the default) assumes a light background.
@@ -75,26 +86,87 @@ public sealed class MarkdownView : UserControl
         set => SetValue(MarkdownProperty, value);
     }
 
+    public bool IsLive
+    {
+        get => GetValue(IsLiveProperty);
+        set => SetValue(IsLiveProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == MarkdownProperty)
+        if (change.Property == MarkdownProperty && IsLive)
         {
-            _viewer.Markdown = Markdown ?? "";
-            if (!_enhancePending && (Markdown?.Contains("```") == true || Markdown?.Contains("~~~") == true || Markdown?.Contains("\n    ") == true))
+            // Drawn by the timer: at most one rendering per interval while the text grows.
+            _liveTimer ??= new Avalonia.Threading.DispatcherTimer(LiveInterval, Avalonia.Threading.DispatcherPriority.Background,
+                (_, _) => Render());
+            if (!_liveTimer.IsEnabled)
             {
-                // The viewer builds its controls on the next layout pass: decorate them right after.
-                _enhancePending = true;
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    _enhancePending = false;
-                    CodeBlocks.Enhance(_viewer, Markdown ?? "");
-                }, Avalonia.Threading.DispatcherPriority.Loaded);
+                _liveTimer.Start();
             }
+        }
+        else if (change.Property == MarkdownProperty || (change.Property == IsLiveProperty && !IsLive))
+        {
+            _liveTimer?.Stop();
+            Render(); // the complete text, at once
+        }
+    }
+
+    private void Render()
+    {
+        _liveTimer?.Stop();
+        var markdown = Markdown ?? "";
+        if (_viewer.Markdown == markdown)
+        {
+            return;
+        }
+
+        _viewer.Markdown = markdown;
+        if (!_listsPending && ListLine.IsMatch(markdown))
+        {
+            _listsPending = true;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                _listsPending = false;
+                TidyListMarkers(_viewer);
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
+        }
+
+        if (!_enhancePending && (markdown.Contains("```") || markdown.Contains("~~~") || markdown.Contains("\n    ")))
+        {
+            // The viewer builds its controls on the next layout pass: decorate them right after.
+            _enhancePending = true;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                _enhancePending = false;
+                CodeBlocks.Enhance(_viewer, _viewer.Markdown ?? "");
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
         }
     }
 
     private bool _enhancePending;
+    private bool _listsPending;
+
+    private static readonly System.Text.RegularExpressions.Regex ListLine =
+        new(@"^\s*[-*+]\s", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+    /// <summary>
+    /// The library marks every bullet item with a hollow circle: a dot reads lighter ("•", "◦" one level down). Its
+    /// indent, spacing and colour come from MarkdownTheme.axaml.
+    /// </summary>
+    internal static void TidyListMarkers(Control viewer)
+    {
+        foreach (var marker in viewer.GetLogicalDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>()
+                     .Where(b => b.Classes.Contains("ListMarker")))
+        {
+            if (marker.Content is [ColorTextBlock.Avalonia.CRun { Text: "○" or "●" or "■" or "□" }])
+            {
+                // A new run, not a new text on the old one: the block lays itself out again only when its content changes.
+                var nested = marker.GetLogicalAncestors().OfType<Grid>().Count(g => g.Classes.Contains("List")) > 1;
+                marker.Content[0] = new ColorTextBlock.Avalonia.CRun { Text = nested ? "◦" : "•" };
+            }
+        }
+    }
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {

@@ -19,22 +19,8 @@ namespace Buddy.Core.Chat;
 /// </summary>
 public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
 {
-    public const string HelpText = """
-        Comandi:
-        /c [testo] — passa a Claude (e invia il testo)
-        /l [testo] — torna al modello locale
-        /stato [ID] — scheda del task (senza ID: quello del ramo git)
-        /oggi — le note di oggi (Stato attuale…)
-        /cerca parole — cerca nel vault
-        /modifiche — file modificati, raggruppati per area
-        /commit — bozza del messaggio di commit (Claude)
-        /pr — bozza di titolo e descrizione della PR (Claude)
-        /stop — interrompe la risposta in corso (anche il pulsante ■ Ferma)
-        /nuova — chiude la conversazione con Claude e ne apre una nuova
-        /mentore — comandi del mentore (/checkin, /checkout, /pillola, /ripasso, /chiacchiera, /retro, /focus, /andamento)
-        /uso — quanto hai usato Claude oggi e i limiti del piano
-        /modello [opus|sonnet|haiku|locale <nome>] — mostra o cambia il modello (anche dal nome in alto)
-        /aiuto — questo elenco
+    /// <summary>Closes /aiuto, after the list of commands.</summary>
+    private const string HelpFooter = """
         Ctrl+Alt+B (o la scorciatoia impostata) apre la chat con gli appunti allegati; puoi anche trascinare file,
         testo o immagini sul personaggio.
         """;
@@ -76,7 +62,13 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         _options = options;
         _usage = usage ?? new ClaudeUsage();
         _ui = SynchronizationContext.Current;
+        ChatGrouping.Track(Entries);
+        ChatGrouping.Track(SideEntries);
+        RegisterCommands();
     }
+
+    /// <summary>The "/" commands: the conversation's, registered here, and the mentor's, registered by it.</summary>
+    public CommandRegistry Commands { get; } = new();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -91,9 +83,6 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
 
     /// <summary>A task button was pressed (e.g. "/lavora NUSR-1"): the mentor counts what is delegated.</summary>
     public event Action<string>? TaskActionRun;
-
-    /// <summary>Extra "/" commands handled outside the conversation (the mentor's); returns true when handled.</summary>
-    public Func<string, string, Task<bool>>? CommandHandler { get; set; }
 
     private Func<string, Task>? _pendingReply;
 
@@ -381,6 +370,25 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             Entries.Clear();
             foreach (var entry in saved.Entries)
             {
+                // Tool calls come back grouped, also from conversations saved with one line per call.
+                if (ToolActivityEntry.StepsOf(entry.Speaker, entry.Text) is { } steps)
+                {
+                    var activity = Entries.LastOrDefault() as ToolActivityEntry;
+                    foreach (var step in steps)
+                    {
+                        if (activity is null)
+                        {
+                            Entries.Add(activity = new ToolActivityEntry(step) { Timestamp = entry.Timestamp });
+                        }
+                        else
+                        {
+                            activity.Add(step);
+                        }
+                    }
+
+                    continue;
+                }
+
                 Entries.Add(new ChatEntry(entry.Speaker, entry.Text) { Timestamp = entry.Timestamp, IsPinned = entry.Pinned });
             }
 
@@ -550,140 +558,10 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
-        if (command is not null && await RunCommandHandlerAsync(command, rest, input))
+        if (command is not null && Commands.Find(command) is { } registered
+            && await RunAsync(registered, new CommandCall(command, rest, input, attachment)))
         {
             return;
-        }
-
-        switch (command)
-        {
-            case "/c":
-                Mode = ChatMode.Claude;
-                AddSystem(Phrases.SwitchedToClaude);
-                if (rest.Length > 0 || attachment is not null)
-                {
-                    await AskClaudeAsync(rest, attachment);
-                }
-                else if (_claude is not { IsRunning: true })
-                {
-                    // Warn about a missing login right away, not after the user has typed the request.
-                    await EnsureLoggedInAsync();
-                }
-                return;
-
-            case "/l":
-                Mode = ChatMode.Local;
-                AddSystem(Phrases.SwitchedToLocal);
-                if (rest.Length > 0 || attachment is not null)
-                {
-                    await AskLocalAsync(rest, attachment);
-                }
-                return;
-
-            case "/stato":
-                var id = rest.Length > 0 ? rest.ToUpperInvariant() : _currentTask?.Id;
-                Instant(input, id is null ? "Nessun task nel nome del ramo: scrivi `/stato ID`." : _commands.Status(id));
-                return;
-
-            case "/oggi":
-                Instant(input, _commands.Today());
-                return;
-
-            case "/cerca":
-                Instant(input, _commands.Search(rest));
-                return;
-
-            case "/modifiche":
-                Instant(input, await _commands.ChangesAsync());
-                return;
-
-            case "/commit":
-            case "/pr":
-                var (prompt, message) = command == "/commit"
-                    ? await _commands.CommitPromptAsync(_currentTask?.Id)
-                    : await _commands.PullRequestPromptAsync(_currentTask?.Id);
-                if (prompt is null)
-                {
-                    Instant(input, message!);
-                    return;
-                }
-
-                // Local config and the like must stay out of the commit: say so, and tell Claude too.
-                if (await _commands.DoNotCommitChangesAsync() is { Count: > 0 } excluded)
-                {
-                    var list = string.Join(", ", excluded.Select(p => $"`{p}`"));
-                    AddSystem($"⚠ Tra le modifiche ci sono file da non committare: {string.Join(", ", excluded)}. "
-                              + $"Lasciali fuori dal commit (per annullarli: git checkout -- {string.Join(' ', excluded)}).");
-                    prompt += $"\n\nQuesti file NON vanno nel commit (configurazione locale): {list}. Non descriverli e "
-                              + "ricordami in una riga di escluderli.";
-                }
-
-                Mode = ChatMode.Claude;
-                await AskClaudeAsync(input, attachment: null, promptOverride: prompt);
-                return;
-
-            case "/stop":
-                await StopAsync();
-                return;
-
-            case "/nuova":
-                await StartNewConversationAsync();
-                AddSystem(Phrases.NewConversation);
-                return;
-
-            case "/uso":
-                Instant(input, _usage.Describe());
-                return;
-
-            case "/modelli":
-                TemplatesCommand(input, rest);
-                return;
-
-            case "/riprendi":
-                await ResumeAsync(input);
-                return;
-
-            case "/riapri":
-                if (Archive?.List(ConversationArchive.MaxConversations).FirstOrDefault(c => c.Id == rest) is { } toOpen)
-                {
-                    await OpenSavedAsync(toOpen);
-                }
-                else
-                {
-                    Instant(input, "Non trovo quella conversazione (🕘 per l'elenco).");
-                }
-
-                return;
-
-            case "/appunto":
-                Instant(input, _commands.AddQuickNote(rest));
-                return;
-
-            case "/log":
-                Instant(input, RecentLog(rest.Equals("tutto", StringComparison.OrdinalIgnoreCase)));
-                return;
-
-            case "/aggiorna":
-                if (UpdateRequested is { } update)
-                {
-                    Add(new ChatEntry(Speaker.User, input));
-                    AddSystem("Riavvio con la versione nuova: ricompilo e riparto tra qualche secondo…");
-                    SaveToArchive();
-                    update();
-                }
-                else
-                {
-                    Instant(input, "Non c'è una versione nuova da usare (o il Buddy non gira dai sorgenti).");
-                }
-                return;
-
-            case "/modello":
-                await ModelCommandAsync(input, rest);
-                return;
-
-            case "/aiuto":
-                AddSystem(HelpText);
-                return;
         }
 
         // One of your request templates: its text goes to the model in use, like a typed message.
@@ -704,7 +582,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         // Any other "/" command is a Claude Code command or skill (e.g. /lavora), which only Claude understands.
         // A typo of a known command ("/chiacchera") is caught here instead of costing a Claude turn.
         var known = Claude.ClaudeSkills.Installed(_options.Value).Concat(Templates.Select(t => t.Name));
-        if (command is not null && ChatCommands.Closest(command, known) is { } meant)
+        if (command is not null && Commands.Closest(command, known) is { } meant)
         {
             Instant(input, $"Non conosco `{command}`: forse intendevi `{meant}`? (Scrivi `/` per vedere i comandi.)");
             return;
@@ -758,7 +636,8 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
-        if (command is not null && await RunCommandHandlerAsync(command, rest, input))
+        if (command is not null && Commands.Find(command) is { Command.Group: CommandGroup.Mentor } registered
+            && await RunMentorCommandAsync(registered, new CommandCall(command, rest, input, null)))
         {
             return;
         }
@@ -769,19 +648,19 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
 
     private void AddSide(ChatEntry entry) => OnUi(() => SideEntries.Add(entry));
 
+    /// <summary>Runs a registered command; false when it let the message go on to the models.</summary>
+    private Task<bool> RunAsync(RegisteredCommand registered, CommandCall call) =>
+        registered.Command.Group == CommandGroup.Mentor ? RunMentorCommandAsync(registered, call) : registered.Run(call);
+
     /// <summary>
     /// Runs one of the mentor's commands. The user's line goes before the answer, in the chat the answer went to; an
     /// off-topic answer asked from the work chat (/pillola…) brings the side chat on screen.
     /// </summary>
-    private async Task<bool> RunCommandHandlerAsync(string command, string rest, string input)
+    private async Task<bool> RunMentorCommandAsync(RegisteredCommand registered, CommandCall call)
     {
-        if (CommandHandler is not { } handler)
-        {
-            return false;
-        }
-
+        var input = call.Input;
         var (work, side) = (Entries.Count, SideEntries.Count);
-        if (!await handler(command, rest))
+        if (!await registered.Run(call))
         {
             return false;
         }
@@ -797,6 +676,145 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             }
         });
         return true;
+    }
+
+    /// <summary>The conversation's own "/" commands; the order here is the order of the suggestions and of /aiuto.</summary>
+    private void RegisterCommands()
+    {
+        Commands.Add(new("/c", "passa a Claude (e invia il testo)", "[testo]"), async call =>
+        {
+            Mode = ChatMode.Claude;
+            AddSystem(Phrases.SwitchedToClaude);
+            if (call.Rest.Length > 0 || call.Attachment is not null)
+            {
+                await AskClaudeAsync(call.Rest, call.Attachment);
+            }
+            else if (_claude is not { IsRunning: true })
+            {
+                // Warn about a missing login right away, not after the user has typed the request.
+                await EnsureLoggedInAsync();
+            }
+        });
+
+        Commands.Add(new("/l", "torna al modello locale (e invia il testo)", "[testo]"), async call =>
+        {
+            Mode = ChatMode.Local;
+            AddSystem(Phrases.SwitchedToLocal);
+            if (call.Rest.Length > 0 || call.Attachment is not null)
+            {
+                await AskLocalAsync(call.Rest, call.Attachment);
+            }
+        });
+
+        Commands.Add(new("/stato", "scheda del task (senza ID: quello del ramo git)", "[ID]"), call =>
+        {
+            var id = call.Rest.Length > 0 ? call.Rest.ToUpperInvariant() : _currentTask?.Id;
+            Instant(call.Input, id is null ? "Nessun task nel nome del ramo: scrivi `/stato ID`." : _commands.Status(id));
+            return Task.CompletedTask;
+        });
+
+        Commands.Add(new("/oggi", "le note di oggi (Stato attuale…)"), call => Done(() => Instant(call.Input, _commands.Today())));
+        Commands.Add(new("/cerca", "cerca nel vault", "parole"), call => Done(() => Instant(call.Input, _commands.Search(call.Rest))));
+        Commands.Add(new("/modifiche", "file modificati, raggruppati per area"),
+            async call => Instant(call.Input, await _commands.ChangesAsync()));
+        Commands.Add(new("/commit", "bozza del messaggio di commit (Claude)"), call => DraftAsync(call, commit: true));
+        Commands.Add(new("/pr", "bozza di titolo e descrizione della PR (Claude)"), call => DraftAsync(call, commit: false));
+        Commands.Add(new("/stop", "interrompe la risposta in corso (anche ■ Ferma)"), _ => StopAsync());
+        Commands.Add(new("/nuova", "nuova conversazione; quella attuale resta salvata"), async _ =>
+        {
+            await StartNewConversationAsync();
+            AddSystem(Phrases.NewConversation);
+        });
+        Commands.Add(new("/uso", "uso di Claude oggi e limiti del piano"), call => Done(() => Instant(call.Input, _usage.Describe())));
+        Commands.Add(new("/modello", "mostra o cambia il modello (anche dal nome in alto)", "[opus|sonnet|haiku|locale <nome>]"),
+            call => ModelCommandAsync(call.Input, call.Rest));
+        Commands.Add(new("/riprendi", "dove ero rimasto: task, ultima conversazione, modifiche, test"), call => ResumeAsync(call.Input));
+        Commands.Add(new("/riapri", "riapre una conversazione salvata", "ID", Hidden: true), async call =>
+        {
+            if (Archive?.List(ConversationArchive.MaxConversations).FirstOrDefault(c => c.Id == call.Rest) is { } toOpen)
+            {
+                await OpenSavedAsync(toOpen);
+            }
+            else
+            {
+                Instant(call.Input, "Non trovo quella conversazione (🕘 per l'elenco).");
+            }
+        });
+        Commands.Add(new("/appunto", "aggiunge una riga a To-do Appunti (anche Shift+🎤)", "testo"),
+            call => Done(() => Instant(call.Input, _commands.AddQuickNote(call.Rest))));
+        Commands.Add(new("/modelli", "i tuoi modelli di richiesta", "[nome = testo]"),
+            call => Done(() => TemplatesCommand(call.Input, call.Rest)));
+        Commands.Add(new("/log", "ultimi avvisi ed errori del Buddy (tutto: ultime righe)", "[tutto]"),
+            call => Done(() => Instant(call.Input, RecentLog(call.Rest.Equals("tutto", StringComparison.OrdinalIgnoreCase)))));
+        Commands.Add(new("/aggiorna", "riavvia con la versione appena compilata"), call => Done(() =>
+        {
+            if (UpdateRequested is { } update)
+            {
+                Add(new ChatEntry(Speaker.User, call.Input));
+                AddSystem("Riavvio con la versione nuova: ricompilo e riparto tra qualche secondo…");
+                SaveToArchive();
+                update();
+            }
+            else
+            {
+                Instant(call.Input, "Non c'è una versione nuova da usare (o il Buddy non gira dai sorgenti).");
+            }
+        }));
+        Commands.Add(new("/aiuto", "questo elenco"), _ => Done(() => AddSystem(HelpText())));
+
+        // Answers the mentor's open question with nothing; reached only when there is none.
+        Commands.Add(new("/salta", "ignora la domanda in sospeso", Group: CommandGroup.Mentor), _ => Done(() =>
+        {
+            const string nothing = "Nessuna domanda da saltare.";
+            if (_showingSide)
+            {
+                AddSide(new ChatEntry(Speaker.System, nothing));
+            }
+            else
+            {
+                AddSystem(nothing);
+            }
+        }));
+    }
+
+    private static Task Done(Action action)
+    {
+        action();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>"/aiuto": the conversation's commands, the mentor's names, and the shortcuts.</summary>
+    internal string HelpText()
+    {
+        var mentor = Commands.All.Where(c => c.Group == CommandGroup.Mentor && c.Name != "/mentore").Select(c => c.Name).ToList();
+        var mentorLine = mentor.Count == 0 ? "" : $"\nMentore: {string.Join(" · ", mentor)} (/mentore per i dettagli)";
+        return $"Comandi:\n{Commands.Help(CommandGroup.Chat)}{mentorLine}\n{HelpFooter}";
+    }
+
+    /// <summary>"/commit" and "/pr": Claude drafts the message from the diff, warned about the files to leave out.</summary>
+    private async Task DraftAsync(CommandCall call, bool commit)
+    {
+        var (prompt, message) = commit
+            ? await _commands.CommitPromptAsync(_currentTask?.Id)
+            : await _commands.PullRequestPromptAsync(_currentTask?.Id);
+        if (prompt is null)
+        {
+            Instant(call.Input, message!);
+            return;
+        }
+
+        // Local config and the like must stay out of the commit: say so, and tell Claude too.
+        if (await _commands.DoNotCommitChangesAsync() is { Count: > 0 } excluded)
+        {
+            var list = string.Join(", ", excluded.Select(p => $"`{p}`"));
+            AddSystem($"⚠ Tra le modifiche ci sono file da non committare: {string.Join(", ", excluded)}. "
+                      + $"Lasciali fuori dal commit (per annullarli: git checkout -- {string.Join(' ', excluded)}).");
+            prompt += $"\n\nQuesti file NON vanno nel commit (configurazione locale): {list}. Non descriverli e "
+                      + "ricordami in una riga di escluderli.";
+        }
+
+        Mode = ChatMode.Claude;
+        await AskClaudeAsync(call.Input, attachment: null, promptOverride: prompt);
     }
 
     /// <summary>
@@ -1112,7 +1130,15 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
 
             case ClaudeToolUse tool:
                 CloseClaudeAnswer();
-                Entries.Add(new ChatEntry(Speaker.System, $"🔧 {tool.Summary}"));
+                if (Entries.LastOrDefault() is ToolActivityEntry activity)
+                {
+                    activity.Add(tool.Summary); // a run of tool calls stays one line in the chat
+                }
+                else
+                {
+                    Entries.Add(new ToolActivityEntry(tool.Summary));
+                }
+
                 break;
 
             case ClaudeRateLimitChanged changed:
@@ -1434,7 +1460,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 return;
             }
 
-            if (ChatCommands.BuiltIn.Any(c => c.Name.Equals("/" + name, StringComparison.OrdinalIgnoreCase)))
+            if (Commands.Find("/" + name) is not null)
             {
                 Instant(input, $"`/{name}` è già un comando del Buddy: scegli un altro nome.");
                 return;

@@ -34,6 +34,54 @@
         <SolidColorBrush x:Key="SynTag" Color="#D2453A" />
         <!-- A list: the first font installed wins (Windows, macOS, then common Linux ones). -->
         <FontFamily x:Key="MonoFont">Consolas, Menlo, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
+        <!-- Line icons on a 24×24 grid, drawn by chat:LineIcon in the colour of their button. -->
+        <StreamGeometry x:Key="IconCopy">M11 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2z M5 15h-1a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h9a2 2 0 0 1 2 2v1</StreamGeometry>
+        <StreamGeometry x:Key="IconSave">M19 21h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h11l5 5v11a2 2 0 0 1 -2 2z M17 21v-8h-10v8 M7 3v5h8</StreamGeometry>
+        <StreamGeometry x:Key="IconPin">M12 17v5 M8 2h8 M9 2v8l-3 4v3h12v-3l-3 -4v-8</StreamGeometry>
+        <StreamGeometry x:Key="IconHistory">M3 12a9 9 0 1 0 2.64 -6.36l-2.64 2.36 M3 3v5h5 M12 7v5l4 2</StreamGeometry>
+        <StreamGeometry x:Key="IconCoffee">M17 8h1a4 4 0 0 1 0 8h-1 M3 8h14v9a4 4 0 0 1 -4 4h-6a4 4 0 0 1 -4 -4z M6 2v2 M10 2v2 M14 2v2</StreamGeometry>
+        <StreamGeometry x:Key="IconMic">M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1 -6 0z M19 10v1a7 7 0 0 1 -14 0v-1 M12 18v4</StreamGeometry>
+        <StreamGeometry x:Key="IconAttach">M21.4 11.1l-9.2 9.2a6 6 0 0 1 -8.5 -8.5l8.6 -8.6a4 4 0 0 1 5.7 5.7l-8.6 8.6a2 2 0 0 1 -2.8 -2.8l8 -8</StreamGeometry>
+        <StreamGeometry x:Key="IconNewChat">M21 15a2 2 0 0 1 -2 2h-12l-4 4v-15a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2z M12 7v6 M9 10h6</StreamGeometry>
+        <StreamGeometry x:Key="IconMaximize">M8 3h-3a2 2 0 0 0 -2 2v3 M21 8v-3a2 2 0 0 0 -2 -2h-3 M3 16v3a2 2 0 0 0 2 2h3 M16 21h3a2 2 0 0 0 2 -2v-3</StreamGeometry>
+        <StreamGeometry x:Key="IconRestore">M8 3v3a2 2 0 0 1 -2 2h-3 M21 8h-3a2 2 0 0 1 -2 -2v-3 M3 16h3a2 2 0 0 1 2 2v3 M16 21v-3a2 2 0 0 1 2 -2h3</StreamGeometry>
+        <StreamGeometry x:Key="IconClose">M18 6l-12 12 M6 6l12 12</StreamGeometry>
+        <StreamGeometry x:Key="IconCheck">M20 6l-11 11l-5 -5</StreamGeometry>
+        <StreamGeometry x:Key="IconChat">M21 15a2 2 0 0 1 -2 2h-12l-4 4v-15a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2z</StreamGeometry>
+        <StreamGeometry x:Key="IconNote">M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3l-12.5 12.5l-4 1l1 -4z</StreamGeometry>
+        <StreamGeometry x:Key="IconWait">M12 2v4 M12 18v4 M4.9 4.9l2.8 2.8 M16.3 16.3l2.8 2.8 M2 12h4 M18 12h4 M4.9 19.1l2.8 -2.8 M16.3 7.7l2.8 -2.8</StreamGeometry>
+        <StreamGeometry x:Key="IconRecord">M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0z M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z</StreamGeometry>
+        <StreamGeometry x:Key="IconIdea">M9 18h6 M10 22h4 M12 2a7 7 0 0 0 -4 12.7v1.3h8v-1.3a7 7 0 0 0 -4 -12.7z</StreamGeometry>
+        <StreamGeometry x:Key="IconBug">M8 6a4 4 0 0 1 8 0 M6 10h12v5a6 6 0 0 1 -12 0z M12 10v11 M3 13h3 M18 13h3 M4 7l2 3 M20 7l-2 3 M4 20l2.5 -2.5 M20 20l-2.5 -2.5</StreamGeometry>
+        <StreamGeometry x:Key="IconSparkles">M12 3l1.8 5.2l5.2 1.8l-5.2 1.8l-1.8 5.2l-1.8 -5.2l-5.2 -1.8l5.2 -1.8z M19 15l0.8 2.2l2.2 0.8l-2.2 0.8l-0.8 2.2l-0.8 -2.2l-2.2 -0.8l2.2 -0.8z</StreamGeometry>
+        <StreamGeometry x:Key="IconHeart">M20.8 4.6a5.5 5.5 0 0 0 -7.8 0l-1 1l-1 -1a5.5 5.5 0 0 0 -7.8 7.8l8.8 8.8l8.8 -8.8a5.5 5.5 0 0 0 0 -7.8z</StreamGeometry>
+        <StreamGeometry x:Key="IconDownload">M12 3v12 M7 10l5 5l5 -5 M5 21h14</StreamGeometry>
+        <StreamGeometry x:Key="IconFlask">M9 3h6 M10 3v6l-5.5 9.5a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7 -3l-5.5 -9.5v-6 M7 15h10</StreamGeometry>
+        <StreamGeometry x:Key="IconFile">M14 3h-7a2 2 0 0 0 -2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-11z M14 3v5h5 M9 13h6 M9 17h6</StreamGeometry>
+        <StreamGeometry x:Key="IconEdit">M17 3l4 4l-12 12h-4v-4z M14 6l4 4</StreamGeometry>
+        <StreamGeometry x:Key="IconStop">M7 7h10v10h-10z</StreamGeometry>
+        <StreamGeometry x:Key="IconAsk">M21 15a2 2 0 0 1 -2 2h-12l-4 4v-15a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2z M10 8.5a2 2 0 1 1 2.5 1.9c-0.4 0.2 -0.5 0.5 -0.5 1v0.6 M12 14.5v0.01</StreamGeometry>
+        <StreamGeometry x:Key="IconPlay">M7 4l13 8l-13 8z</StreamGeometry>
+        <StreamGeometry x:Key="IconTrash">M4 7h16 M10 11v6 M14 11v6 M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1 -1l1 -13 M9 7v-3h6v3</StreamGeometry>
+        <StreamGeometry x:Key="IconGraph">M4 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M16 5a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M16 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M7.8 11l8.4 -5 M7.8 13l8.4 5</StreamGeometry>
+        <StreamGeometry x:Key="IconCheckbox">M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z M8 12l3 3l5 -6</StreamGeometry>
+        <StreamGeometry x:Key="IconQuote">M4 11h5v6h-5z M4 11c0 -3 1 -5 4 -6 M14 11h5v6h-5z M14 11c0 -3 1 -5 4 -6</StreamGeometry>
+        <StreamGeometry x:Key="IconLink">M10 13a5 5 0 0 0 7.5 0.5l3 -3a5 5 0 0 0 -7 -7l-1.7 1.7 M14 11a5 5 0 0 0 -7.5 -0.5l-3 3a5 5 0 0 0 7 7l1.7 -1.7</StreamGeometry>
+        <StreamGeometry x:Key="IconTable">M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z M3 9h18 M3 15h18 M9 3v18 M15 3v18</StreamGeometry>
+        <StreamGeometry x:Key="IconEye">M2 12c2.5 -4.5 6 -7 10 -7c4 0 7.5 2.5 10 7c-2.5 4.5 -6 7 -10 7c-4 0 -7.5 -2.5 -10 -7z M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0z</StreamGeometry>
+        <StreamGeometry x:Key="IconRefresh">M21 12a9 9 0 1 1 -2.64 -6.36l2.64 2.36 M21 3v5h-5</StreamGeometry>
+        <StreamGeometry x:Key="IconBell">M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9h-18c0 0 3 -2 3 -9 M10.3 21a1.9 1.9 0 0 0 3.4 0</StreamGeometry>
+        <StreamGeometry x:Key="IconInbox">M22 12h-6l-2 3h-4l-2 -3h-6 M5.5 5h13l3.5 7v6a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-6z</StreamGeometry>
+        <StreamGeometry x:Key="IconWrench">M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8 -3.8a6 6 0 0 1 -7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1 -3 -3l6.9 -6.9a6 6 0 0 1 7.9 -7.9z</StreamGeometry>
+        <StreamGeometry x:Key="IconCompass">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z M16 8l-2 6l-6 2l2 -6z</StreamGeometry>
+        <StreamGeometry x:Key="IconBan">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z M5.6 5.6l12.8 12.8</StreamGeometry>
+        <StreamGeometry x:Key="IconHelp">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-0.6 0.3 -1 0.8 -1 1.5v0.5 M12 17v0.01</StreamGeometry>
+        <StreamGeometry x:Key="IconCheckCircle">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z M8 12l3 3l5 -6</StreamGeometry>
+        <StreamGeometry x:Key="IconGlobe">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z M3 12h18 M12 3c2.5 2.5 3.8 5.5 3.8 9c0 3.5 -1.3 6.5 -3.8 9c-2.5 -2.5 -3.8 -5.5 -3.8 -9c0 -3.5 1.3 -6.5 3.8 -9z</StreamGeometry>
+        <StreamGeometry x:Key="IconRepeat">M17 2l4 4l-4 4 M3 11v-1a4 4 0 0 1 4 -4h14 M7 22l-4 -4l4 -4 M21 13v1a4 4 0 0 1 -4 4h-14</StreamGeometry>
+        <StreamGeometry x:Key="IconPlus">M12 5v14 M5 12h14</StreamGeometry>
+        <StreamGeometry x:Key="IconExternal">M15 3h6v6 M10 14l11 -11 M18 13v6a2 2 0 0 1 -2 2h-11a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h6</StreamGeometry>
+        <StreamGeometry x:Key="IconUndo">M9 14l-5 -5l5 -5 M4 9h10.5a5.5 5.5 0 0 1 0 11h-3.5</StreamGeometry>
     </Styles.Resources>
 
     <!-- Form windows (settings, first run, prompts) -->

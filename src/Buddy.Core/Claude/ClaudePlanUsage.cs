@@ -28,17 +28,34 @@ public sealed class ClaudePlanUsage : IDisposable
     private ITimer? _timer;
     private DateTimeOffset _last = DateTimeOffset.MinValue;
 
+    /// <summary>After a 429 the endpoint is left alone until then, longer at each refusal (see <see cref="Backoff"/>).</summary>
+    private DateTimeOffset _pausedUntil = DateTimeOffset.MinValue;
+
+    private TimeSpan _backoff = TimeSpan.Zero;
+
+    /// <summary>The next pause after "too many requests": 5 minutes, then doubled, at most an hour.</summary>
+    internal static TimeSpan Backoff(TimeSpan previous, TimeSpan? retryAfter)
+    {
+        var next = previous == TimeSpan.Zero ? TimeSpan.FromMinutes(5) : TimeSpan.FromTicks(Math.Min(previous.Ticks * 2, TimeSpan.FromHours(1).Ticks));
+        return retryAfter is { } wait && wait > next ? wait : next;
+    }
+
+    internal const string NoLogin = "Limiti non letti: Claude Code non risulta collegato (in un terminale: claude, poi /login).";
+
     /// <summary>Asks for the limits now and then every <paramref name="every"/>.</summary>
     public void Start(TimeSpan every)
     {
         _timer?.Dispose();
-        _timer = _clock.CreateTimer(_ => _ = RefreshAsync(force: true), null, TimeSpan.Zero, every);
+
+        // Limits read a moment ago (a restart): the first request waits, the endpoint limits how often it is asked.
+        var first = _usage.LimitsReadAt is { } read ? read + TimeSpan.FromMinutes(1) - _clock.GetUtcNow() : TimeSpan.Zero;
+        _timer = _clock.CreateTimer(_ => _ = RefreshAsync(force: true), null, first > TimeSpan.Zero ? first : TimeSpan.Zero, every);
     }
 
     /// <summary>Fetches the limits unless it was done less than 30 seconds ago; false when they could not be read.</summary>
     public async Task<bool> RefreshAsync(bool force = false, CancellationToken cancellationToken = default)
     {
-        if (!force && _clock.GetUtcNow() - _last < MinimumGap)
+        if ((!force && _clock.GetUtcNow() - _last < MinimumGap) || _clock.GetUtcNow() < _pausedUntil)
         {
             return true;
         }
@@ -53,15 +70,27 @@ public sealed class ClaudePlanUsage : IDisposable
             _last = _clock.GetUtcNow();
             if (ReadToken() is not { } token)
             {
-                return false;
+                return false; // ReadToken said why
             }
 
             using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
             using var response = await Http.SendAsync(request, cancellationToken);
+            if ((int)response.StatusCode == 429)
+            {
+                // Asked too often (several restarts, other tools on the same account): wait longer each time.
+                _backoff = Backoff(_backoff, response.Headers.RetryAfter?.Delta);
+                _pausedUntil = _clock.GetUtcNow() + _backoff;
+                _usage.SetLimitsProblem($"Limiti non aggiornati: troppe richieste a Claude, riprovo alle {_pausedUntil.ToLocalTime():H:mm}.");
+                return false;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
+                _usage.SetLimitsProblem(response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+                    ? "Limiti non letti: il login di Claude Code non è valido (in un terminale: claude, poi /login)."
+                    : $"Limiti non letti ora (errore {(int)response.StatusCode}): riprovo più tardi.");
                 return false;
             }
 
@@ -71,10 +100,22 @@ public sealed class ClaudePlanUsage : IDisposable
                 _usage.Update(limit);
             }
 
+            _backoff = TimeSpan.Zero;
+            if (limits.Count > 0)
+            {
+                _usage.LimitsRead(_clock.GetUtcNow());
+            }
+
             return limits.Count > 0;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
+            _usage.SetLimitsProblem("Limiti non letti: Claude non risponde (connessione?), riprovo più tardi.");
+            return false;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            _usage.SetLimitsProblem("Limiti non letti: risposta o credenziali illeggibili, riprovo più tardi.");
             return false;
         }
         finally
@@ -102,6 +143,7 @@ public sealed class ClaudePlanUsage : IDisposable
         var path = CredentialsPath();
         if (!File.Exists(path))
         {
+            _usage.SetLimitsProblem(NoLogin);
             return null;
         }
 
@@ -109,6 +151,7 @@ public sealed class ClaudePlanUsage : IDisposable
         if (!doc.RootElement.TryGetProperty("claudeAiOauth", out var oauth)
             || !oauth.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String)
         {
+            _usage.SetLimitsProblem(NoLogin);
             return null;
         }
 
@@ -116,6 +159,7 @@ public sealed class ClaudePlanUsage : IDisposable
         if (oauth.TryGetProperty("expiresAt", out var expires) && expires.ValueKind == JsonValueKind.Number
             && DateTimeOffset.FromUnixTimeMilliseconds(expires.GetInt64()) < _clock.GetUtcNow())
         {
+            _usage.SetLimitsProblem("Limiti in attesa: il login di Claude Code va rinnovato (succede da solo alla prossima risposta di Claude).");
             return null;
         }
 
