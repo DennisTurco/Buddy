@@ -175,7 +175,8 @@ the settings window), which overrides them. Window position is kept in `<data>/s
   **Claude skill buttons** for its step — 🛠 `/lavora`, 🧭 `/guidami`, 📄 `/analisi`, 🚫 `/rifiuta` (asks the reason),
   🤔 `/valuta`, ✅ `/chiudi` (asks the PR), 🧪 `/test-manuali`, 🌐 `/verifica-web` — sent to Claude in the chat, *Chiedi in chat*, and
   *Modifica* / *Elimina* of the item's markdown. A skill button only appears when the skill is installed
-  (`~/.claude/skills` or the project's `.claude/skills`). The side bar adds an appunto (Ctrl+N, Enter); 🗂 Smista sends
+  (`~/.claude/skills` or the project's `.claude/skills`); the flow's skills ship with Buddy (the template's `Skill/` notes)
+  and the missing ones are installed in `~/.claude/skills` at startup, never overwriting one already there. The side bar adds an appunto (Ctrl+N, Enter); 🗂 Smista sends
   `/smista`. Shortcuts: Ctrl+1…9 views, **Ctrl+K** finds anything (notes, tasks, pages, saved conversations, chat commands), Ctrl+F search, Esc closes edit → panel → window. It refreshes by itself when
   a note changes; an edit never overwrites a note changed meanwhile (it asks to reload instead).
 - **Hide/show**: pet menu → *Nascondi Buddy*; the tray icon (*Mostra/Nascondi Buddy*, or a click), the shortcut and

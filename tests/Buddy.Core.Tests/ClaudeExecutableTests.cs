@@ -19,6 +19,27 @@ public class ClaudeExecutableTests
     }
 
     [Test]
+    public void Name_on_path_resolves_to_its_full_path()
+    {
+        var dir = Directory.CreateTempSubdirectory("buddy-path-").FullName;
+        var name = OperatingSystem.IsWindows() ? "claude-xyz.exe" : "claude-xyz";
+        File.WriteAllText(Path.Combine(dir, name), "");
+        var oldPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", dir + Path.PathSeparator + oldPath);
+            // On Windows the configured claude.cmd also finds the native installer's claude.exe.
+            var configured = OperatingSystem.IsWindows() ? "claude-xyz.cmd" : "claude-xyz";
+            Assert.That(ClaudeExecutable.Resolve(configured), Is.EqualTo(Path.Combine(dir, name)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", oldPath);
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Test]
     public void Missing_cli_gets_a_hint()
     {
         var text = ClaudeExecutable.Describe(new Win32Exception(2), "claude");

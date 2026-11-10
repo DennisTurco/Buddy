@@ -51,6 +51,25 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
+    /// <summary>
+    /// The flow's skills (/smista, /lavora…) ship with Buddy: the missing ones go to ~/.claude/skills, so the board's
+    /// skill buttons appear and Claude knows the commands. Existing skills are left as they are.
+    /// </summary>
+    private void InstallSkills(BuddySettings settings)
+    {
+        try
+        {
+            if (Buddy.Core.Claude.ClaudeSkills.InstallMissing(settings) is { Count: > 0 } added)
+            {
+                _log?.LogInformation("Skill di Claude installate: {Skills}", string.Join(", ", added));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log?.LogWarning(ex, "Non riesco a installare le skill di Claude");
+        }
+    }
+
     /// <summary>Closes the buddy (menu "Esci").</summary>
     public static void Exit() => (Current as App)?._desktop?.Shutdown();
 
@@ -100,6 +119,8 @@ public partial class App : Application
             Exit();
             return;
         }
+
+        InstallSkills(settings);
 
         if (!settings.FirstRunCompleted)
         {
