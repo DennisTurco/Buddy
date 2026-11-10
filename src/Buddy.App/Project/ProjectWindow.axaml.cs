@@ -137,6 +137,7 @@ public partial class ProjectWindow : Window
 
         Filter.TextChanged += (_, _) => Render();
         Graph.NoteActivated += OnGraphNoteActivated;
+        Graph.NoteContextRequested += OnGraphNoteContext;
         PageFindBox.TextChanged += (_, _) => UpdatePageFind();
         PageFindBox.AddHandler(KeyDownEvent, OnPageFindKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         NoteEditor.AddHandler(KeyDownEvent, OnNoteEditorKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
@@ -218,7 +219,7 @@ public partial class ProjectWindow : Window
         _reloadPending = false;
         _board = ProjectBoard.Load(_vault, _settings.TaskIdPattern);
         var selectedNote = (NotesList.SelectedItem as NoteView)?.Note.RelativePath;
-        _notes = _board.Notes.Select(n => new NoteView(n)).ToList();
+        _notes = _board.Notes.Select(n => new NoteView(n, _settings.ProjectPath)).ToList();
         _graph = NoteGraph.Build(_board.Notes, _settings.TaskIdPattern);
         ApplyGraph();
         Render();
@@ -491,7 +492,7 @@ public partial class ProjectWindow : Window
             "archive" => "Task chiusi e idee scartate",
             "manualtests" => "Le checklist da provare a mano: spunta i casi qui, finiscono nel file come - [x]",
             "webtests" => "Gli script del browser e gli screenshot delle verifiche",
-            "graph" => $"{Graph.NodeCount} note, {Graph.EdgeCount} collegamenti · rotella per lo zoom, trascina per spostarti, click su una nota per aprirla",
+            "graph" => $"{Graph.NodeCount} note, {Graph.EdgeCount} collegamenti · rotella per lo zoom, trascina per spostarti, click su una nota per aprirla, tasto destro per collegarla a un'altra",
             _ when IsGeneric(_view) => ViewSubtitle.Text, // set by the page itself
             _ => $"{_notes.Count} note in {_settings.ProjectPath}",
         };
@@ -545,6 +546,9 @@ public partial class ProjectWindow : Window
 
     private void OnUsageChanged() => Dispatcher.UIThread.Post(ShowUsage);
 
+    /// <summary>Redraws the usage card (snapshots, after changing the folded state from outside).</summary>
+    internal void RefreshUsage() => ShowUsage();
+
     private void ShowUsage()
     {
         UsageCard.IsVisible = _usage is not null;
@@ -557,11 +561,26 @@ public partial class ProjectWindow : Window
         UsageCost.Text = $"{(today ? usage.TodayCost : 0).ToString("0.00", Italian)} $";
         UsageTurns.Text = today && usage.TodayTurns > 0 ? $"{usage.TodayTurns} turni" : "";
         ToolTip.SetTip(UsageCard, usage.Describe().Replace("**", ""));
-        var limits = usage.Limits.Select(l => new LimitView(
-            l.Label, l.ShortStatus + (l.ResetsAt is { } r ? $" · {r.ToLocalTime():HH:mm}" : ""),
-            (l.Utilization ?? 0) * 100, l.IsWarning || l.IsBlocked, l.Utilization is not null)).ToList();
+        var limits = usage.Limits.Select(LimitView.From).ToList();
         UsageLimits.ItemsSource = limits;
         UsageNoLimits.IsVisible = limits.Count == 0;
+
+        // Folded: one line with today's cost and the 5-hour share, instead of the whole card.
+        var folded = SettingsStore.UsageFolded;
+        UsageDetails.IsVisible = !folded;
+        UsageTurns.IsVisible = !folded;
+        UsageChevron.Text = folded ? "▸" : "▾";
+        var fiveHours = usage.Limits.FirstOrDefault(l => l.Type == "five_hour");
+        UsageTitle.Text = folded
+            ? $"💳 {UsageCost.Text}" + (fiveHours is null ? "" : $" · 5 ore {fiveHours.PercentText}")
+            : "💳 Claude oggi";
+    }
+
+    private void OnUsageHeaderPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        SettingsStore.UsageFolded = !SettingsStore.UsageFolded;
+        ShowUsage();
+        e.Handled = true;
     }
 
     // ---- Side panel -------------------------------------------------------------------------------------------
@@ -1808,7 +1827,7 @@ public partial class ProjectWindow : Window
     {
         if (NotePreviewToggle.IsChecked == true && NoteEditorPanel.IsVisible)
         {
-            NotePreview.Markdown = NoteLinks.ToMarkdown(NoteView.StripFrontMatter(NoteEditor.Text ?? ""));
+            NotePreview.Markdown = NoteLinks.ToMarkdown(NoteView.StripFrontMatter(NoteEditor.Text ?? ""), _editedNote?.FullFolder, _settings.ProjectPath);
         }
     }
 
@@ -1966,6 +1985,62 @@ public partial class ProjectWindow : Window
     private void OnGraphRelayoutClick(object? sender, RoutedEventArgs e) => Graph.Relayout();
 
     private void OnGraphNoteActivated(string relativePath) => OpenInNotesView(relativePath);
+
+    /// <summary>Right click on a note of the graph: open it, or link it to another note.</summary>
+    private void OnGraphNoteContext(string relativePath)
+    {
+        var open = new MenuItem { Header = "📄 Apri la nota" };
+        open.Click += (_, _) => OpenInNotesView(relativePath);
+        var link = new MenuItem { Header = "🔗 Collega a un'altra nota…" };
+        link.Click += async (_, _) => await LinkNoteAsync(relativePath);
+        var menu = new ContextMenu { Items = { open, link }, Placement = PlacementMode.Pointer };
+        menu.Open(Graph);
+    }
+
+    /// <summary>
+    /// Asks for the other note and writes "- [[Other]]" under "## Collegamenti" in <paramref name="relativePath"/>;
+    /// the graph redraws with the new edge (the vault watcher would too, a moment later).
+    /// </summary>
+    internal async Task LinkNoteAsync(string relativePath)
+    {
+        var from = _notes.FirstOrDefault(n => SamePath(n.Note.RelativePath, relativePath));
+        if (from is null)
+        {
+            return;
+        }
+
+        var choices = _notes
+            .Where(n => n != from)
+            .OrderBy(n => n.Title, StringComparer.CurrentCultureIgnoreCase)
+            .Select(n => new Settings.Dialogs.Choice(n.Title, n.Folder.Replace('\\', '/'), n.Note.RelativePath))
+            .ToList();
+        var target = await Settings.Dialogs.PickAsync(this, "Collega a un'altra nota",
+            $"Aggiungi in «{from.Title}» un collegamento verso:", choices);
+        if (target is null || _notes.FirstOrDefault(n => n.Note.RelativePath == target) is not { } to)
+        {
+            return;
+        }
+
+        // [[Title]] as Obsidian writes it; the path when two notes share the title.
+        var link = _notes.Count(n => n.Title.Equals(to.Title, StringComparison.OrdinalIgnoreCase)) > 1
+            ? Path.ChangeExtension(to.Note.RelativePath, null).Replace('\\', '/')
+            : to.Title;
+        var added = false;
+        if (await WriteAsync(() => added = VaultWriter.AddLink(FullPath(from.Note.RelativePath), link, to.Title)))
+        {
+            if (!added)
+            {
+                await Settings.Dialogs.ShowMessageAsync(this, $"«{from.Title}» è già collegata a «{to.Title}».");
+                return;
+            }
+
+            AfterEdit();
+            Graph.FocusNote(from.Note.RelativePath.Replace('\\', '/'));
+        }
+    }
+
+    private static bool SamePath(string a, string b) =>
+        string.Equals(a.Replace('\\', '/'), b.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>"🕸" in the note viewer: the graph centred on the note being read.</summary>
     private void OnShowNoteInGraphClick(object? sender, RoutedEventArgs e)

@@ -22,6 +22,8 @@ public partial class BubbleWindow : Window
 
     private readonly Conversation _conversation;
     private readonly BuddySettings _settings;
+    private bool _showLimits = true;
+    private Action? _showUsage;
     private readonly DispatcherTimer _workingTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly List<string> _sent = LoadHistory();
 
@@ -91,11 +93,15 @@ public partial class BubbleWindow : Window
             // Today's Claude cost and the 5-hour limit next to the title; details in the tooltip and with /uso.
             void ShowUsage()
             {
+                var limits = usage.Limits;
                 UsageText.Text = "💳 " + usage.ShortText();
-                UsageText.IsVisible = usage.TodayTurns > 0 || usage.Limits.Count > 0;
+                UsageText.IsVisible = usage.TodayTurns > 0 || limits.Count > 0;
                 ToolTip.SetTip(UsageText, usage.Describe().Replace("**", ""));
+                LimitsList.ItemsSource = limits.Take(_showLimits ? limits.Count : 1).Select(Project.LimitView.From).ToList();
+                LimitsPanel.IsVisible = limits.Count > 0;
             }
 
+            _showUsage = ShowUsage;
             usage.Changed += () => Avalonia.Threading.Dispatcher.UIThread.Post(ShowUsage);
             ShowUsage();
         }
@@ -1059,6 +1065,14 @@ public partial class BubbleWindow : Window
             };
             return item;
         }
+    }
+
+    /// <summary>Click on the plan limits: only the 5-hour one, or all of them.</summary>
+    private void OnLimitsPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        _showLimits = !_showLimits;
+        _showUsage?.Invoke();
+        e.Handled = true;
     }
 
     /// <summary>The saved conversations, newest first; picking one reopens it (Claude resumes its session).</summary>

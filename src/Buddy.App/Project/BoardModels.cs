@@ -288,7 +288,7 @@ public sealed record StatusView(string Label, string Value)
 }
 
 /// <summary>A vault note in the notes list.</summary>
-public sealed record NoteView(VaultNote Note)
+public sealed record NoteView(VaultNote Note, string? Root = null)
 {
     public string Title => Note.Title;
 
@@ -297,7 +297,10 @@ public sealed record NoteView(VaultNote Note)
     public bool HasFolder => Folder.Length > 0;
 
     /// <summary>The note for the viewer: no front matter, Obsidian links turned into clickable ones.</summary>
-    public string Markdown => NoteLinks.ToMarkdown(StripFrontMatter(Note.Content));
+    public string Markdown => NoteLinks.ToMarkdown(StripFrontMatter(Note.Content), FullFolder, Root);
+
+    /// <summary>The note's folder on disk, where its images are; null without a project folder.</summary>
+    public string? FullFolder => Root is null ? null : Path.GetDirectoryName(Path.Combine(Root, Note.RelativePath));
 
     internal static string StripFrontMatter(string content)
     {
@@ -320,9 +323,25 @@ public static partial class NoteLinks
 {
     public const string Scheme = "note:";
 
-    public static string ToMarkdown(string text)
+    private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"];
+
+    /// <param name="folder">The note's folder: relative images (![alt](image.png)) are read from there.</param>
+    /// <param name="root">The project folder, searched for ![[image.png]] embeds that are not next to the note.</param>
+    public static string ToMarkdown(string text, string? folder = null, string? root = null)
     {
         text = HtmlComment().Replace(text, "");
+
+        // The viewer has no idea where the note is: give relative images an absolute file:// address.
+        if (folder is not null)
+        {
+            text = MarkdownImage().Replace(text, m =>
+            {
+                var path = m.Groups["path"].Value.Trim('<', '>');
+                return path.Contains(':') || ImagePath(Uri.UnescapeDataString(path), folder, null) is not { } full
+                    ? m.Value
+                    : $"![{m.Groups["alt"].Value}]({new Uri(full).AbsoluteUri})";
+            });
+        }
 
         // Callout header "> [!warning] Credenziali" → "> ⚠️ **Credenziali**".
         text = Callout().Replace(text, m =>
@@ -347,7 +366,9 @@ public static partial class NoteLinks
             var name = Path.GetFileName(target.Replace('\\', '/'));
             if (m.Groups["embed"].Success)
             {
-                return $"🖼 {name}";
+                return ImageExtensions.Contains(Path.GetExtension(name).ToLowerInvariant()) && ImagePath(target, folder, root) is { } full
+                    ? $"![{name}]({new Uri(full).AbsoluteUri})"
+                    : $"🖼 {name}";
             }
 
             var label = m.Groups["alias"].Success ? m.Groups["alias"].Value.Trim() : name;
@@ -360,6 +381,39 @@ public static partial class NoteLinks
         link.StartsWith(Scheme, StringComparison.OrdinalIgnoreCase)
             ? Path.GetFileName(Uri.UnescapeDataString(link[Scheme.Length..]).Replace('\\', '/'))
             : null;
+
+    /// <summary>
+    /// The image file for a reference: next to the note, then (like Obsidian's shortest-path embeds) from the project
+    /// folder, then anywhere under it by file name. Null when it does not exist.
+    /// </summary>
+    private static string? ImagePath(string reference, string? folder, string? root)
+    {
+        reference = reference.Replace('\\', '/').TrimStart('/');
+        foreach (var baseFolder in new[] { folder, root })
+        {
+            if (baseFolder is not null && Path.GetFullPath(Path.Combine(baseFolder, reference)) is var full && File.Exists(full))
+            {
+                return full;
+            }
+        }
+
+        if (root is null || !Directory.Exists(root))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Directory.EnumerateFiles(root, Path.GetFileName(reference), SearchOption.AllDirectories).FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    [GeneratedRegex(@"!\[(?<alt>[^\]]*)\]\((?<path><[^>]+>|[^)\s]+)(?:\s+""[^""]*"")?\)")]
+    private static partial Regex MarkdownImage();
 
     [GeneratedRegex(@"<!--.*?-->", RegexOptions.Singleline)]
     private static partial Regex HtmlComment();
@@ -389,8 +443,13 @@ public sealed record WeekView(string Label, int Added, int Closed, double AddedH
     public bool HasClosed => Closed > 0;
 }
 
-/// <summary>A plan limit in the side bar: label, bar and reset time.</summary>
-public sealed record LimitView(string Label, string Status, double Percent, bool IsWarning, bool HasPercent);
+/// <summary>One plan limit drawn like Claude Code's usage panel: label, reset time and share on one line, the bar below.</summary>
+public sealed record LimitView(string Label, string Reset, string PercentText, double Percent, bool IsWarning, bool HasPercent)
+{
+    public static LimitView From(Buddy.Core.Claude.ClaudeRateLimit limit) => new(
+        limit.Label, limit.ResetText, limit.PercentText, Math.Clamp((limit.Utilization ?? 0) * 100, 0, 100),
+        limit.IsWarning || limit.IsBlocked || limit.Utilization >= 0.8, limit.Utilization is not null);
+}
 
 /// <summary>Builds the overview's chart data from the board.</summary>
 public static class Activity

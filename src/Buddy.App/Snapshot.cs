@@ -71,6 +71,21 @@ internal static class Snapshot
 
         Save(bubble, Path.Combine(folder, "bubble.png"));
 
+        // Text selected across `inline code`: the highlight must show on the code too, not stop at it.
+        var markdown = new MarkdownView { Markdown = "Da committare: i 3 script nuovi (`Migrations/0011`, `Migrations/0012`, `DataMigrations/0010`) più `schema.lock` e `R__00_Core_4_UpdateValoriDefault.sql`." };
+        var selection = new Window { Width = 620, Height = 90, Content = new Border { Padding = new Thickness(12), Child = markdown } };
+        Appearance.Apply(selection, services.GetRequiredService<IOptions<BuddySettings>>().Value.Appearance, font: false);
+        selection.Show();
+        await FlushAsync();
+        foreach (var block in selection.GetVisualDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>())
+        {
+            block.Select(0, block.Text.Length);
+        }
+
+        await FlushAsync();
+        Save(selection, Path.Combine(folder, "markdown-selection.png"));
+        selection.Close();
+
         // The chat in each built-in theme (only the snapshot's copy of the settings changes).
         var looks = new AppearanceSettings();
         foreach (var (name, create) in ThemeColors.BuiltIn)
@@ -190,8 +205,47 @@ internal static class Snapshot
                 await Task.Delay(TimeSpan.FromSeconds(7)); // the force layout settles and fits itself
             }
 
+            // Right click on a note of the graph → "Collega a un'altra nota…": the picker, then cancelled (no write).
+            if (view == "graph" && project.FindControl<ListBox>("NotesList")?.Items.OfType<Project.NoteView>().FirstOrDefault() is { } first)
+            {
+                var linking = project.LinkNoteAsync(first.Note.RelativePath);
+                await Task.Delay(TimeSpan.FromSeconds(1));
+                await FlushAsync();
+                if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+                    && desktop.Windows.FirstOrDefault(w => w.Title == "Collega a un'altra nota") is { } picker)
+                {
+                    Save(picker, Path.Combine(folder, "graph-link-picker.png"));
+                    picker.Close();
+                }
+
+                await linking;
+            }
+
             await FlushAsync();
             Save(project, Path.Combine(folder, $"project-{view}.png"));
+
+            // A note with pictures, to check that they load next to the text.
+            if (view == "notes" && project.FindControl<ListBox>("NotesList") is { } notesList
+                && notesList.Items.OfType<Project.NoteView>().FirstOrDefault(n => System.Text.RegularExpressions.Regex.IsMatch(n.Note.Content, @"!\[[^\]]*\]\([^)\s]+\.(png|jpe?g|gif)\)")) is { } withImages)
+            {
+                notesList.SelectedItem = withImages;
+                await Task.Delay(TimeSpan.FromSeconds(1));
+                await FlushAsync();
+                Save(project, Path.Combine(folder, "project-notes-images.png"));
+            }
+
+            // The usage card folded to one line (the user's choice is put back afterwards).
+            if (view == "board")
+            {
+                var folded = SettingsStore.UsageFolded;
+                SettingsStore.UsageFolded = true;
+                project.ShowView(view);
+                project.RefreshUsage();
+                await FlushAsync();
+                Save(project, Path.Combine(folder, "project-board-usage-folded.png"));
+                SettingsStore.UsageFolded = folded;
+                project.RefreshUsage();
+            }
             if (view == "overview" && project.FindControl<ScrollViewer>("OverviewView") is { } overview)
             {
                 project.FindControl<Control>("HealthPanel")?.BringIntoView();

@@ -155,6 +155,23 @@ public class VaultWriterTests
     }
 
     [Test]
+    public void AddLink_writes_a_collegamenti_section_once()
+    {
+        File.WriteAllText(_file, "# Nota\n\ntesto con `[[Finto]]`\n\n");
+
+        Assert.That(VaultWriter.AddLink(_file, "Data Retention", "Data Retention"), Is.True);
+        Assert.That(File.ReadAllText(_file), Is.EqualTo("# Nota\n\ntesto con `[[Finto]]`\n\n## Collegamenti\n\n- [[Data Retention]]\n"));
+
+        Assert.That(VaultWriter.AddLink(_file, "Analisi/Glossario", "Glossario"), Is.True);
+        Assert.That(File.ReadAllText(_file), Does.EndWith("## Collegamenti\n\n- [[Data Retention]]\n- [[Analisi/Glossario]]\n"));
+
+        // Already linked, also when written another way: nothing changes.
+        Assert.That(VaultWriter.AddLink(_file, "Data Retention", "Data Retention"), Is.False);
+        File.WriteAllText(_file, "vedi [[Decisioni|le decisioni]]\n");
+        Assert.That(VaultWriter.AddLink(_file, "Decisioni", "Decisioni"), Is.False);
+    }
+
+    [Test]
     public void AppendItem_goes_at_the_end_of_its_section()
     {
         File.WriteAllText(_file, "---\ntitle: x\n---\n\n## Appunti\n\n- primo\n\n## Altro\n\ntesto\n");

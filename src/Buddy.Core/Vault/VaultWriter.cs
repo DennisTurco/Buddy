@@ -61,6 +61,40 @@ public static class VaultWriter
     /// Puts a list line first in the section titled <paramref name="heading"/> (newest first, as in Decisioni), after
     /// the blank line that follows the heading; at the end of the note when there is no such section.
     /// </summary>
+    public const string LinksHeading = "Collegamenti";
+
+    /// <summary>
+    /// Adds "- [[<paramref name="link"/>]]" to the note's "## Collegamenti" section, creating the section at the end
+    /// when there is none. False when the note already links there (in any form Obsidian understands).
+    /// </summary>
+    public static bool AddLink(string path, string link, string targetTitle)
+    {
+        var (content, newline) = Read(path);
+        var wanted = new[] { link, targetTitle }.Select(t => t.Replace('\\', '/')).ToList();
+        if (NoteGraph.Targets(content).Any(t => wanted.Any(w => string.Equals(t, w, StringComparison.OrdinalIgnoreCase)
+                                                             || string.Equals(Path.GetFileName(t), w, StringComparison.OrdinalIgnoreCase))))
+        {
+            return false;
+        }
+
+        var line = $"- [[{link}]]";
+        var lines = content.Split('\n').ToList();
+        if (lines.Any(l => l.StartsWith('#') && l.TrimStart('#', ' ').Trim().Equals(LinksHeading, StringComparison.OrdinalIgnoreCase)))
+        {
+            AppendItem(path, LinksHeading, line);
+            return true;
+        }
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+
+        lines.AddRange(["", $"## {LinksHeading}", "", line, ""]);
+        Write(path, string.Join('\n', lines), newline);
+        return true;
+    }
+
     public static void InsertItemFirst(string path, string heading, string line)
     {
         var (content, newline) = Read(path);

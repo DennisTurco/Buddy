@@ -42,6 +42,75 @@ public static class Dialogs
         return confirmed && box.Text?.Trim() is { Length: > 0 } name ? name : null;
     }
 
+    /// <summary>One choice of <see cref="PickAsync"/>: what is shown, a muted second line (e.g. the folder), and its key.</summary>
+    public sealed record Choice(string Text, string Detail, string Key)
+    {
+        public override string ToString() => Detail.Length > 0 ? $"{Text}   ·  {Detail}" : Text;
+    }
+
+    /// <summary>
+    /// A list with a search box above it (type to filter, ↓ to the list, Enter or double click to choose);
+    /// the chosen key, or null if cancelled.
+    /// </summary>
+    public static async Task<string?> PickAsync(Window? owner, string title, string label, IReadOnlyList<Choice> choices)
+    {
+        var box = new TextBox { PlaceholderText = "Cerca…", Margin = new Thickness(0, 6, 0, 6) };
+        var list = new ListBox { Height = 280, ItemsSource = choices };
+        var ok = new Button { Content = "OK", IsDefault = true, Width = 80, Margin = new Thickness(0, 10, 6, 0), HorizontalContentAlignment = HorizontalAlignment.Center };
+        var cancel = new Button { Content = "Annulla", IsCancel = true, Width = 80, Margin = new Thickness(0, 10, 0, 0), HorizontalContentAlignment = HorizontalAlignment.Center };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(ok);
+        buttons.Children.Add(cancel);
+
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        panel.Children.Add(new TextBlock { Text = label, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        panel.Children.Add(box);
+        panel.Children.Add(list);
+        panel.Children.Add(buttons);
+
+        var window = FormWindow(title, panel, owner);
+        window.Width = 460;
+        string? chosen = null;
+
+        void Filter()
+        {
+            var words = (box.Text ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var shown = choices.Where(c => words.All(w => c.ToString().Contains(w, StringComparison.OrdinalIgnoreCase))).ToList();
+            list.ItemsSource = shown;
+            list.SelectedIndex = shown.Count > 0 ? 0 : -1;
+        }
+
+        void Choose()
+        {
+            if (list.SelectedItem is Choice choice)
+            {
+                chosen = choice.Key;
+                window.Close();
+            }
+        }
+
+        box.TextChanged += (_, _) => Filter();
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Down && list.ItemCount > 0)
+            {
+                list.Focus();
+                e.Handled = true;
+            }
+        };
+        list.DoubleTapped += (_, _) => Choose();
+        ok.Click += (_, _) => Choose();
+        cancel.Click += (_, _) => window.Close();
+        window.Opened += (_, _) =>
+        {
+            Filter();
+            box.Focus();
+        };
+
+        await Show(window, owner);
+        return chosen;
+    }
+
     /// <summary>One field of <see cref="FormAsync"/>: its label, starting text, and whether it takes several lines.</summary>
     public sealed record Field(string Label, string Initial = "", bool Multiline = false, bool Required = false);
 

@@ -305,27 +305,35 @@
                 <StackPanel DockPanel.Dock="Bottom" Spacing="8">
                     <Border x:Name="UsageCard" Classes="usage" Margin="0,0,0,8">
                         <StackPanel Spacing="6">
-                            <DockPanel>
+                            <!-- Click the title to fold the card to this one line (remembered between runs). -->
+                            <DockPanel Background="Transparent" Cursor="Hand" PointerPressed="OnUsageHeaderPressed"
+                                       ToolTip.Tip="Click per comprimere o espandere">
+                                <TextBlock DockPanel.Dock="Right" x:Name="UsageChevron" Text="▾" Classes="muted" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center" />
                                 <TextBlock DockPanel.Dock="Right" x:Name="UsageTurns" Classes="muted" FontSize="11" VerticalAlignment="Bottom" />
-                                <TextBlock Text="💳 Claude oggi" FontSize="11" FontWeight="SemiBold" Classes="muted" />
+                                <TextBlock x:Name="UsageTitle" Text="💳 Claude oggi" FontSize="11" FontWeight="SemiBold" Classes="muted" TextTrimming="CharacterEllipsis" />
                             </DockPanel>
+                            <StackPanel x:Name="UsageDetails" Spacing="6">
                             <TextBlock x:Name="UsageCost" FontSize="22" FontWeight="Bold" />
+                            <TextBlock Text="I tuoi limiti di utilizzo" FontSize="11" FontWeight="SemiBold" Classes="muted" Margin="0,4,0,0" />
                             <ItemsControl x:Name="UsageLimits">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="p:LimitView">
-                                        <StackPanel Margin="0,2,0,4">
+                                        <StackPanel Margin="0,2,0,6">
+                                            <!-- The side bar is narrow: the reset time goes under the bar instead of next to the label. -->
                                             <DockPanel>
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" FontSize="10.5" Classes="muted" />
-                                                <TextBlock Text="{Binding Label}" FontSize="11" />
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="11" Margin="8,0,0,0" />
+                                                <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                             </DockPanel>
                                             <ProgressBar Classes="limit" Classes.warning="{Binding IsWarning}" Value="{Binding Percent}"
-                                                         IsVisible="{Binding HasPercent}" Margin="0,3,0,0" />
+                                                         IsVisible="{Binding HasPercent}" Margin="0,4,0,0" />
+                                            <TextBlock Text="{Binding Reset}" FontSize="10" Classes="muted" Margin="0,2,0,0" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <TextBlock x:Name="UsageNoLimits" Classes="muted" FontSize="10.5" TextWrapping="Wrap"
-                                       Text="I limiti del piano compaiono dopo la prima risposta di Claude." />
+                                       Text="Limiti non ancora letti: serve il login di Claude Code (claude, poi /login)." />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                     <Button Classes="action" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,0,4"

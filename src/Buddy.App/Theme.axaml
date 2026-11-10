@@ -23,6 +23,7 @@
         <SolidColorBrush x:Key="PermissionBorder" Color="#E8B931" />
         <!-- Markdown: code background and links (replaced per window from the Appearance colours). -->
         <SolidColorBrush x:Key="CodeBack" Color="#EDEAF3" />
+        <SolidColorBrush x:Key="InlineCodeBack" Color="#241F36" Opacity="0.12" />
         <SolidColorBrush x:Key="LinkInk" Color="#6B4FC4" />
         <!-- Syntax colours of code blocks (light paper; Appearance switches to a dark set on a dark paper). -->
         <SolidColorBrush x:Key="SynKeyword" Color="#A626A4" />

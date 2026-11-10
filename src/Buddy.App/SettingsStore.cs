@@ -59,4 +59,31 @@ public static class SettingsStore
     }
 
     private sealed record WindowState(double Left, double Top);
+
+    private static string UsageFoldedPath => Path.Combine(Folder, "usage-folded");
+
+    /// <summary>Whether the Claude usage card of the project window is folded to one line (a marker file).</summary>
+    public static bool UsageFolded
+    {
+        get => File.Exists(UsageFoldedPath);
+        set
+        {
+            try
+            {
+                if (value)
+                {
+                    Directory.CreateDirectory(Folder);
+                    File.WriteAllText(UsageFoldedPath, "");
+                }
+                else
+                {
+                    File.Delete(UsageFoldedPath);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A convenience: losing it is harmless.
+            }
+        }
+    }
 }

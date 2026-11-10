@@ -77,6 +77,7 @@ public partial class App : Application
             typeof(App).Assembly.GetName().Version, System.Runtime.InteropServices.RuntimeInformation.OSDescription, builder.Configuration["Buddy:ProjectPath"]);
 
         _host.Services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>().PersistTo(Path.Combine(SettingsStore.Folder, "usage.json"));
+        _host.Services.GetRequiredService<Buddy.Core.Claude.ClaudePlanUsage>().Start(TimeSpan.FromMinutes(2)); // the 5-hour and weekly bars, as in Claude Code
         var conversation = _host.Services.GetRequiredService<Conversation>();
         conversation.Archive = new ConversationArchive(Path.Combine(SettingsStore.Folder, "conversations"));
         conversation.LogFolder = _logs.Folder;

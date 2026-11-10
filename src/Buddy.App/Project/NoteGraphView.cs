@@ -50,6 +50,9 @@ public sealed class NoteGraphView : Control
     /// <summary>A note was clicked: its relative path in the vault.</summary>
     public event Action<string>? NoteActivated;
 
+    /// <summary>A note was right-clicked (its id, the relative path); raised while the pointer is still over it.</summary>
+    public event Action<string>? NoteContextRequested;
+
     /// <summary>Folder → colour, for the legend.</summary>
     public IReadOnlyList<(string Folder, Color Color)> Legend { get; private set; } = [];
 
@@ -423,6 +426,18 @@ public sealed class NoteGraphView : Control
     {
         base.OnPointerPressed(e);
         var point = e.GetPosition(this);
+        if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+        {
+            // Right click on a note: the host shows its menu (open, link to another note…).
+            if (HitTest(point) is { Data.IsMissing: false } node)
+            {
+                NoteContextRequested?.Invoke(node.Data.Id);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
             return;

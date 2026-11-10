@@ -13,7 +13,8 @@
     </Style>
     <Style Selector="ctxt|CCode:not(.x)">
         <Setter Property="Foreground" Value="{DynamicResource Ink}" />
-        <Setter Property="Background" Value="{DynamicResource CodeBack}" />
+        <!-- See-through: the viewer paints inline code over the selection, an opaque background would hide it. -->
+        <Setter Property="Background" Value="{DynamicResource InlineCodeBack}" />
         <Setter Property="MonospaceFontFamily" Value="{StaticResource MonoFont}" />
     </Style>
     <Style Selector="ctxt|CHyperlink:not(.x)">

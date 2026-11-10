@@ -20,6 +20,9 @@ public sealed class ClaudeUsage(TimeProvider clock)
     {
     }
 
+    /// <summary>Raised after a Claude turn was counted, before <see cref="Changed"/>.</summary>
+    public event Action? TurnAdded;
+
     /// <summary>Raised after every change, on the thread that made it.</summary>
     public event Action? Changed;
 
@@ -95,6 +98,7 @@ public sealed class ClaudeUsage(TimeProvider clock)
         }
 
         Save();
+        TurnAdded?.Invoke();
         Changed?.Invoke();
     }
 
@@ -102,6 +106,13 @@ public sealed class ClaudeUsage(TimeProvider clock)
     {
         lock (_gate)
         {
+            // The CLI's rate_limit_event often has no share used: keep the one read from the usage endpoint.
+            if (limit.Utilization is null && _limits.TryGetValue(limit.Type, out var known) && known.Utilization is not null
+                && (limit.ResetsAt is null || known.ResetsAt is null || Math.Abs((limit.ResetsAt.Value - known.ResetsAt.Value).TotalMinutes) < 5))
+            {
+                limit = limit with { Utilization = known.Utilization, ResetsAt = limit.ResetsAt ?? known.ResetsAt, Model = known.Model };
+            }
+
             _limits[limit.Type] = limit;
         }
 
@@ -223,14 +234,32 @@ public sealed record ClaudeRateLimit(string Type, string Status, double? Utiliza
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
+    /// <summary>The model a weekly limit applies to ("Opus", "Fable"…), when the usage endpoint names it.</summary>
+    public string? Model { get; init; }
+
+    /// <summary>Same words as Claude Code's usage panel ("5-hour limit", "Weekly · all models").</summary>
     public string Label => Type switch
     {
-        "five_hour" => "Finestra di 5 ore",
-        "seven_day" => "Settimana",
-        "seven_day_opus" => "Settimana (Opus)",
-        "seven_day_sonnet" => "Settimana (Sonnet)",
+        "five_hour" => "Limite 5 ore",
+        "seven_day" => "Settimana · tutti i modelli",
+        _ when Model is { } model => $"Settimana · {model}",
+        "seven_day_opus" => "Settimana · Opus",
+        "seven_day_sonnet" => "Settimana · Sonnet",
+        _ when Type.StartsWith("seven_day_", StringComparison.Ordinal) => "Settimana · " + Capitalize(Type["seven_day_".Length..]),
         _ => Type.Replace('_', ' '),
     };
+
+    /// <summary>"Si azzera alle 17:00" (today) or "Si azzera mar 2:00", like Claude Code's "Resets at 5:00 PM".</summary>
+    public string ResetText => ResetsAt is { } reset
+        ? reset.ToLocalTime().Date == DateTime.Today
+            ? $"Si azzera alle {reset.ToLocalTime():H:mm}"
+            : $"Si azzera {reset.ToLocalTime().ToString("ddd H:mm", Italian)}"
+        : "";
+
+    /// <summary>"42%" when the share is known, otherwise the short state.</summary>
+    public string PercentText => Utilization is { } u ? $"{Math.Round(u * 100):0}%" : ShortStatus;
+
+    private static string Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 
     public bool IsWarning => Status.Contains("warning", StringComparison.OrdinalIgnoreCase);
 

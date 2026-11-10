@@ -37,6 +37,10 @@ internal static class Appearance
         var ink = ((SolidColorBrush)window.Resources["Ink"]!).Color;
         var accent = ((SolidColorBrush)window.Resources["ClaudeAccent"]!).Color;
         window.Resources["CodeBack"] = new SolidColorBrush(Mix(paper, ink, 0.12));
+
+        // Inline code: the same look as a see-through ink, because the markdown viewer paints it over the selection
+        // highlight; an opaque background hid the selected `code` while copying.
+        window.Resources["InlineCodeBack"] = new SolidColorBrush(ink, 0.12);
         window.Resources["LinkInk"] = new SolidColorBrush(Luminance(paper) < 0.5 ? accent : Mix(accent, ink, 0.45));
 
         // Code colours readable on the paper: One Dark on a dark one, One Light on a light one.

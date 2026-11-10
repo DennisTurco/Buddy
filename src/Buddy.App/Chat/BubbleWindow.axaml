@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:chat="clr-namespace:Buddy.App.Chat"
+        xmlns:p="clr-namespace:Buddy.App.Project"
         xmlns:core="clr-namespace:Buddy.Core.Chat;assembly=Buddy.Core"
         xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
         xmlns:sys="clr-namespace:System;assembly=System.Runtime"
@@ -254,6 +255,16 @@
         <Style Selector="Button.suggestion.selected">
             <Setter Property="Background" Value="{DynamicResource ClaudeBubble}" />
         </Style>
+        <Style Selector="ProgressBar.limit">
+            <Setter Property="MinHeight" Value="4" />
+            <Setter Property="Height" Value="4" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="Foreground" Value="{DynamicResource ClaudeAccent}" />
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+        <Style Selector="ProgressBar.limit.warning">
+            <Setter Property="Foreground" Value="#F2B544" />
+        </Style>
     </Window.Styles>
 
     <!-- Margin leaves room for the drop shadow and the tail pointing at the pet. -->
@@ -286,6 +297,26 @@
 
                 <!-- Current task (from the git branch) and its quick actions. -->
                 <StackPanel Grid.Row="1">
+                <!-- Plan limits as in Claude Code's usage panel; click to keep only the 5-hour one or show them all. -->
+                <Border x:Name="LimitsPanel" Margin="2,0,2,6" Padding="8,5,8,2" CornerRadius="8" Background="{DynamicResource ClaudeBubble}" IsVisible="False"
+                        Cursor="Hand" PointerPressed="OnLimitsPressed" ToolTip.Tip="I tuoi limiti di utilizzo, come in Claude Code. Click: solo le 5 ore / tutti">
+                    <ItemsControl x:Name="LimitsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="p:LimitView">
+                                <StackPanel Margin="0,0,0,4">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="10.5" Margin="8,0,0,0" Foreground="{DynamicResource Ink}" />
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Reset}" FontSize="10.5" Foreground="{DynamicResource Muted}" />
+                                        <TextBlock Text="{Binding Label}" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,6,0" />
+                                    </DockPanel>
+                                    <ProgressBar Classes="limit" Classes.warning="{Binding IsWarning}" Value="{Binding Percent}"
+                                                 IsVisible="{Binding HasPercent}" Margin="0,3,0,0" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
                 <StackPanel x:Name="TaskStrip" Margin="2,0,0,6" IsVisible="False">
                     <TextBlock x:Name="TaskText" FontSize="11.5" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" />
                     <ItemsControl x:Name="TaskActionsList" Margin="0,3,0,0">
