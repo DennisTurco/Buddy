@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Buddy.Core;
+using Buddy.Core.Chat;
 
 namespace Buddy.App;
 
@@ -45,6 +46,13 @@ public static class SettingsStore
     public static void SaveBubbleSize(double width, double height) =>
         SaveState((LoadState() ?? new WindowState()) with { BubbleWidth = width, BubbleHeight = height });
 
+    /// <summary>The model the chat was talking to when the app last ran (Claude or local), or null when never saved.</summary>
+    public static ChatMode? LoadChatMode() =>
+        Enum.TryParse<ChatMode>(LoadState()?.ChatMode, out var mode) ? mode : null;
+
+    public static void SaveChatMode(ChatMode mode) =>
+        SaveState((LoadState() ?? new WindowState()) with { ChatMode = mode.ToString() });
+
     private static WindowState? LoadState()
     {
         try
@@ -70,8 +78,9 @@ public static class SettingsStore
         }
     }
 
-    /// <summary>The pet's position and the bubble's size (each missing until first saved).</summary>
-    private sealed record WindowState(double? Left = null, double? Top = null, double? BubbleWidth = null, double? BubbleHeight = null);
+    /// <summary>The pet's position, the bubble's size and the chat's model (each missing until first saved).</summary>
+    private sealed record WindowState(
+        double? Left = null, double? Top = null, double? BubbleWidth = null, double? BubbleHeight = null, string? ChatMode = null);
 
     private static string UsageFoldedPath => Path.Combine(Folder, "usage-folded");
 

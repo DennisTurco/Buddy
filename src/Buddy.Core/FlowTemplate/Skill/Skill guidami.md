@@ -52,12 +52,12 @@ Proponi da 3 a 7 passi, ognuno con un risultato verificabile e, in modalità did
 5. Se c'è un errore di build, di test o a runtime, aiuta a leggerlo: cosa dice il messaggio, dove guardare, come si arriva alla causa. Non dare subito la correzione.
 6. Ogni tanto controlla che il concetto sia chiaro con una domanda breve ("perché qui serve `async`?"); se la risposta è incerta, rispiega con un altro esempio.
 7. Build e test li lancia l'utente; Claude li lancia solo se gli viene chiesto. Mai commit, push, PR o comandi vietati dalla Scheda.
-8. **Test manuali**: è una nota del vault, quindi la scrive Claude, con le stesse regole della skill `lavora` (punto 2.5): la crea dopo il primo passo che cambia il codice e la aggiorna a ogni passo successivo, ricavando i casi dal "Fatto quando" e da quello che l'utente ha scritto. In modalità didattica, prima di scriverla chiedi all'utente quali casi proverebbe lui e poi confronta.
+8. **Test manuali** (solo su richiesta): è una nota del vault, quindi la scrive Claude, ma solo se l'utente la chiede, con le stesse regole della skill `lavora` (punto 2.5). Se è chiesta, la crea dopo il primo passo che cambia il codice; se esiste già, la aggiorna a ogni passo successivo, ricavando i casi dal "Fatto quando" e da quello che l'utente ha scritto. In modalità didattica, prima di scriverla chiedi all'utente quali casi proverebbe lui e poi confronta.
 
 ## 5. Consegna
 
 Quando il "Fatto quando" è soddisfatto, fai la stessa consegna della skill `lavora`:
-1. Sposta la voce in `Da controllare` con cosa è cambiato, file toccati, come testare in massimo 3 passi, link ai test manuali, messaggio di commit e testo della PR pronti da copiare, e la nota "svolto in modalità guidata".
+1. Sposta la voce in `Da controllare` con cosa è cambiato, file toccati, come testare in massimo 3 passi, link ai test manuali (se il documento esiste), messaggio di commit e testo della PR pronti da copiare, e la nota "svolto in modalità guidata".
 2. Aggiorna `Stato attuale` e, se c'è stata una scelta importante, `Decisioni`.
 3. Se la modifica si vede nel browser, chiedi se fare il test web indicando il costo stimato.
 4. Chiudi con un **riepilogo didattico** in chat: i concetti visti (una riga ciascuno), gli errori fatti e come evitarli, e uno o due spunti per approfondire (parti del progetto da leggere o argomenti da studiare).

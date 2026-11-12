@@ -11,6 +11,7 @@ Questa nota **è** il file `SKILL.md`: per installarla, copiarla in `~/.claude/s
 
 - **`/lavora ID`** (normale): se la modifica tocca più di qualche file o richiede scelte, mostra il piano e aspetta l'ok.
 - **`/lavora ID autonomo`** (delega completa): non chiedere l'ok sul piano, decidi tu e vai fino alla consegna. Fermati **solo** se i requisiti sono ambigui, se serve un comando vietato o se un passo modificherebbe dati condivisi. Alla consegna riassumi le scelte fatte.
+- **`test`** in fondo (es. `/lavora ID test`, `/lavora ID autonomo test`): scrivi anche il documento dei test manuali (punto 2.5). Senza, il documento non si crea.
 
 Per un task che l'utente vuole fare da sé c'è la skill `guidami`.
 
@@ -30,14 +31,14 @@ Per un task che l'utente vuole fare da sé c'è la skill `guidami`.
 ## 2. Lavoro
 
 1. Esplora il codice quanto basta per capire dove intervenire, **partendo dal campo `Dove:` del task e dalla `Mappa codice`**. Se serve cercare in molti file, delega la ricerca a un sotto-agente di esplorazione (es. Explore, con un modello economico): nel contesto torna solo l'elenco dei punti utili, non i file letti. Appena trovati, scrivi i punti nel campo `Dove:` del task, così una ripresa non riesplora.
-   - **Refactoring o modifica di qualcosa di condiviso** (classe, metodo, query, componente usato in più punti): cerca nel codice **tutti** gli utilizzi, senza affidarti alla memoria, e scrivili in `Dove:`. Ognuno diventa un caso nei test manuali.
+   - **Refactoring o modifica di qualcosa di condiviso** (classe, metodo, query, componente usato in più punti): cerca nel codice **tutti** gli utilizzi, senza affidarti alla memoria, e scrivili in `Dove:`. Ognuno va provato: nella prova rapida della consegna e, se c'è il documento dei test manuali, come caso.
 2. In modalità normale, se la modifica tocca più di qualche file o richiede scelte, mostra il piano e aspetta l'ok. In modalità autonoma prosegui e annota le scelte per il riepilogo finale.
 3. Fai **la modifica più piccola che soddisfa completamente il "Fatto quando"**, seguendo le convenzioni del progetto o del team.
    - **Fuori perimetro**: se vedi altro da sistemare oltre il "Fatto quando", **non farlo**. Prepara la domanda di una riga da mandare a chi ha assegnato il task (es. "Già che ci sono sistemerei anche X, ok?"). Se invece è un miglioramento che non riguarda il task, mettilo in `Da valutare` con il tag `#proposta-team`.
 4. Lancia build e test con i comandi della Scheda. Se falliscono per cause estranee alla modifica, riportalo senza correggerle.
-5. **Test manuali** (sempre, per ogni task che modifica codice, configurazione o dati): il test lo fa l'utente e deve poterlo fare bene, quindi il documento va scritto con cura, non come formalità.
-   - **Prima modifica**: crea `Test manuali/Test manuali <ID>.md` nella cartella del progetto, sul modello `Modelli/Nuovo test manuale` (cartella creata alla prima volta). Ricava i casi dal "Fatto quando" **e dal codice cambiato**: ogni ramo, condizione, parametro o feature flag toccato ha almeno un caso; in più funzionalità spenta, casi limite, errori e permessi, altri canali (API, app, servizi), testi e lingue, regressioni delle funzionalità vicine. Ogni caso è un'azione concreta con il risultato atteso verificabile (schermata, messaggio, riga nel database); metti in *Preparazione* configurazione, dati di prova e query utili, e in *Rollback* come tornare indietro.
-   - **Ogni modifica successiva** (anche dopo la consegna, se il task torna indietro o cambiano i requisiti): aggiorna il documento **nello stesso passo** della modifica. Casi nuovi nella sezione giusta; per i casi già spuntati che la modifica tocca **non togliere la spunta**: aggiungi sotto `- [ ] **Da rifare dopo il AAAA-MM-GG**: …` con il nuovo risultato atteso; i casi non più validi si barrano (`~~…~~`) con il motivo. Aggiorna `updated`.
+5. **Test manuali** (solo su richiesta): il documento **non** si crea in automatico. Si scrive solo se l'utente lo chiede: `test` nel comando, una richiesta durante il lavoro, oppure dopo con `/test-manuali ID` o il pulsante 🧪 della board. Se esiste già (creato prima su richiesta), invece, va tenuto aggiornato. Il test lo fa l'utente e deve poterlo fare bene, quindi quando c'è il documento va scritto con cura, non come formalità.
+   - **Quando è richiesto**: crea `Test manuali/Test manuali <ID>.md` nella cartella del progetto, sul modello `Modelli/Nuovo test manuale` (cartella creata alla prima volta). Ricava i casi dal "Fatto quando" **e dal codice cambiato**: ogni ramo, condizione, parametro o feature flag toccato ha almeno un caso; in più funzionalità spenta, casi limite, errori e permessi, altri canali (API, app, servizi), testi e lingue, regressioni delle funzionalità vicine. Ogni caso è un'azione concreta con il risultato atteso verificabile (schermata, messaggio, riga nel database); metti in *Preparazione* configurazione, dati di prova e query utili, e in *Rollback* come tornare indietro.
+   - **Ogni modifica successiva, se il documento esiste** (anche dopo la consegna, se il task torna indietro o cambiano i requisiti): aggiorna il documento **nello stesso passo** della modifica. Casi nuovi nella sezione giusta; per i casi già spuntati che la modifica tocca **non togliere la spunta**: aggiungi sotto `- [ ] **Da rifare dopo il AAAA-MM-GG**: …` con il nuovo risultato atteso; i casi non più validi si barrano (`~~…~~`) con il motivo. Aggiorna `updated`.
    - Le caselle le spunta l'utente: Claude non spunta mai un caso, salvo quelli coperti da uno script di `verifica-web` superato.
    - Se per un caso non è chiaro come testarlo (ambiente, dati, accessi), scrivilo nel caso e prepara la domanda per la persona in `Chi chiedere:` (o chiedi all'utente chi è), da mandare il giorno stesso.
 6. Mai commit, push, merge, rebase, PR o comandi vietati dalla Scheda. Gli script per i database li **prepari**, non li esegui.
@@ -54,7 +55,7 @@ Se è disponibile una revisione del codice (es. il plugin code-review), usala su
 2. Sposta la voce da `To-Do` a `Da controllare` (senza il ▶), nel formato della nota:
    - cosa è cambiato e file toccati;
    - come testare, in massimo 3 passi concreti (la prova rapida);
-   - `Test manuali: [[…/Test manuali <ID>]]`, il link al documento completo del punto 2.5, con quanti casi ci sono e quanti sono da rifare;
+   - solo se il documento esiste: `Test manuali: [[…/Test manuali <ID>]]`, il link al documento completo del punto 2.5, con quanti casi ci sono e quanti sono da rifare (se non esiste, niente riga: si può chiedere dopo con `/test-manuali <ID>`);
    - messaggio di commit secondo la convenzione del progetto;
    - titolo e descrizione della PR (con il template del team, se c'è);
    - se il task ha una card sul tracker, il **commento per la card**, pronto da incollare e pensato per il PO: cosa è stato fatto e cosa è stato testato (e dove), in 3-5 righe, in linguaggio semplice, senza nomi di file, classi o tabelle e senza tecnicismi se si possono evitare. Se ci sono `Accordi:`, riportali nel commento, così non dipendono dalla memoria di nessuno;
