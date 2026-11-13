@@ -14,7 +14,7 @@ Task implementati **in attesa della mia revisione**. Ogni voce contiene tutto qu
 >   - Cambiato: …
 >   - File: …
 >   - Come testare: 1. apri X  2. fai Y  3. deve succedere Z
->   - Test manuali: [[Test manuali T-001]] · 24 casi, 3 da rifare  (sempre, scritto e aggiornato da /lavora o /guidami)
+>   - Test manuali: [[Test manuali T-001]] · 24 casi, 3 da rifare  (solo se il documento è stato chiesto: /lavora ID test, /test-manuali ID o il pulsante 🧪)
 >   - Commit: `feat: …` (pronto da copiare)
 >   - PR: titolo e descrizione pronti da copiare
 >   - Commento tracker: cosa è stato fatto e cosa è stato testato, per il PO, senza tecnicismi, più gli accordi presi a voce (solo se il task ha una card)

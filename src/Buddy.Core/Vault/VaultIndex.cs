@@ -32,6 +32,8 @@ public sealed class VaultIndex : IDisposable
         _watcher.Created += (_, _) => Invalidate();
         _watcher.Deleted += (_, _) => Invalidate();
         _watcher.Renamed += (_, _) => Invalidate();
+        // Too many changes at once (the queue overflowed): which notes changed is unknown, so read them all again.
+        _watcher.Error += (_, _) => Invalidate();
         _watcher.EnableRaisingEvents = true;
     }
 

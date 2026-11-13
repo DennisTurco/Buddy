@@ -483,6 +483,9 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         private set { _mode = value; Notify(nameof(Mode)); }
     }
 
+    /// <summary>The model chosen last time the app ran, restored at start without a line in the chat.</summary>
+    public void RestoreMode(ChatMode mode) => Mode = mode;
+
     public PetState PetState
     {
         get => _petState;

@@ -8,7 +8,7 @@ updated: <% tp.date.now("YYYY-MM-DD") %>
 ---
 
 <!--
-Modello dei test manuali di un task. Lo usano /lavora e /guidami (lo creano alla prima modifica e lo aggiornano a ogni modifica successiva); a mano: nuova nota vuota nella cartella "Test manuali/" del progetto, chiamata "Test manuali <ID>", poi "Templater: Insert template".
+Modello dei test manuali di un task. Lo usano /test-manuali e, solo su richiesta, /lavora e /guidami (lo creano quando viene chiesto e da lì lo aggiornano a ogni modifica); a mano: nuova nota vuota nella cartella "Test manuali/" del progetto, chiamata "Test manuali <ID>", poi "Templater: Insert template".
 - Un caso = una riga con la casella: azione concreta → risultato atteso verificabile (cosa si vede, cosa c'è nel database, quale messaggio). Mai "verificare che funzioni".
 - Le caselle le spunta chi esegue il test. Claude spunta solo i casi coperti da uno script di verifica-web passato, e lo scrive nell'introduzione.
 - Dopo una modifica al codice: i casi già spuntati che la modifica tocca NON si tolgono; si aggiunge sotto una riga "[ ] **Da rifare dopo il AAAA-MM-GG**: …" con il nuovo risultato atteso. I casi nuovi si aggiungono nella sezione giusta.

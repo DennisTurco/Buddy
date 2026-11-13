@@ -4,8 +4,8 @@ type: changelog
 tags:
   - flusso
   - template
-versione_template: "1.24"
-updated: 2026-11-05
+versione_template: "1.25"
+updated: 2026-11-11
 ---
 
 Storico delle modifiche al **flusso base**. Serve a tenere allineati i progetti: ognuno sa quale versione ha applicato (proprietà `versione_template` nella sua `Scheda progetto`) e può recuperare solo le modifiche arrivate dopo.
@@ -18,6 +18,10 @@ Storico delle modifiche al **flusso base**. Serve a tenere allineati i progetti:
 > ## 1.1 · AAAA-MM-GG
 > - Cosa è cambiato — note toccate: [[Nota]] · origine: progetto X
 > ```
+
+## 1.25 · 2026-11-11
+
+- **Test manuali solo su richiesta**: `/lavora` e `/guidami` non creano più il documento `Test manuali/Test manuali <ID>.md` in automatico. Si chiede con `/lavora ID test`, durante il lavoro, con `/test-manuali ID` o con il pulsante 🧪 della board; un documento che esiste già continua a essere aggiornato a ogni modifica — note toccate: [[Skill lavora]], [[Skill guidami]], [[Skill test-manuali]], [[Da controllare]], [[Nuovo test manuale]], [[LEGGIMI - Template flusso]]
 
 ## 1.24 · 2026-11-05
 

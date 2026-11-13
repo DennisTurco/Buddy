@@ -7,7 +7,7 @@ description: Scrive o aggiorna il documento dei test manuali di un task (Test ma
 
 Questa nota **è** il file `SKILL.md`: per installarla, copiarla in `~/.claude/skills/test-manuali/SKILL.md` (o `.claude/skills/test-manuali/SKILL.md` in un progetto personale). È generica: comandi, ambienti, database e credenziali del progetto stanno nella `Scheda progetto`.
 
-Fa da sola quello che `/lavora` e `/guidami` fanno al passo *Test manuali*: serve per i task fatti prima di questa regola, per quelli fatti a mano e quando il documento va rifatto o aggiornato. Il test lo fa l'utente e deve poterlo fare bene: il documento va scritto con cura, non come formalità.
+Fa da sola quello che `/lavora` e `/guidami` fanno al passo *Test manuali* quando il documento viene chiesto: è il modo normale di averlo, perché `/lavora` non lo crea più in automatico. Serve anche per i task fatti a mano e quando il documento va rifatto o aggiornato. Il test lo fa l'utente e deve poterlo fare bene: il documento va scritto con cura, non come formalità.
 
 ## 1. Prima di iniziare
 

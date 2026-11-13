@@ -77,7 +77,14 @@ public partial class App : Application
     {
         HandleCrashes();
 
-        var builder = Host.CreateApplicationBuilder(args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray());
+        // The content root is the app's folder, not the current directory: started at login the current directory is
+        // the home folder, and the host would watch all of it for appsettings changes (tens of thousands of inotify
+        // watches, a slow start, and the vault's change events lost in the flood: the board stopped updating live).
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            Args = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray(),
+            ContentRootPath = AppContext.BaseDirectory,
+        });
         builder.Configuration
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false)
@@ -101,7 +108,22 @@ public partial class App : Application
         conversation.Archive = new ConversationArchive(Path.Combine(SettingsStore.Folder, "conversations"));
         conversation.LogFolder = _logs.Folder;
         conversation.RestartRequested = () => Dispatcher.UIThread.Post(() => Restart());
-        var pet =_host.Services.GetRequiredService<PetWindow>();
+
+        // The chat keeps talking to the model chosen last time: after a restart a request for Claude doesn't land
+        // on the local model (and need "/c" again).
+        if (SettingsStore.LoadChatMode() is { } lastMode)
+        {
+            conversation.RestoreMode(lastMode);
+        }
+
+        conversation.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Conversation.Mode))
+            {
+                SettingsStore.SaveChatMode(conversation.Mode);
+            }
+        };
+        var pet = _host.Services.GetRequiredService<PetWindow>();
         // The buddy's own sprite next to the mentor's messages in the chat (bubble and board).
         Resources["MentorAvatar"] = pet.Sprites.Frames(PetState.Idle, ChatMode.Local)[0];
         var bubble = _host.Services.GetRequiredService<BubbleWindow>();
