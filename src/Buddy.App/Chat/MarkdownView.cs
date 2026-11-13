@@ -52,6 +52,12 @@ public sealed class MarkdownView : UserControl
 
         // Before the viewer's own copy: see SelectedText.
         AddHandler(KeyDownEvent, OnCopyKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+
+        // After the viewer has moved the selection (its handlers run first), before the frame is drawn.
+        AddHandler(PointerPressedEvent, (_, _) => SelectionOrder.Fix(_viewer), Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerMovedEvent, (_, _) => SelectionOrder.Fix(_viewer), Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, (_, _) => SelectionOrder.Fix(_viewer), Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(KeyUpEvent, (_, _) => SelectionOrder.Fix(_viewer), Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     /// <summary>
@@ -116,12 +122,14 @@ public sealed class MarkdownView : UserControl
     {
         _liveTimer?.Stop();
         var markdown = Markdown ?? "";
-        if (_viewer.Markdown == markdown)
+        if (_rendered == markdown)
         {
             return;
         }
 
-        _viewer.Markdown = markdown;
+        _rendered = markdown;
+
+        _viewer.Markdown = SplitBoldAroundCode(markdown);
         if (!_listsPending && ListLine.IsMatch(markdown))
         {
             _listsPending = true;
@@ -146,6 +154,67 @@ public sealed class MarkdownView : UserControl
 
     private bool _enhancePending;
     private bool _listsPending;
+    private string? _rendered;
+
+    private static readonly System.Text.RegularExpressions.Regex BoldWithCode =
+        new(@"\*\*(?=\S)([^*\r\n]*?`[^`\r\n]+`[^*\r\n]*?)\*\*");
+
+    private static readonly System.Text.RegularExpressions.Regex CodeSpan = new(@"`[^`\r\n]+`");
+
+    /// <summary>
+    /// "**Id 54 – `Key`**" becomes "**Id 54 –** `Key`": the library cuts the text at inline code before it looks for
+    /// bold, so a bold span with code inside is left as plain text with its asterisks. The code keeps its own look;
+    /// the text around it stays bold. Lines inside fenced code blocks are left as they are.
+    /// </summary>
+    internal static string SplitBoldAroundCode(string markdown)
+    {
+        if (!markdown.Contains("**") || !markdown.Contains('`'))
+        {
+            return markdown;
+        }
+
+        var lines = markdown.Split('\n');
+        var fenced = false;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].TrimStart();
+            if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
+            {
+                fenced = !fenced;
+                continue;
+            }
+
+            if (!fenced)
+            {
+                lines[i] = BoldWithCode.Replace(lines[i], m => SplitBold(m.Groups[1].Value));
+            }
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    private static string SplitBold(string inner)
+    {
+        var parts = new List<string>();
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match code in CodeSpan.Matches(inner))
+        {
+            AddBold(parts, inner[at..code.Index]);
+            parts.Add(code.Value);
+            at = code.Index + code.Length;
+        }
+
+        AddBold(parts, inner[at..]);
+        return string.Join(' ', parts);
+    }
+
+    private static void AddBold(List<string> parts, string text)
+    {
+        if (text.Trim() is { Length: > 0 } t)
+        {
+            parts.Add("**" + t + "**");
+        }
+    }
 
     private static readonly System.Text.RegularExpressions.Regex ListLine =
         new(@"^\s*[-*+]\s", System.Text.RegularExpressions.RegexOptions.Multiline);

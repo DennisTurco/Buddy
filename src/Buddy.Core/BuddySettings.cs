@@ -385,6 +385,14 @@ public sealed class AssistantSettings
 
     /// <summary>Largest attachment text (characters) sent with a question; longer text is truncated.</summary>
     public int MaxAttachmentChars { get; set; } = 20_000;
+
+    /// <summary>
+    /// Commands switched off in the settings (e.g. "/pillola", "/lavora"): not suggested, and typing one only says that
+    /// it is off. Covers the buddy's commands and Claude's skills alike.
+    /// </summary>
+    public List<string> DisabledCommands { get; set; } = [];
+
+    public bool IsDisabled(string command) => DisabledCommands.Contains(command, StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class OllamaSettings
@@ -427,6 +435,9 @@ public sealed class ClaudeSettings
 
     internal static readonly string[] DefaultHeavyCommands = ["/lavora", "/analisi", "/analisi-spike"];
 
+    /// <summary>Stands for "no command" in <see cref="HeavyCommands"/>, since an empty list means the defaults.</summary>
+    public const string NoHeavyCommand = "-";
+
     /// <summary>Files that must never be committed (e.g. local config), relative to the repo; /commit warns about them.</summary>
     public List<string> DoNotCommit { get; set; } = [];
 
@@ -442,6 +453,70 @@ public sealed class ClaudeSettings
     /// "auto" lets Claude Code's classifier decide, asking only for risky actions; "bypassPermissions" never asks.
     /// </summary>
     public string PermissionMode { get; set; } = "default";
+
+    /// <summary>
+    /// The permission table: tools Claude may use without asking (allow, passed as --allowedTools) or may never use
+    /// (deny, passed as --disallowedTools). A rule switched off stays in the table but is not passed.
+    /// </summary>
+    public List<ToolRule> ToolRules { get; set; } = [];
+
+    /// <summary>What Claude may do without asking: the table's active allow rules, plus the older plain list.</summary>
+    public IReadOnlyList<string> AllowedTools() =>
+        Clean(AutoAllowTools.Concat(ToolRules.Where(r => r.Enabled && r.Allow).Select(r => r.Tool)));
+
+    /// <summary>What Claude may never do: the table's active deny rules.</summary>
+    public IReadOnlyList<string> DeniedTools() => Clean(ToolRules.Where(r => r.Enabled && !r.Allow).Select(r => r.Tool));
+
+    /// <summary>The commands that get the strongest model when <see cref="AutoModel"/> is on.</summary>
+    public IReadOnlyList<string> EffectiveHeavyCommands() => HeavyCommands.Count > 0 ? HeavyCommands : DefaultHeavyCommands;
+
+    private static List<string> Clean(IEnumerable<string> tools) =>
+        tools.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Distinct().ToList();
+
+    /// <summary>
+    /// Rules offered in the permission table, switched off until chosen: the read-only tools, and the blocks of the
+    /// flow (no commit, push, merge or PR by Claude, see "Configurazione Claude" in the template).
+    /// </summary>
+    public static IReadOnlyList<ToolRule> SuggestedRules { get; } =
+    [
+        new() { Tool = "Read", Note = "leggere file" },
+        new() { Tool = "Glob", Note = "cercare file per nome" },
+        new() { Tool = "Grep", Note = "cercare testo nei file" },
+        new() { Tool = "WebSearch", Note = "ricerche sul web" },
+        new() { Tool = "WebFetch", Note = "leggere pagine web" },
+        new() { Tool = "TodoWrite", Note = "tenere la lista dei passi" },
+        new() { Tool = "Edit", Note = "modificare file" },
+        new() { Tool = "Write", Note = "creare file" },
+        new() { Tool = "Bash(git status:*)", Note = "vedere lo stato del repo" },
+        new() { Tool = "Bash(git diff:*)", Note = "vedere le modifiche" },
+        new() { Tool = "Bash(git log:*)", Note = "vedere la storia" },
+        new() { Tool = "Bash(dotnet build:*)", Note = "compilare" },
+        new() { Tool = "Bash(dotnet test:*)", Note = "eseguire i test" },
+        new() { Tool = "Bash(git commit:*)", Allow = false, Note = "il commit lo fai tu" },
+        new() { Tool = "Bash(git push:*)", Allow = false, Note = "il push lo fai tu" },
+        new() { Tool = "Bash(git merge:*)", Allow = false, Note = "niente merge" },
+        new() { Tool = "Bash(git rebase:*)", Allow = false, Note = "niente rebase" },
+        new() { Tool = "Bash(git reset --hard:*)", Allow = false, Note = "non buttare via modifiche" },
+        new() { Tool = "Bash(gh pr create:*)", Allow = false, Note = "la PR la apri tu" },
+        new() { Tool = "Bash(gh pr merge:*)", Allow = false, Note = "niente merge di PR" },
+        new() { Tool = "Bash(rm -rf:*)", Allow = false, Note = "niente cancellazioni ricorsive" },
+    ];
+}
+
+/// <summary>One row of the permission table: a Claude Code tool rule (e.g. "Read", "Bash(git commit:*)").</summary>
+public sealed class ToolRule
+{
+    /// <summary>The rule, in the --allowedTools syntax.</summary>
+    public string Tool { get; set; } = "";
+
+    /// <summary>True: Claude may use it without asking. False: Claude may never use it.</summary>
+    public bool Allow { get; set; } = true;
+
+    /// <summary>Off: kept in the table, not passed to Claude.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>What the rule is for, in your words.</summary>
+    public string Note { get; set; } = "";
 }
 
 public sealed class AppearanceSettings

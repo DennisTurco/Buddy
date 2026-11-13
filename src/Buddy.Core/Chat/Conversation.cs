@@ -64,8 +64,13 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         _ui = SynchronizationContext.Current;
         ChatGrouping.Track(Entries);
         ChatGrouping.Track(SideEntries);
+        Commands.IsDisabled = command => _options.Value.Assistant.IsDisabled(command);
         RegisterCommands();
     }
+
+    /// <summary>The line for a command switched off in the settings.</summary>
+    private static string DisabledText(string command) =>
+        $"`{command}` è disattivato: lo riaccendi in Impostazioni → Comandi.";
 
     /// <summary>The "/" commands: the conversation's, registered here, and the mentor's, registered by it.</summary>
     public CommandRegistry Commands { get; } = new();
@@ -323,6 +328,9 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     /// <summary>Set by the app when a newer build is ready: "/aggiorna" restarts on it.</summary>
     public Action? UpdateRequested { get; set; }
 
+    /// <summary>Set by the app: "/riavvia" closes the buddy and starts it again.</summary>
+    public Action? RestartRequested { get; set; }
+
     /// <summary>Tells in the chat that a newer build of the buddy is ready.</summary>
     public void AnnounceNewerBuild(DateTime built) =>
         AddSystem($"🆕 È pronta una versione più nuova del Buddy (compilata alle {built:HH:mm}): scrivi /aggiorna per riavviare con quella.");
@@ -558,6 +566,12 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        if (command is not null && _options.Value.Assistant.IsDisabled(command))
+        {
+            Instant(input, DisabledText(command));
+            return;
+        }
+
         if (command is not null && Commands.Find(command) is { } registered
             && await RunAsync(registered, new CommandCall(command, rest, input, attachment)))
         {
@@ -633,6 +647,13 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 SideEntries.Clear();
                 Notify(nameof(HasPendingReply));
             });
+            return;
+        }
+
+        if (command is not null && _options.Value.Assistant.IsDisabled(command))
+        {
+            AddSide(new ChatEntry(Speaker.User, input));
+            AddSide(new ChatEntry(Speaker.System, DisabledText(command)));
             return;
         }
 
@@ -758,6 +779,20 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             else
             {
                 Instant(call.Input, "Non c'è una versione nuova da usare (o il Buddy non gira dai sorgenti).");
+            }
+        }));
+        Commands.Add(new("/riavvia", "chiude e riapre il Buddy"), call => Done(() =>
+        {
+            if (RestartRequested is { } restart)
+            {
+                Add(new ChatEntry(Speaker.User, call.Input));
+                AddSystem("Riavvio il Buddy…");
+                SaveToArchive();
+                restart();
+            }
+            else
+            {
+                Instant(call.Input, "Non riesco a riavviare da qui: chiudi e riapri il Buddy.");
             }
         }));
         Commands.Add(new("/aiuto", "questo elenco"), _ => Done(() => AddSystem(HelpText())));
@@ -1301,7 +1336,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             return null;
         }
 
-        var heavy = claude.HeavyCommands.Count > 0 ? claude.HeavyCommands : [.. ClaudeSettings.DefaultHeavyCommands];
+        var heavy = claude.EffectiveHeavyCommands();
         var (command, _) = SplitCommand(text.Trim());
         if (command is not null && heavy.Contains(command, StringComparer.OrdinalIgnoreCase))
         {

@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Buddy.App.Chat;
 using Buddy.App.Project;
 using Buddy.Core;
@@ -131,6 +132,91 @@ public class UiTests
 
         var copied = await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(window.Clipboard!);
         Assert.That(copied, Is.EqualTo("la voce è in Da valutare e To-Do ok"));
+    }
+
+    [AvaloniaTest]
+    public async Task Bold_with_inline_code_inside_is_drawn_bold()
+    {
+        var view = new MarkdownView { Markdown = "- **Id 54 – `UserApiKey`**: inserire la key.\n- **Id 59 – `Data`** e **solo grassetto**" };
+        var window = new Window { Content = view, Width = 800, Height = 200 };
+        window.Show();
+        await SettleAsync();
+
+        var text = string.Join("\n", view.GetLogicalDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>().Select(b => b.Text));
+        Assert.That(text, Does.Not.Contain("**"));
+        Assert.That(text, Does.Contain("UserApiKey"));
+    }
+
+    [AvaloniaTest]
+    public async Task A_selection_across_inline_code_keeps_its_start_before_its_end()
+    {
+        var view = new MarkdownView { Markdown = "Nella tabella `[Configurazione].[ConfigurazioniPortale]` del database del cliente, `uno` e `due` fine." };
+        var window = new Window { Content = view, Width = 900, Height = 200 };
+        window.Show();
+        await SettleAsync();
+
+        var block = view.GetLogicalDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>().Last();
+        var origin = block.TranslatePoint(new Point(0, 0), window)!.Value;
+        const System.Reflection.BindingFlags priv = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        foreach (var (from, to) in new[] { (30.0, 700.0), (700.0, 30.0), (5.0, 500.0) })
+        {
+            window.MouseDown(new Point(origin.X + from, origin.Y + 6), MouseButton.Left);
+            window.MouseMove(new Point(origin.X + to, origin.Y + 6));
+            window.MouseUp(new Point(origin.X + to, origin.Y + 6), MouseButton.Left);
+            await SettleAsync();
+
+            var begin = (ColorTextBlock.Avalonia.PhysicalTextPointer)typeof(ColorTextBlock.Avalonia.CTextBlock).GetField("_beginSelect", priv)!.GetValue(block)!;
+            var end = (ColorTextBlock.Avalonia.PhysicalTextPointer)typeof(ColorTextBlock.Avalonia.CTextBlock).GetField("_endSelect", priv)!.GetValue(block)!;
+            Assert.That(begin > end, Is.EqualTo(begin.Index > end.Index), $"drag {from}→{to}: the drawing must order the ends by position");
+        }
+    }
+
+    [AvaloniaTest]
+    public async Task The_settings_tables_switch_rules_and_commands_on_and_off()
+    {
+        var current = new BuddySettings
+        {
+            Claude = { AutoAllowTools = ["Read", "Bash(git status:*)"], HeavyCommands = [] },
+            Assistant = { DisabledCommands = ["/pillola"] },
+        };
+        var commands = new[] { new ChatCommand("/oggi", "la giornata"), new ChatCommand("/pillola", "una pillola", Group: CommandGroup.Mentor) };
+        var window = new Buddy.App.Settings.SettingsWindow(current, new Buddy.Core.Llm.OllamaClient(new HttpClient(), Options.Create(current)), commands);
+        window.Show();
+        await SettleAsync();
+
+        var ruleRows = window.FindControl<StackPanel>("RuleRows")!.Children.OfType<Grid>().ToList();
+        Assert.That(ruleRows, Has.Count.EqualTo(2), "the old list becomes rows");
+        ruleRows[0].Children.OfType<CheckBox>().First().IsChecked = false; // Read off
+
+        var suggested = window.GetLogicalDescendants().OfType<Button>().First(b => b.Content as string == "Aggiungi le suggerite");
+        suggested.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var commit = window.FindControl<StackPanel>("RuleRows")!.Children.OfType<Grid>()
+            .First(g => g.Children.OfType<TextBox>().First().Text == "Bash(git commit:*)");
+        commit.Children.OfType<CheckBox>().First().IsChecked = true;
+
+        var commandRows = window.FindControl<StackPanel>("CommandRows")!.Children.OfType<Grid>().Take(2).ToList(); // then the skills installed here
+        Assert.That(commandRows.Select(r => r.Children.OfType<CheckBox>().First().IsChecked), Is.EqualTo(new bool?[] { true, false }));
+        commandRows[0].Children.OfType<CheckBox>().First().IsChecked = false; // /oggi off
+        commandRows[1].Children.OfType<CheckBox>().First().IsChecked = true;  // /pillola on
+
+        window.CollectTables();
+        var claude = window.Edited.Claude;
+        Assert.That(claude.AutoAllowTools, Is.Empty, "moved into the table");
+        Assert.That(claude.AllowedTools(), Is.EqualTo(new[] { "Bash(git status:*)" }));
+        Assert.That(claude.DeniedTools(), Is.EqualTo(new[] { "Bash(git commit:*)" }));
+        Assert.That(claude.ToolRules.Single(r => r.Tool == "Read").Enabled, Is.False, "kept, switched off");
+        Assert.That(window.Edited.Assistant.DisabledCommands, Is.EqualTo(new[] { "/oggi" }));
+        Assert.That(current.Claude.ToolRules, Is.Empty, "the live settings change only on save");
+        window.Close();
+    }
+
+    [Test]
+    public void Bold_around_inline_code_is_split_so_the_parser_sees_it()
+    {
+        Assert.That(MarkdownView.SplitBoldAroundCode("- **Id 54 – `UserApiKey`**: x"), Is.EqualTo("- **Id 54 –** `UserApiKey`: x"));
+        Assert.That(MarkdownView.SplitBoldAroundCode("**a `b` c**"), Is.EqualTo("**a** `b` **c**"));
+        Assert.That(MarkdownView.SplitBoldAroundCode("**solo** e `code`"), Is.EqualTo("**solo** e `code`"));
+        Assert.That(MarkdownView.SplitBoldAroundCode("```\n**a `b`**\n```"), Is.EqualTo("```\n**a `b`**\n```"));
     }
 
     [AvaloniaTest]
@@ -512,6 +598,18 @@ public class PagesAndPaletteTests
             await Task.Delay(300);
             await Settle();
             Assert.That(window.FindControl<Buddy.App.Chat.MarkdownView>("NotePreview")!.Markdown, Does.Contain("**uno**"), "live preview");
+
+            // A long note: scrolling the editor scrolls the preview to the same point.
+            editor.Text = string.Join("\n\n", Enumerable.Range(1, 200).Select(i => $"## Riga {i}\ntesto {i}"));
+            await Task.Delay(300);
+            await Settle();
+            var editorScroller = editor.GetVisualDescendants().OfType<ScrollViewer>().First();
+            var previewScroller = window.FindControl<ScrollViewer>("NotePreviewScroller")!;
+            editorScroller.Offset = editorScroller.Offset.WithY((editorScroller.Extent.Height - editorScroller.Viewport.Height) / 2);
+            await Settle();
+            var previewRange = previewScroller.Extent.Height - previewScroller.Viewport.Height;
+            Assert.That(previewRange, Is.GreaterThan(0));
+            Assert.That(previewScroller.Offset.Y / previewRange, Is.EqualTo(0.5).Within(0.02), "preview follows the editor");
         }
         finally
         {

@@ -1051,7 +1051,7 @@
                                                  ScrollViewer.VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
                                         <Border x:Name="NotePreviewPanel" Grid.Column="2" Classes="panel" Padding="12,8"
                                                 BorderBrush="{DynamicResource UserBubble}" BorderThickness="1" CornerRadius="8">
-                                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                            <ScrollViewer x:Name="NotePreviewScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                                 <chat:MarkdownView x:Name="NotePreview" />
                                             </ScrollViewer>
                                         </Border>

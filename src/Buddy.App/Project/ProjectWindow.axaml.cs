@@ -155,6 +155,27 @@ public partial class ProjectWindow : Window
             _notePreview.Stop();
             _notePreview.Start();
         };
+        NoteEditor.TemplateApplied += (_, e) =>
+        {
+            if (e.NameScope.Find<ScrollViewer>("PART_ScrollViewer") is { } editorScroller)
+            {
+                // Only real scrolls: the preview redrawn while typing changes its height, and must not move the editor.
+                editorScroller.ScrollChanged += (_, args) =>
+                {
+                    if (args.OffsetDelta.Y != 0)
+                    {
+                        SyncScroll(editorScroller, NotePreviewScroller);
+                    }
+                };
+                NotePreviewScroller.ScrollChanged += (_, args) =>
+                {
+                    if (args.OffsetDelta.Y != 0 && NotePreviewScroller.IsPointerOver)
+                    {
+                        SyncScroll(NotePreviewScroller, editorScroller);
+                    }
+                };
+            }
+        };
         NotesList.SelectionChanged += (_, _) => ShowNote(NotesList.SelectedItem as NoteView);
         ManualDocsList.SelectionChanged += (_, _) =>
         {
@@ -1896,6 +1917,43 @@ public partial class ProjectWindow : Window
         NoteEditorGrid.ColumnDefinitions[1].Width = new GridLength(show ? 12 : 0);
         NoteEditorGrid.ColumnDefinitions[2].Width = show ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         UpdateNotePreview();
+    }
+
+    private bool _syncingScroll;
+
+    /// <summary>
+    /// The editor and its preview scroll together, at the same fraction of their length: the two texts differ in
+    /// height (headings, tables, wrapped lines), so the position is proportional rather than line by line.
+    /// </summary>
+    private void SyncScroll(ScrollViewer from, ScrollViewer to)
+    {
+        if (_syncingScroll || !NotePreviewPanel.IsVisible)
+        {
+            return;
+        }
+
+        var fromRange = from.Extent.Height - from.Viewport.Height;
+        var toRange = to.Extent.Height - to.Viewport.Height;
+        if (fromRange <= 0 || toRange <= 0)
+        {
+            return;
+        }
+
+        var target = Math.Round(from.Offset.Y / fromRange * toRange);
+        if (Math.Abs(to.Offset.Y - target) < 1)
+        {
+            return;
+        }
+
+        _syncingScroll = true;
+        try
+        {
+            to.Offset = to.Offset.WithY(target);
+        }
+        finally
+        {
+            _syncingScroll = false;
+        }
     }
 
     private void UpdateNotePreview()

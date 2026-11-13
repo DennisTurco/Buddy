@@ -16,6 +16,13 @@
         <!-- See-through: the viewer paints inline code over the selection, an opaque background would hide it. -->
         <Setter Property="Background" Value="{DynamicResource InlineCodeBack}" />
         <Setter Property="MonospaceFontFamily" Value="{StaticResource MonoFont}" />
+        <!-- No box: with padding, margin or rounded corners the library draws the code as a separate box, whose
+             selection is wrong (the highlight stops after the code, clicks snap to its end). Plain, it is selected
+             like the text around it. -->
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="ctxt|CHyperlink:not(.x)">
         <Setter Property="Foreground" Value="{DynamicResource LinkInk}" />

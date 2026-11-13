@@ -100,7 +100,8 @@ public partial class App : Application
         var conversation = _host.Services.GetRequiredService<Conversation>();
         conversation.Archive = new ConversationArchive(Path.Combine(SettingsStore.Folder, "conversations"));
         conversation.LogFolder = _logs.Folder;
-        var pet = _host.Services.GetRequiredService<PetWindow>();
+        conversation.RestartRequested = () => Dispatcher.UIThread.Post(() => Restart());
+        var pet =_host.Services.GetRequiredService<PetWindow>();
         // The buddy's own sprite next to the mentor's messages in the chat (bubble and board).
         Resources["MentorAvatar"] = pet.Sprites.Frames(PetState.Idle, ChatMode.Local)[0];
         var bubble = _host.Services.GetRequiredService<BubbleWindow>();
@@ -459,7 +460,8 @@ public partial class App : Application
         var services = _host!.Services;
         var window = new Settings.SettingsWindow(
             services.GetRequiredService<IOptions<BuddySettings>>().Value,
-            services.GetRequiredService<Buddy.Core.Llm.OllamaClient>());
+            services.GetRequiredService<Buddy.Core.Llm.OllamaClient>(),
+            services.GetRequiredService<Conversation>().Commands.Everything);
 
         if (await window.ShowAndWaitAsync())
         {

@@ -250,16 +250,59 @@
                         <TextBlock Text="Quando chiedere il permesso" FontWeight="SemiBold" Margin="0,0,0,4" />
                         <ComboBox x:Name="PermissionModeCombo" HorizontalAlignment="Stretch" />
                         <TextBlock x:Name="PermissionModeHint" Classes="hint" Margin="0,4,0,12" />
-                        <TextBlock Classes="hint"
-                                   Text="Strumenti che Claude può usare senza chiedere (con la prima modalità). Tutto il resto passa dalla richiesta di permesso nella nuvoletta." />
-                        <CheckBox x:Name="AllowRead" Content="Read — leggere file" />
-                        <CheckBox x:Name="AllowGlob" Content="Glob — cercare file per nome" />
-                        <CheckBox x:Name="AllowGrep" Content="Grep — cercare testo nei file" />
-                        <CheckBox x:Name="AllowWebSearch" Content="WebSearch — ricerche sul web" />
-                        <CheckBox x:Name="AllowWebFetch" Content="WebFetch — leggere pagine web" />
-                        <TextBlock Text="Altre regole (una per riga)" FontWeight="SemiBold" Margin="0,12,0,2" />
-                        <TextBlock Classes="hint" Text="Stessa sintassi di --allowedTools, per esempio: Bash(git status:*)" />
-                        <TextBox Classes="multiline" x:Name="ExtraAllowedTools"  Height="90" />
+
+                        <TextBlock Text="Regole sugli strumenti" FontWeight="SemiBold" Margin="0,0,0,2" />
+                        <TextBlock Classes="hint" TextWrapping="Wrap"
+                                   Text="«Consenti»: Claude lo usa senza chiedere. «Nega»: Claude non può usarlo mai, qualunque modalità tu abbia scelto. Una regola spenta resta qui ma non vale. Sintassi di Claude Code: Read, Edit, Bash(git status:*), mcp__nome…" />
+                        <WrapPanel Margin="0,6,0,4">
+                            <TextBox x:Name="RuleFilter" Watermark="Filtra…" Width="200" Margin="0,0,8,4" />
+                            <Button Content="+ Nuova regola" Click="OnAddRuleClick" Margin="0,0,8,4" />
+                            <Button Content="Aggiungi le suggerite" Click="OnAddSuggestedRulesClick" Margin="0,0,8,4"
+                                    ToolTip.Tip="Strumenti di sola lettura e i blocchi del flusso (niente commit, push, merge o PR da Claude), spenti finché non li accendi" />
+                            <Button Content="Accendi tutte" Click="OnAllRulesClick" Tag="on" Margin="0,0,8,4" />
+                            <Button Content="Spegni tutte" Click="OnAllRulesClick" Tag="off" Margin="0,0,8,4" />
+                        </WrapPanel>
+                        <Grid ColumnDefinitions="56,150,2*,2*,40" Margin="0,4,0,2">
+                            <TextBlock Text="Attiva" Classes="hint" />
+                            <TextBlock Grid.Column="1" Text="Tipo" Classes="hint" />
+                            <TextBlock Grid.Column="2" Text="Regola" Classes="hint" />
+                            <TextBlock Grid.Column="3" Text="A cosa serve" Classes="hint" />
+                        </Grid>
+                        <StackPanel x:Name="RuleRows" />
+                        <TextBlock x:Name="RuleSummary" Classes="hint" Margin="0,4,0,0" />
+
+                        <TextBlock Text="Cartelle in più" FontWeight="SemiBold" Margin="0,16,0,2" />
+                        <TextBlock Classes="hint" TextWrapping="Wrap"
+                                   Text="Cartelle che Claude può leggere e modificare oltre a quella in cui lavora (--add-dir). La cartella del vault c'è sempre." />
+                        <StackPanel x:Name="DirectoryRows" Margin="0,4,0,0" />
+                        <Button Content="+ Aggiungi cartella" Click="OnAddDirectoryClick" Margin="0,4,0,0" />
+
+                        <TextBlock Classes="hint" TextWrapping="Wrap" Margin="0,16,0,0"
+                                   Text="Il mentore e il generatore di idee usano Claude a parte, sempre e solo con Read, Glob, Grep e la modifica del proprio diario: queste regole non li riguardano." />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ Comandi ============ -->
+            <TabItem Header="Comandi">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <TextBlock Text="Comandi del Buddy e skill di Claude" FontWeight="SemiBold" Margin="0,0,0,2" />
+                        <TextBlock Classes="hint" TextWrapping="Wrap"
+                                   Text="Un comando spento non viene più suggerito né elencato in /aiuto; se lo scrivi, il Buddy ti dice che è spento. «Modello forte»: con la scelta automatica del modello, quella skill usa Opus." />
+                        <WrapPanel Margin="0,6,0,4">
+                            <TextBox x:Name="CommandFilter" Watermark="Filtra…" Width="200" Margin="0,0,8,4" />
+                            <Button Content="Accendi tutti" Click="OnAllCommandsClick" Tag="on" Margin="0,0,8,4" />
+                        </WrapPanel>
+                        <Grid ColumnDefinitions="56,190,*,90,100" Margin="0,4,0,2">
+                            <TextBlock Text="Attivo" Classes="hint" />
+                            <TextBlock Grid.Column="1" Text="Comando" Classes="hint" />
+                            <TextBlock Grid.Column="2" Text="Cosa fa" Classes="hint" />
+                            <TextBlock Grid.Column="3" Text="Di chi" Classes="hint" />
+                            <TextBlock Grid.Column="4" Text="Modello forte" Classes="hint" />
+                        </Grid>
+                        <StackPanel x:Name="CommandRows" />
+                        <TextBlock x:Name="CommandSummary" Classes="hint" Margin="0,4,0,0" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

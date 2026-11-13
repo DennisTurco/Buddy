@@ -16,8 +16,6 @@ namespace Buddy.App.Settings;
 /// </summary>
 public partial class SettingsWindow : Window
 {
-    private static readonly string[] CommonTools = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"];
-
     private static readonly (string Key, string Label, string Hint)[] PermissionModes =
     [
         ("default", "Chiedi (tranne gli strumenti qui sotto)",
@@ -46,7 +44,8 @@ public partial class SettingsWindow : Window
     {
     }
 
-    public SettingsWindow(BuddySettings current, OllamaClient ollama)
+    /// <param name="commands">The buddy's commands, for the command table (none: the table shows only the skills).</param>
+    public SettingsWindow(BuddySettings current, OllamaClient ollama, IReadOnlyList<Buddy.Core.Chat.ChatCommand>? commands = null)
     {
         InitializeComponent();
         _settings = SettingsStore.Clone(current);
@@ -75,13 +74,9 @@ public partial class SettingsWindow : Window
             PermissionModeHint.Text = PermissionModeCombo.SelectedIndex >= 0 ? PermissionModes[PermissionModeCombo.SelectedIndex].Hint : "";
         PermissionModeCombo.SelectedIndex = Math.Max(0, Array.FindIndex(PermissionModes, m => m.Key == _settings.Claude.PermissionMode));
 
-        var allowed = _settings.Claude.AutoAllowTools;
-        AllowRead.IsChecked = allowed.Contains("Read");
-        AllowGlob.IsChecked = allowed.Contains("Glob");
-        AllowGrep.IsChecked = allowed.Contains("Grep");
-        AllowWebSearch.IsChecked = allowed.Contains("WebSearch");
-        AllowWebFetch.IsChecked = allowed.Contains("WebFetch");
-        ExtraAllowedTools.Text = string.Join(Environment.NewLine, allowed.Except(CommonTools));
+        BuildRuleTable();
+        BuildDirectoryTable();
+        BuildCommandTable(commands ?? []);
 
         LoadProjectLists();
         RefreshPresetList();
@@ -588,14 +583,7 @@ public partial class SettingsWindow : Window
             _settings.Claude.PermissionMode = PermissionModes[PermissionModeCombo.SelectedIndex].Key;
         }
 
-        var tools = new List<string>();
-        if (AllowRead.IsChecked == true) tools.Add("Read");
-        if (AllowGlob.IsChecked == true) tools.Add("Glob");
-        if (AllowGrep.IsChecked == true) tools.Add("Grep");
-        if (AllowWebSearch.IsChecked == true) tools.Add("WebSearch");
-        if (AllowWebFetch.IsChecked == true) tools.Add("WebFetch");
-        tools.AddRange(Lines(ExtraAllowedTools.Text));
-        _settings.Claude.AutoAllowTools = tools.Distinct().ToList();
+        CollectTables();
 
         // Edits to the project fields also update the active preset, so switching away and back keeps them.
         var active = _settings.Presets.FindIndex(p => p.Name == _settings.ActivePreset);

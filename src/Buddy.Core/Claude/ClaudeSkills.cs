@@ -59,6 +59,43 @@ public static partial class ClaudeSkills
         return added;
     }
 
+    /// <summary>
+    /// What each installed skill does: the first sentence of the "description:" in its SKILL.md (empty when missing).
+    /// The user's own skill wins over the project's with the same name, as in <see cref="Installed"/>.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Descriptions(BuddySettings settings, string? home = null)
+    {
+        home ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in new[] { home, settings.Claude.WorkingDirectory, settings.Repo.Path }
+                     .Where(f => !string.IsNullOrWhiteSpace(f))
+                     .Select(f => Path.Combine(f, ".claude", "skills"))
+                     .Where(Directory.Exists))
+        {
+            foreach (var skill in Directory.EnumerateDirectories(folder))
+            {
+                var file = Path.Combine(skill, "SKILL.md");
+                if (Path.GetFileName(skill) is { } name && !result.ContainsKey(name) && File.Exists(file))
+                {
+                    result[name] = FirstSentence(FrontmatterDescription().Match(File.ReadAllText(file)) is { Success: true } m
+                        ? m.Groups[1].Value.Trim().Trim('"', '\'')
+                        : "");
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static string FirstSentence(string text)
+    {
+        var end = text.IndexOf(". ", StringComparison.Ordinal);
+        return end > 0 ? text[..end] : text.TrimEnd('.');
+    }
+
+    [GeneratedRegex(@"\A---\r?\n(?:.*\r?\n)*?description:\s*(.+?)\r?$", RegexOptions.Multiline)]
+    private static partial Regex FrontmatterDescription();
+
     [GeneratedRegex(@"^Skill/Skill (.+)\.md$")]
     private static partial Regex SkillNote();
 

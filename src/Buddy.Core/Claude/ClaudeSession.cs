@@ -146,10 +146,16 @@ public sealed class ClaudeSession : IAsyncDisposable
             yield return dir;
         }
 
-        foreach (var tool in claude.AutoAllowTools.Where(t => !string.IsNullOrWhiteSpace(t)).Distinct())
+        foreach (var tool in claude.AllowedTools())
         {
             yield return "--allowedTools";
-            yield return tool.Trim();
+            yield return tool;
+        }
+
+        foreach (var tool in claude.DeniedTools())
+        {
+            yield return "--disallowedTools";
+            yield return tool;
         }
 
         if (!string.IsNullOrWhiteSpace(claude.PermissionMode) && claude.PermissionMode != "default")

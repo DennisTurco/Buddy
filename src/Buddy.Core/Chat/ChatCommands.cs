@@ -37,8 +37,14 @@ public sealed class CommandRegistry
 {
     private readonly List<RegisteredCommand> _commands = [];
 
-    /// <summary>The commands to show, in the order they were registered.</summary>
-    public IReadOnlyList<ChatCommand> All => _commands.Where(c => !c.Command.Hidden).Select(c => c.Command).ToList();
+    /// <summary>The commands to show, in the order they were registered (not those switched off).</summary>
+    public IReadOnlyList<ChatCommand> All => Everything.Where(c => IsDisabled?.Invoke(c.Name) != true).ToList();
+
+    /// <summary>Every visible command, switched off or not: for the settings' command table.</summary>
+    public IReadOnlyList<ChatCommand> Everything => _commands.Where(c => !c.Command.Hidden).Select(c => c.Command).ToList();
+
+    /// <summary>Commands switched off in the settings: left out of the suggestions, the help and Ctrl+K.</summary>
+    public Func<string, bool>? IsDisabled { get; set; }
 
     /// <summary>Registers a command that is always handled once run.</summary>
     public void Add(ChatCommand command, Func<CommandCall, Task> run) =>
@@ -101,7 +107,8 @@ public sealed class CommandRegistry
 
         var own = All;
         var all = own.Concat(skills
-                .Where(s => own.All(b => !b.Name.Equals("/" + s, StringComparison.OrdinalIgnoreCase)))
+                .Where(s => IsDisabled?.Invoke("/" + s) != true)
+                .Where(s => _commands.All(b => !b.Command.Name.Equals("/" + s, StringComparison.OrdinalIgnoreCase)))
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .Select(s => new ChatCommand("/" + s, "skill di Claude")))
             .Concat((templates ?? []).Select(t => new ChatCommand("/" + t.Name, "tuo modello: " + (t.Text.Length > 50 ? t.Text[..50] + "…" : t.Text))));
