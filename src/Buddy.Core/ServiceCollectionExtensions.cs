@@ -20,6 +20,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Repo.GitRepo>();
         services.AddSingleton<KnowledgeIndex>();
         services.AddSingleton<AssistantCommands>();
+        services.AddSingleton<LocalAi>();
+        services.AddSingleton<SemanticIndex>();
         services.AddSingleton<LocalAssistant>();
         services.AddSingleton<Claude.ClaudeUsage>();
         services.AddSingleton<Claude.ClaudePlanUsage>();

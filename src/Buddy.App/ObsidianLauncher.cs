@@ -29,4 +29,16 @@ public static class ObsidianLauncher
 
         Shell.Open(folder);
     }
+
+    /// <summary>The project's vault folder in the file manager (Explorer on Windows).</summary>
+    public static void OpenFolder(BuddySettings settings)
+    {
+        var folder = settings.ProjectPath;
+        if (!Directory.Exists(folder))
+        {
+            throw new DirectoryNotFoundException($"Cartella del progetto non trovata: {folder}");
+        }
+
+        Shell.Open(folder);
+    }
 }

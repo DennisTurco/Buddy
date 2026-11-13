@@ -154,6 +154,20 @@ public sealed class AssistantCommands(VaultIndex vault, GitRepo repo, IOptions<B
         return doc is null ? null : (doc.Done, doc.Total, doc.RelativePath);
     }
 
+    /// <summary>The open appunti of To-do Appunti (title and nested lines), at most <paramref name="max"/>.</summary>
+    public IReadOnlyList<string> OpenAppunti(int max = 20)
+    {
+        if (!vault.IsAvailable || ProjectBoard.Load(vault, Settings.TaskIdPattern).Columns.FirstOrDefault(c => c.Key == "appunti") is not { } inbox)
+        {
+            return [];
+        }
+
+        return inbox.Items.Where(i => !i.Done && !i.Rejected)
+            .Select(i => string.Join(" — ", new[] { i.Title, i.Note }.Concat(i.Details).Where(t => !string.IsNullOrWhiteSpace(t))))
+            .Take(max)
+            .ToList();
+    }
+
     /// <summary>
     /// "/appunto testo" (also Shift+🎤): a line in To-do Appunti, in the format written by hand ("- 2026-11-06 · testo").
     /// Returns what to show in the chat.

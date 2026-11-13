@@ -227,7 +227,10 @@ public sealed class CardView : INotifyPropertyChanged
 
     public string ColumnLabel => $"{Column.Icon} {Column.Title}";
 
-    public string DetailsMarkdown => string.Join('\n', Item.Details.Select(d => "- " + NoteLinks.ToMarkdown(d)));
+    /// <summary>The nested lines as written in the note (lists, and lines that go on the text above), not one bullet per line.</summary>
+    public string DetailsMarkdown => NoteLinks.ToMarkdown(Buddy.Core.Vault.ProjectBoard.NestedText(Item.Raw) is { Length: > 0 } nested
+        ? nested
+        : string.Join('\n', Item.Details.Select(d => "- " + d)));
 
     public bool HasDetails => Item.Details.Count > 0;
 

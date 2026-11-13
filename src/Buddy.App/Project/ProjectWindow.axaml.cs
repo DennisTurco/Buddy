@@ -211,6 +211,9 @@ public partial class ProjectWindow : Window
     /// <summary>Generates ideas for "💡 Nuove idee" (set by the app: Claude or the local model).</summary>
     public IdeaSource? IdeaSource { get; set; }
 
+    /// <summary>The local model, for "✨ Sistema" in the card form.</summary>
+    public Buddy.Core.Llm.LocalAi? LocalAi { get; set; }
+
     /// <summary>Project switcher: the project to switch to, or null for "Nuovo progetto…".</summary>
     public event Action<string?>? PresetRequested;
 
@@ -1014,7 +1017,7 @@ public partial class ProjectWindow : Window
         var nextId = BoardEntries.NextId(todoPath is not null && File.Exists(todoPath) ? File.ReadAllText(todoPath) : null, usedIds);
         var knownTags = Tags.Defaults.Select(d => d.Name).Concat(_board.Columns.SelectMany(c => c.Items).SelectMany(i => i.TagList));
 
-        var form = new EntryFormWindow(column.Key, nextId, knownTags);
+        var form = new EntryFormWindow(column.Key, nextId, knownTags) { LocalAi = LocalAi };
         if (await (ShowEntryForm?.Invoke(form) ?? form.ShowAndWaitAsync(this)) is not { } entry)
         {
             return;
@@ -1654,7 +1657,7 @@ public partial class ProjectWindow : Window
         var before = BoardEdits.ToEntry(card.Item, card.Column.Key);
         var knownTags = Tags.Defaults.Select(d => d.Name).Concat(_board.Columns.SelectMany(c => c.Items).SelectMany(i => i.TagList));
         var form = new EntryFormWindow(BoardEdits.FormKind(card.Column.Key), card.Id ?? "", knownTags, before,
-            canWait: card.Column.Key is "todo" or "attesa" or "corso");
+            canWait: card.Column.Key is "todo" or "attesa" or "corso") { LocalAi = LocalAi };
         if (await (ShowEntryForm?.Invoke(form) ?? form.ShowAndWaitAsync(this)) is not { } after)
         {
             if (form.RawRequested)
@@ -1999,6 +2002,26 @@ public partial class ProjectWindow : Window
         if (NotesList.SelectedItem is NoteView note)
         {
             OpenInObsidian(note.Note.RelativePath);
+        }
+    }
+
+    private void OnRevealSelectedNoteClick(object? sender, RoutedEventArgs e)
+    {
+        if (NotesList.SelectedItem is NoteView note)
+        {
+            Shell.Reveal(FullPath(note.Note.RelativePath));
+        }
+    }
+
+    private async void OnOpenVaultFolderClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ObsidianLauncher.OpenFolder(_settings);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, ex.Message);
         }
     }
 

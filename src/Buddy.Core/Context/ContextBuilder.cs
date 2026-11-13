@@ -20,7 +20,15 @@ public sealed class ContextBuilder(
     /// <param name="question">The user's question; task ids found in it select the vault blocks.</param>
     /// <param name="currentTaskId">Task of the current branch, used when the question names none.</param>
     /// <param name="attachment">Text the user attached (clipboard, dropped file); it comes first in the context.</param>
-    public BuiltContext Build(string question, string? currentTaskId = null, string? attachment = null)
+    /// <param name="related">Pieces of notes found by meaning (<see cref="SemanticIndex"/>), added after the task blocks.</param>
+    public BuiltContext Build(string question, string? currentTaskId = null, string? attachment = null,
+        IReadOnlyList<SemanticHit>? related = null)
+    {
+        var built = BuildCore(question, currentTaskId, attachment, related ?? []);
+        return built;
+    }
+
+    private BuiltContext BuildCore(string question, string? currentTaskId, string? attachment, IReadOnlyList<SemanticHit> related)
     {
         var budget = new Budget(_settings.MaxContextChars);
         var sb = new StringBuilder();
@@ -81,6 +89,15 @@ public sealed class ContextBuilder(
                 {
                     sources.Add(new ContextSource($"{block.RelativePath} ({id})", Links.Obsidian(Path.Combine(_settings.ProjectPath, block.RelativePath)), background));
                 }
+            }
+        }
+
+        foreach (var hit in related)
+        {
+            if (budget.Used < _settings.MaxContextChars * 0.8
+                && budget.TryAppend(sb, $"\n## {hit.RelativePath} › {hit.Heading}\n{hit.Text}\n"))
+            {
+                sources.Add(new ContextSource($"{hit.Title} › {hit.Heading}", Links.Obsidian(Path.Combine(_settings.ProjectPath, hit.RelativePath))));
             }
         }
 

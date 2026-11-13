@@ -392,5 +392,17 @@ public partial class PetWindow : Window
         }
     }
 
+    private async void OnOpenVaultFolderClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ObsidianLauncher.OpenFolder(_settings);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            await Settings.Dialogs.ShowMessageAsync(null, ex.Message);
+        }
+    }
+
     private void OnExitClick(object? sender, RoutedEventArgs e) => App.Exit();
 }

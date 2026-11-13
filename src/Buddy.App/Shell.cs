@@ -19,4 +19,33 @@ public static class Shell
             return false;
         }
     }
+
+    /// <summary>
+    /// Shows a file in the file manager: on Windows, Explorer opens its folder with the file selected; elsewhere the
+    /// folder opens. A folder opens as itself.
+    /// </summary>
+    public static bool Reveal(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            return Open(path);
+        }
+
+        if (OperatingSystem.IsWindows() && File.Exists(path))
+        {
+            try
+            {
+                var explorer = new ProcessStartInfo("explorer.exe") { UseShellExecute = false };
+                explorer.ArgumentList.Add($"/select,{path}");
+                Process.Start(explorer)?.Dispose();
+                return true;
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+            {
+                // the folder, below
+            }
+        }
+
+        return Path.GetDirectoryName(path) is { } folder && Directory.Exists(folder) && Open(folder);
+    }
 }

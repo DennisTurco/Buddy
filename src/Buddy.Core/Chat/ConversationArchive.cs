@@ -7,7 +7,9 @@ namespace Buddy.Core.Chat;
 public sealed record SavedEntry(Speaker Speaker, string Text, DateTimeOffset Timestamp, bool Pinned = false);
 
 /// <summary>One saved conversation: its messages and the Claude session to resume when it is reopened.</summary>
-public sealed record SavedConversation(string Id, string Title, DateTimeOffset Updated, string? ClaudeSessionId, IReadOnlyList<SavedEntry> Entries)
+/// <param name="AiTitle">A short title written by the local model, shown instead of the first question.</param>
+public sealed record SavedConversation(string Id, string Title, DateTimeOffset Updated, string? ClaudeSessionId, IReadOnlyList<SavedEntry> Entries,
+    string? AiTitle = null)
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
@@ -20,7 +22,7 @@ public sealed record SavedConversation(string Id, string Title, DateTimeOffset U
             var day = local.Date == DateTime.Today ? "oggi"
                 : local.Date == DateTime.Today.AddDays(-1) ? "ieri"
                 : local.ToString("d MMM", Italian);
-            return $"{day} {local:HH:mm} · {Title}";
+            return $"{day} {local:HH:mm} · {AiTitle ?? Title}";
         }
     }
 }
@@ -62,8 +64,9 @@ public sealed class ConversationArchive(string folder)
         try
         {
             Directory.CreateDirectory(Folder);
-            var conversation = new SavedConversation(id, title, DateTimeOffset.Now, claudeSessionId, saved);
             var path = PathOf(id);
+            var aiTitle = File.Exists(path) ? Load(path)?.AiTitle : null;
+            var conversation = new SavedConversation(id, title, DateTimeOffset.Now, claudeSessionId, saved, aiTitle);
             File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(conversation, Json));
             File.Move(path + ".tmp", path, overwrite: true);
             Prune();
@@ -71,6 +74,29 @@ public sealed class ConversationArchive(string folder)
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The archive is a convenience: a failed save must never disturb the chat.
+        }
+    }
+
+    /// <summary>The saved conversation <paramref name="id"/>, or null.</summary>
+    public SavedConversation? Find(string id) => File.Exists(PathOf(id)) ? Load(PathOf(id)) : null;
+
+    /// <summary>Gives a saved conversation the local model's title (kept by later saves).</summary>
+    public void SetAiTitle(string id, string title)
+    {
+        var path = PathOf(id);
+        if (Find(id) is not { } conversation)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(conversation with { AiTitle = title }, Json));
+            File.Move(path + ".tmp", path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A title is a nicety.
         }
     }
 

@@ -73,9 +73,9 @@ public static partial class BoardEntries
     public static string Appunto(NewEntry entry, DateOnly day)
     {
         var text = new StringBuilder($"- {day:yyyy-MM-dd} · {Line(entry.Title)}{TagField(entry.Tags)}");
-        foreach (var line in Lines(entry.Details))
+        if (BoardEdits.Detail(null, entry.Details) is { } details)
         {
-            text.Append($"\n  - {line}");
+            text.Append('\n').Append(details);
         }
 
         return text.ToString();
@@ -175,9 +175,9 @@ public static partial class BoardEntries
 
     private static void AppendDetail(StringBuilder text, string label, string value)
     {
-        if (Line(value) is { Length: > 0 } line)
+        if (BoardEdits.Detail(label, value) is { } detail)
         {
-            text.Append($"\n  - {label}: {line}");
+            text.Append('\n').Append(detail);
         }
     }
 

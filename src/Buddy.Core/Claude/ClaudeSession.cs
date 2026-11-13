@@ -152,22 +152,24 @@ public sealed class ClaudeSession : IAsyncDisposable
             yield return tool;
         }
 
-        foreach (var tool in claude.DeniedTools())
+        foreach (var tool in Behaviors.DeniedTools(_settings))
         {
             yield return "--disallowedTools";
             yield return tool;
         }
 
-        if (!string.IsNullOrWhiteSpace(claude.PermissionMode) && claude.PermissionMode != "default")
+        var mode = Behaviors.PermissionMode(_settings);
+        if (!string.IsNullOrWhiteSpace(mode) && mode != "default")
         {
             yield return "--permission-mode";
-            yield return claude.PermissionMode.Trim();
+            yield return mode.Trim();
         }
 
-        if (_settings.Assistant.QuickReplies)
+        // Guided mode, preferred behaviours, your notes and the quick replies: one prompt (the flag is taken once).
+        if (Behaviors.SystemPrompt(_settings) is { } systemPrompt)
         {
             yield return "--append-system-prompt";
-            yield return Chat.QuickReplies.Instruction;
+            yield return systemPrompt;
         }
 
         var model = ModelOverride ?? claude.Model;

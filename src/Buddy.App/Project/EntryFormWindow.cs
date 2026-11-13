@@ -38,7 +38,10 @@ public sealed class EntryFormWindow : Window
     private const string NoPriority = "—";
     private readonly TextBox _estimate = new() { Text = "1h", Width = 80, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly TextBox _type = Box("Facoltativo: uno dei tipi della Scheda progetto");
-    private readonly TextBox _context = Box("Link a una nota o una frase");
+    private readonly TextBox _context = Box("Link a una nota o una frase (anche la descrizione, se la incolli)", multiline: true);
+    private readonly Button _assist = new() { Classes = { "small" }, VerticalAlignment = VerticalAlignment.Center, IsVisible = false, Margin = new Thickness(0, 0, 6, 0) };
+    private Dictionary<TextBox, string?>? _beforeAssist;
+    private Buddy.Core.Llm.LocalAi? _localAi;
     private readonly TextBox _where = Box("File e punti di ingresso, se li sai");
     private readonly TextBox _doneWhen = Box("Risultato concreto e verificabile", multiline: true);
     private readonly TextBox _assignedBy = Box("Chi ha assegnato il task");
@@ -171,6 +174,11 @@ public sealed class EntryFormWindow : Window
             buttons.Children.Add(raw);
         }
 
+        _assist.Content = Icons.Label("✨ Sistema");
+        ToolTip.SetTip(_assist, "Il modello locale riordina il testo incollato (righe spezzate, elenchi) e lo divide nei campi");
+        _assist.Click += async (_, _) => await AssistAsync();
+        DockPanel.SetDock(_assist, Dock.Left);
+        buttons.Children.Add(_assist);
         buttons.Children.Add(right);
 
         var root = new DockPanel { Margin = new Thickness(18, 14) };
@@ -196,6 +204,116 @@ public sealed class EntryFormWindow : Window
         {
             Fill(existing);
         }
+    }
+
+    /// <summary>The local model, for "✨ Sistema" (shown only with it, and not for the review form).</summary>
+    public Buddy.Core.Llm.LocalAi? LocalAi
+    {
+        get => _localAi;
+        set
+        {
+            _localAi = value;
+            _assist.IsVisible = value is { Settings.FormAssist: true } && _kind != "controllare";
+        }
+    }
+
+    /// <summary>The fields "✨ Sistema" reads and rewrites, for this form.</summary>
+    private TextBox[] AssistFields => _kind == "appunti" ? [_title, _details] : [_title, _doneWhen, _context, _where];
+
+    /// <summary>
+    /// "✨ Sistema": what is written in the form (often pasted from Jira or a PDF) goes to the local model, which joins
+    /// broken lines and splits it into the fields; "↶ Ripristina" puts the text back as it was.
+    /// </summary>
+    internal async Task AssistAsync()
+    {
+        if (_beforeAssist is { } before)
+        {
+            foreach (var (box, text) in before)
+            {
+                box.Text = text;
+            }
+
+            _beforeAssist = null;
+            _assist.Content = Icons.Label("✨ Sistema");
+            return;
+        }
+
+        if (LocalAi is null)
+        {
+            return;
+        }
+
+        var source = string.Join("\n\n", AssistFields.Where(b => !string.IsNullOrWhiteSpace(b.Text))
+            .Select(b => b == _title ? $"Titolo: {b.Text}" : b.Text!.Trim()));
+        if (source.Length == 0)
+        {
+            ShowError("Incolla o scrivi prima il testo della card.");
+            return;
+        }
+
+        _assist.IsEnabled = false;
+        _assist.Content = Icons.Label("⏳ Sistemo…");
+        _error.IsVisible = false;
+        try
+        {
+            if (await LocalAi.DraftCardAsync(source) is not { } draft)
+            {
+                ShowError("Il modello locale non ha risposto (Ollama è avviato?).");
+                return;
+            }
+
+            _beforeAssist = AssistFields.ToDictionary(b => b, b => b.Text);
+            Put(_title, draft.Title);
+            if (_kind == "appunti")
+            {
+                Put(_details, Join(draft.Details, draft.DoneWhen.Length > 0 ? "Fatto quando:\n" + draft.DoneWhen : "", draft.Context, draft.Where));
+            }
+            else
+            {
+                Put(_doneWhen, draft.DoneWhen);
+                Put(_context, Join(draft.Context, draft.Details));
+                Put(_where, draft.Where);
+                if (draft.Priority.Length > 0 && _priority.ItemsSource is IEnumerable<string> priorities && priorities.Contains(draft.Priority))
+                {
+                    _priority.SelectedItem = draft.Priority;
+                }
+
+                if (draft.Estimate.Length > 0)
+                {
+                    _estimate.Text = draft.Estimate;
+                }
+            }
+
+            foreach (var tag in draft.Tags)
+            {
+                if (_tagButtons.FirstOrDefault(b => string.Equals((string)b.Content!, tag, StringComparison.OrdinalIgnoreCase)) is { } button)
+                {
+                    button.IsChecked = true;
+                }
+            }
+        }
+        finally
+        {
+            _assist.IsEnabled = true;
+            _assist.Content = Icons.Label(_beforeAssist is null ? "✨ Sistema" : "↶ Ripristina");
+        }
+    }
+
+    /// <summary>A field the model left empty keeps what it had; a filled one is replaced.</summary>
+    private static void Put(TextBox box, string text)
+    {
+        if (text.Trim().Length > 0)
+        {
+            box.Text = text.Trim();
+        }
+    }
+
+    private static string Join(params string[] parts) => string.Join("\n\n", parts.Where(p => p.Trim().Length > 0).Select(p => p.Trim()));
+
+    private void ShowError(string text)
+    {
+        _error.Text = text;
+        _error.IsVisible = true;
     }
 
     /// <summary>"📝 Modifica il testo" was chosen: the caller opens the item as markdown instead.</summary>
@@ -255,7 +373,7 @@ public sealed class EntryFormWindow : Window
         Note = Text(_note),
         Estimate = Text(_estimate),
         Type = Text(_type),
-        Context = Text(_context),
+        Context = _context.Text?.Trim() ?? "",
         Where = Text(_where),
         DoneWhen = _doneWhen.Text ?? "",
         AssignedBy = Text(_assignedBy),

@@ -314,6 +314,11 @@ public partial class App : Application
 
         pet.Show();
         _ = _host.Services.GetRequiredService<Buddy.Core.Llm.OllamaClient>().WarmUpAsync();
+
+        // The notes' vectors for the search by meaning, computed in the background (only what changed since last time).
+        var semantic = _host.Services.GetRequiredService<Buddy.Core.Context.SemanticIndex>();
+        semantic.CacheFile = Path.Combine(SettingsStore.Folder, "embeddings.json");
+        _ = Task.Run(() => semantic.WarmUpAsync());
         _host.Services.GetRequiredService<Buddy.Core.Mentor.MentorService>().Start();
     }
 
@@ -391,6 +396,7 @@ public partial class App : Application
             services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
             services.GetRequiredService<PetWindow>().Sprites.Frames(PetState.Idle, ChatMode.Local)[0]);
         _project.Commands = services.GetRequiredService<Conversation>().Commands;
+        _project.LocalAi = services.GetRequiredService<Buddy.Core.Llm.LocalAi>();
         _project.PresetRequested +=async name => await SwitchPresetAsync(name, _project);
         _project.IdeaSource = async (prompt, useClaude, cancellationToken) =>
         {

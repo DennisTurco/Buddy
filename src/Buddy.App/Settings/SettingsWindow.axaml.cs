@@ -77,6 +77,7 @@ public partial class SettingsWindow : Window
         BuildRuleTable();
         BuildDirectoryTable();
         BuildCommandTable(commands ?? []);
+        BuildBehaviorTable();
 
         LoadProjectLists();
         RefreshPresetList();

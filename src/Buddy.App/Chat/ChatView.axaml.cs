@@ -713,6 +713,12 @@ public partial class ChatView : UserControl
             MicButton.Content = Icons.Of("IconWait", size: 15);
             MicButton.IsEnabled = false;
             var text = await Task.Run(() => _settings.Voice.Live ? voice.StopLiveAsync() : voice.StopAndTranscribeAsync());
+
+            // Punctuation, "ehm" and repeated words tidied up by the local model (the original when it can't).
+            if (text.Length > 0 && _conversation.LocalAi is { } localAi && await localAi.CleanDictationAsync(text) is { } cleaned)
+            {
+                text = cleaned;
+            }
             if (_micToNote)
             {
                 Input.Text = _dictationBase;

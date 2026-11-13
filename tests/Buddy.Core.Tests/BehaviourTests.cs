@@ -181,6 +181,7 @@ public class ConversationArchiveTests
         await conversation.SendAsync("/aiuto");
         await conversation.SendAsync("come avvio il TaskExecutor in locale?");
         await conversation.SendAsync("/nuova");
+        Assert.That(conversation.Entries.Where(e => e.Speaker != Speaker.System), Is.Empty, "a new conversation starts with an empty chat");
 
         var saved = conversation.Archive.List();
         Assert.That(saved, Has.Count.EqualTo(1));

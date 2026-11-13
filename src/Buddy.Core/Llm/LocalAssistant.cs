@@ -9,7 +9,8 @@ namespace Buddy.Core.Llm;
 /// Quick answers from the local model, grounded only on the vault excerpt.
 /// Keeps a short rolling history so follow-up questions work.
 /// </summary>
-public sealed class LocalAssistant(OllamaClient ollama, ContextBuilder contextBuilder, IOptions<BuddySettings> options)
+public sealed class LocalAssistant(OllamaClient ollama, ContextBuilder contextBuilder, IOptions<BuddySettings> options,
+    SemanticIndex? semantic = null)
 {
     private const int MaxHistoryMessages = 8;
 
@@ -37,7 +38,9 @@ public sealed class LocalAssistant(OllamaClient ollama, ContextBuilder contextBu
         string? attachment = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        LastContext = contextBuilder.Build(question, currentTaskId, attachment);
+        // Notes about the same thing in other words; only once the index is ready, so an answer never waits for it.
+        var related = semantic is null ? [] : await semantic.SearchAsync(question, max: 3, onlyIfReady: true, cancellationToken);
+        LastContext = contextBuilder.Build(question, currentTaskId, attachment, related);
 
         var messages = new List<LlmMessage>
         {

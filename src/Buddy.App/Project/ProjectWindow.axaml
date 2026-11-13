@@ -374,10 +374,12 @@
                     <TextBox x:Name="QuickNote" PlaceholderText="✍ Scrivi e premi Invio (Ctrl+N)" TextWrapping="Wrap" MaxHeight="120"
                              KeyDown="OnQuickNoteKeyDown" />
                     <TextBlock x:Name="QuickNoteDone" Classes="muted" FontSize="11" Margin="4,0,0,0" IsVisible="False" Text="✓ Aggiunto agli appunti" />
-                    <Grid ColumnDefinitions="*,6,Auto" Margin="0,6,0,0">
+                    <Grid ColumnDefinitions="*,6,*,6,Auto" Margin="0,6,0,0">
                         <Button Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Content="Apri in Obsidian" Click="OnOpenVaultClick" />
-                        <Button Grid.Column="2" Classes="small" Click="OnRefreshClick"
+                                Content="Obsidian" Click="OnOpenVaultClick" ToolTip.Tip="Apri il vault in Obsidian" />
+                        <Button x:Name="OpenVaultFolderButton" Grid.Column="2" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                Content="Cartella" Click="OnOpenVaultFolderClick" ToolTip.Tip="Apri la cartella del vault in Esplora file" />
+                        <Button Grid.Column="4" Classes="small" Click="OnRefreshClick"
                                 ToolTip.Tip="Rileggi le note (si aggiorna anche da sola)">
                             <chat:IconLabel Label="⟳" />
                         </Button>
@@ -990,6 +992,7 @@
                                         <chat:IconLabel Label="🕸 Grafo" />
                                     </Button>
                                     <Button Classes="small" Content="Obsidian" Click="OnOpenSelectedNoteClick" ToolTip.Tip="Apri la nota in Obsidian" />
+                                    <Button Classes="small" Content="Cartella" Click="OnRevealSelectedNoteClick" ToolTip.Tip="Mostra il file della nota in Esplora file" />
                                 </StackPanel>
                                 <TextBlock x:Name="NoteTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </DockPanel>

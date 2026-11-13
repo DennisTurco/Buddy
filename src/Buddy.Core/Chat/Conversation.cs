@@ -17,7 +17,7 @@ namespace Buddy.Core.Chat;
 /// All mutations of <see cref="Entries"/> happen on the synchronization context captured at construction
 /// (the WPF dispatcher), so the UI can bind directly.
 /// </summary>
-public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
+public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposable
 {
     /// <summary>Closes /aiuto, after the list of commands.</summary>
     private const string HelpFooter = """
@@ -52,9 +52,13 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         GitRepo repo,
         IOptions<BuddySettings> options,
         ILogger<Conversation>? logger = null,
-        ClaudeUsage? usage = null)
+        ClaudeUsage? usage = null,
+        LocalAi? localAi = null,
+        Context.SemanticIndex? semantic = null)
     {
         _log = logger ?? NullLogger<Conversation>.Instance;
+        LocalAi = localAi;
+        _semantic = semantic;
         _local = local;
         _auth = auth;
         _commands = commands;
@@ -345,9 +349,16 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     /// <summary>The Claude session of a reopened conversation, resumed by the next message to Claude.</summary>
     private string? _resumeSession;
 
-    private void SaveToArchive() => OnUi(() => Archive?.Save(_conversationId, Entries.ToList(), _claude?.SessionId ?? _resumeSession));
+    private void SaveToArchive() => OnUi(() =>
+    {
+        Archive?.Save(_conversationId, Entries.ToList(), _claude?.SessionId ?? _resumeSession);
+        TitleInBackground();
+    });
 
-    /// <summary>Saves the current conversation and starts an empty one (new Claude session, local history cleared).</summary>
+    /// <summary>
+    /// Saves the current conversation and starts an empty one: the chat is cleared (it stays in 🕘), a new Claude
+    /// session, the local history and any open question of the mentor dropped.
+    /// </summary>
     private async Task StartNewConversationAsync()
     {
         SaveToArchive();
@@ -355,6 +366,12 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         _local.Reset();
         _resumeSession = null;
         _conversationId = ConversationArchive.NewId();
+        OnUi(() =>
+        {
+            _pendingReply = null;
+            Entries.Clear();
+            Notify(nameof(HasPendingReply));
+        });
     }
 
     /// <summary>
@@ -575,6 +592,18 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        // Guided mode turns /lavora into /guidami; the "manual tests" preference adds "test".
+        if (command == "/lavora" && Claude.Behaviors.Rewrite(_options.Value, input) is { } rewritten)
+        {
+            if (_options.Value.GuidedMode)
+            {
+                AddSystem($"🎓 Modalità guida: invece di {input} uso {rewritten}, così il codice lo scrivi tu.");
+            }
+
+            input = rewritten;
+            (command, rest) = SplitCommand(input);
+        }
+
         if (command is not null && Commands.Find(command) is { } registered
             && await RunAsync(registered, new CommandCall(command, rest, input, attachment)))
         {
@@ -593,6 +622,12 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                 await AskLocalAsync(expanded, attachment);
             }
 
+            return;
+        }
+
+        // A plain message: the local model reads it first (an action of the buddy, or a job for Claude).
+        if (command is null && await TryRouteAsync(input, attachment))
+        {
             return;
         }
 
@@ -738,11 +773,12 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         });
 
         Commands.Add(new("/oggi", "le note di oggi (Stato attuale…)"), call => Done(() => Instant(call.Input, _commands.Today())));
-        Commands.Add(new("/cerca", "cerca nel vault", "parole"), call => Done(() => Instant(call.Input, _commands.Search(call.Rest))));
+        Commands.Add(new("/cerca", "cerca nel vault (anche per significato)", "parole"), call => SearchAsync(call));
         Commands.Add(new("/modifiche", "file modificati, raggruppati per area"),
             async call => Instant(call.Input, await _commands.ChangesAsync()));
-        Commands.Add(new("/commit", "bozza del messaggio di commit (Claude)"), call => DraftAsync(call, commit: true));
-        Commands.Add(new("/pr", "bozza di titolo e descrizione della PR (Claude)"), call => DraftAsync(call, commit: false));
+        Commands.Add(new("/commit", "bozza del messaggio di commit (locale se piccolo; claude: con Claude)", "[claude]"), call => DraftAsync(call, commit: true));
+        Commands.Add(new("/pr", "bozza di titolo e descrizione della PR (locale se piccola; claude: con Claude)", "[claude]"), call => DraftAsync(call, commit: false));
+        Commands.Add(new("/suggerisci", "dove spostare gli appunti aperti (proposta del modello locale)"), call => SuggestSortingAsync(call));
         Commands.Add(new("/stop", "interrompe la risposta in corso (anche ■ Ferma)"), _ => StopAsync());
         Commands.Add(new("/nuova", "nuova conversazione; quella attuale resta salvata"), async _ =>
         {
@@ -851,6 +887,12 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
                       + "ricordami in una riga di escluderli.";
         }
 
+        // Small changes: the local model writes the draft (free); "/commit claude" asks Claude anyway.
+        if (await DraftLocallyAsync(call, prompt))
+        {
+            return;
+        }
+
         Mode = ChatMode.Claude;
         await AskClaudeAsync(call.Input, attachment: null, promptOverride: prompt);
     }
@@ -895,6 +937,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     /// <summary>Sends one of the <see cref="TaskActions"/> (e.g. "/lavora NUSR-1") to Claude.</summary>
     public async Task RunTaskActionAsync(string action)
     {
+        action = Claude.Behaviors.Rewrite(_options.Value, action) ?? action;
         TaskActionRun?.Invoke(action);
         if (!_options.Value.Mentor.AsksApproachFor(action))
         {
@@ -1060,6 +1103,7 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
         }
 
         var prompt = promptOverride ?? text;
+        attachment = await CondenseForClaudeAsync(attachment);
         if (attachment is not null)
         {
             prompt += "\n\n" + attachment.ToPromptText(_options.Value.Assistant.MaxAttachmentChars);
@@ -1552,6 +1596,10 @@ public sealed class Conversation : INotifyPropertyChanged, IAsyncDisposable
     public void Greet()
     {
         AddSystem(Phrases.Greeting);
+        if (_options.Value.GuidedMode)
+        {
+            AddSystem("🎓 Modalità guida attiva per questo progetto: Claude ti guida e rivede il tuo codice, ma non lo modifica.");
+        }
 
         // Something to pick up again: offer it right away (the summary itself is built only when asked).
         if (Archive?.List(1).Count > 0)

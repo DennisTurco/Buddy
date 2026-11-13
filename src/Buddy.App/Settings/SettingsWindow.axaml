@@ -255,7 +255,7 @@
                         <TextBlock Classes="hint" TextWrapping="Wrap"
                                    Text="«Consenti»: Claude lo usa senza chiedere. «Nega»: Claude non può usarlo mai, qualunque modalità tu abbia scelto. Una regola spenta resta qui ma non vale. Sintassi di Claude Code: Read, Edit, Bash(git status:*), mcp__nome…" />
                         <WrapPanel Margin="0,6,0,4">
-                            <TextBox x:Name="RuleFilter" Watermark="Filtra…" Width="200" Margin="0,0,8,4" />
+                            <TextBox x:Name="RuleFilter" PlaceholderText="Filtra…" Width="200" Margin="0,0,8,4" />
                             <Button Content="+ Nuova regola" Click="OnAddRuleClick" Margin="0,0,8,4" />
                             <Button Content="Aggiungi le suggerite" Click="OnAddSuggestedRulesClick" Margin="0,0,8,4"
                                     ToolTip.Tip="Strumenti di sola lettura e i blocchi del flusso (niente commit, push, merge o PR da Claude), spenti finché non li accendi" />
@@ -283,6 +283,132 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ============ Comportamenti ============ -->
+            <TabItem Header="Comportamenti">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <Border Classes="panel" Padding="12,10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource UserBubble}" Margin="0,0,0,14">
+                            <StackPanel>
+                                <CheckBox x:Name="GuidedModeCheck" IsChecked="{Binding GuidedMode}" FontWeight="SemiBold" Content="🎓 Modalità guida per questo progetto" />
+                                <TextBlock x:Name="GuidedModeProject" Classes="hint" Margin="28,0,0,0" />
+                                <TextBlock Classes="hint" TextWrapping="Wrap" Margin="28,4,0,0"
+                                           Text="Claude non può modificare il codice (Edit e Write negati sulle cartelle del codice; le note del vault restano scrivibili) e i comandi chiedono sempre il permesso. Ti guida invece: spiega il perché, propone i passi, dà indizi e rivede quello che scrivi. /lavora diventa /guidami." />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Comportamenti preferiti" FontWeight="SemiBold" Margin="0,0,0,2" />
+                        <TextBlock Classes="hint" TextWrapping="Wrap"
+                                   Text="Cosa fa Claude durante il flusso (/lavora e le altre skill). Quelli che cambi rispetto alla skill diventano istruzioni per Claude, e valgono più dei passi della skill." />
+                        <Grid ColumnDefinitions="56,230,*,90" Margin="0,10,0,2">
+                            <TextBlock Text="Attivo" Classes="hint" />
+                            <TextBlock Grid.Column="1" Text="Comportamento" Classes="hint" />
+                            <TextBlock Grid.Column="2" Text="Cosa fa" Classes="hint" />
+                            <TextBlock Grid.Column="3" Text="Nella skill" Classes="hint" />
+                        </Grid>
+                        <StackPanel x:Name="BehaviorRows" Spacing="6" />
+                        <Button Content="Torna a come fanno le skill" Click="OnResetBehaviorsClick" Margin="0,8,0,0" />
+
+                        <TextBlock Text="Altre preferenze per Claude" FontWeight="SemiBold" Margin="0,16,0,2" />
+                        <TextBlock Classes="hint" TextWrapping="Wrap" Text="Una per riga, con parole tue: per esempio «I nomi delle variabili in inglese», «Proponi sempre un test unitario per i bug»." />
+                        <TextBox Classes="multiline" Text="{Binding BehaviorNotes}" Height="90" TextWrapping="Wrap" AcceptsReturn="True" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ AI locale ============ -->
+            <TabItem Header="AI locale">
+                <ScrollViewer Classes="page">
+                    <StackPanel>
+                        <TextBlock Text="Cosa fa il modello locale (Ollama), oltre a rispondere in chat" FontWeight="SemiBold" Margin="0,0,0,2" />
+                        <TextBlock Classes="hint" TextWrapping="Wrap"
+                                   Text="Lavori brevi e precisi, gratis e sul tuo PC. Se Ollama è spento o non risponde, il Buddy fa come prima. Niente viene scritto nelle note senza un tuo click." />
+                        <Grid ColumnDefinitions="56,210,*" Margin="0,10,0,2">
+                            <TextBlock Text="Attiva" Classes="hint" />
+                            <TextBlock Grid.Column="1" Text="Funzione" Classes="hint" />
+                            <TextBlock Grid.Column="2" Text="Cosa fa" Classes="hint" />
+                        </Grid>
+                        <StackPanel x:Name="LocalAiRows" Spacing="6">
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.Router}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="Smista i messaggi" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" TextWrapping="Wrap"
+                                           Text="Legge ogni messaggio: «segnami che…» diventa un appunto (con conferma), «a che punto è X», «cerca…», «cosa c'è oggi» li fa lui; per il codice ti propone Claude con un pulsante." />
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.RouterInClaudeMode}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="…anche parlando con Claude" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" TextWrapping="Wrap"
+                                           Text="Con Claude attivo intercetta solo le richieste di appunto, sempre chiedendo conferma; il resto va a Claude." />
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.FormAssist}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="✨ Sistema nelle card" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" TextWrapping="Wrap"
+                                           Text="Nel form di una card: il testo incollato da Jira o da un PDF viene ricucito (righe spezzate, elenchi) e diviso in titolo, Fatto quando, Contesto, Dove. «↶ Ripristina» lo rimette com'era." />
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.ConversationTitles}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="Titoli delle conversazioni" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" TextWrapping="Wrap" Text="Le conversazioni salvate (🕘) hanno un titolo breve invece della prima domanda." />
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.SortSuggestions}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="/suggerisci" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" TextWrapping="Wrap" Text="Propone dove spostare ogni appunto aperto (To-Do, Da valutare, In attesa, Rifiutare). Non sposta niente." />
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.LocalDrafts}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="/commit e /pr in locale" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock TextWrapping="Wrap" Text="Con modifiche piccole la bozza la scrive il modello locale; «/commit claude» o il pulsante sotto la bozza la chiedono a Claude." />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                        <TextBlock Text="Fino a" VerticalAlignment="Center" Classes="hint" />
+                                        <NumericUpDown Value="{Binding LocalAi.LocalDraftMaxChars}" Minimum="1000" Maximum="60000" Increment="1000" FormatString="0" Width="140" />
+                                        <TextBlock Text="caratteri di diff" VerticalAlignment="Center" Classes="hint" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.CondenseAttachments}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="Riassumi gli allegati lunghi" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock TextWrapping="Wrap" Text="Log e stack trace lunghi vengono riassunti prima di andare a Claude (errori, file e righe restano alla lettera): meno token." />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                        <TextBlock Text="Oltre" VerticalAlignment="Center" Classes="hint" />
+                                        <NumericUpDown Value="{Binding LocalAi.CondenseAboveChars}" Minimum="2000" Maximum="200000" Increment="1000" FormatString="0" Width="140" />
+                                        <TextBlock Text="caratteri" VerticalAlignment="Center" Classes="hint" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.SemanticSearch}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="Ricerca per significato" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" TextWrapping="Wrap" Text="/cerca e le risposte locali trovano anche le note che parlano della stessa cosa con altre parole. Serve un modello di embedding (sotto)." />
+                            </Grid>
+                            <Grid ColumnDefinitions="56,210,*">
+                                <CheckBox IsChecked="{Binding LocalAi.CleanDictation}" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="Ripulisci la dettatura" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" TextWrapping="Wrap" Text="Il testo dettato col 🎤 esce con punteggiatura e senza «ehm» e ripetizioni. Se il modello lo cambia troppo, resta l'originale." />
+                            </Grid>
+                        </StackPanel>
+
+                        <TextBlock Text="Modelli" FontWeight="SemiBold" Margin="0,18,0,2" />
+                        <Grid ColumnDefinitions="210,*" RowDefinitions="Auto,Auto,Auto">
+                            <TextBlock Text="Per questi lavori" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Text="{Binding LocalAi.Model}" PlaceholderText="Vuoto = il modello locale della chat" Margin="0,2" />
+                            <TextBlock Grid.Row="1" Text="Embedding (ricerca)" VerticalAlignment="Center" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding LocalAi.EmbeddingModel}" Margin="0,2" />
+                            <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="hint" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="Un modello da 7B (es. qwen2.5:7b) sbaglia meno di uno da 3B nello smistamento e nel form. Per la ricerca: ollama pull nomic-embed-text." />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Content="Controlla i modelli" Click="OnCheckLocalModelsClick" />
+                            <TextBlock x:Name="LocalModelsResult" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="560" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- ============ Comandi ============ -->
             <TabItem Header="Comandi">
                 <ScrollViewer Classes="page">
@@ -291,7 +417,7 @@
                         <TextBlock Classes="hint" TextWrapping="Wrap"
                                    Text="Un comando spento non viene più suggerito né elencato in /aiuto; se lo scrivi, il Buddy ti dice che è spento. «Modello forte»: con la scelta automatica del modello, quella skill usa Opus." />
                         <WrapPanel Margin="0,6,0,4">
-                            <TextBox x:Name="CommandFilter" Watermark="Filtra…" Width="200" Margin="0,0,8,4" />
+                            <TextBox x:Name="CommandFilter" PlaceholderText="Filtra…" Width="200" Margin="0,0,8,4" />
                             <Button Content="Accendi tutti" Click="OnAllCommandsClick" Tag="on" Margin="0,0,8,4" />
                         </WrapPanel>
                         <Grid ColumnDefinitions="56,190,*,90,100" Margin="0,4,0,2">

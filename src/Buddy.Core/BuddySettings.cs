@@ -24,12 +24,27 @@ public sealed class BuddySettings
     public string AzureProject { get; set; } = "";
 
     /// <summary>
+    /// Guided mode for the current project: Claude may not edit the code (only the notes) and teaches instead,
+    /// /lavora becomes /guidami. Saved with the project.
+    /// </summary>
+    public bool GuidedMode { get; set; }
+
+    /// <summary>The preferred behaviours switched away from the skills' own (key → on), see <see cref="Claude.Behaviors"/>.</summary>
+    public Dictionary<string, bool> Behaviors { get; set; } = [];
+
+    /// <summary>Other preferences for Claude, in your words: added to its instructions as they are.</summary>
+    public string BehaviorNotes { get; set; } = "";
+
+    /// <summary>
     /// Upper bound for the vault text passed to the local model. Keep it well below the model's context window
     /// (Ollama defaults to 4096 tokens and silently drops the overflow); prompt size also drives latency.
     /// </summary>
     public int MaxContextChars { get; set; } = 6_000;
 
     public OllamaSettings Ollama { get; set; } = new();
+
+    /// <summary>The local model's jobs besides the chat (router, card form, titles, drafts, search…).</summary>
+    public LocalAiSettings LocalAi { get; set; } = new();
 
     public ClaudeSettings Claude { get; set; } = new();
 
@@ -208,8 +223,12 @@ public sealed class ProjectPreset
     /// <summary>Azure DevOps project whose work items this project imports (empty: the one of the git remote).</summary>
     public string AzureProject { get; set; } = "";
 
+    /// <summary>Guided mode: Claude teaches and does not edit this project's code.</summary>
+    public bool GuidedMode { get; set; }
+
     public static ProjectPreset From(BuddySettings settings, string name) => new()
     {
+        GuidedMode = settings.GuidedMode,
         JiraProject = settings.JiraProject,
         AzureProject = settings.AzureProject,
         Name = name,
@@ -253,6 +272,7 @@ public sealed class ProjectPreset
         settings.Assistant.TaskActions = [.. TaskActions];
         settings.JiraProject = JiraProject;
         settings.AzureProject = AzureProject;
+        settings.GuidedMode = GuidedMode;
         settings.ActivePreset = Name;
     }
 
@@ -393,6 +413,53 @@ public sealed class AssistantSettings
     public List<string> DisabledCommands { get; set; } = [];
 
     public bool IsDisabled(string command) => DisabledCommands.Contains(command, StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// What the local model (Ollama) does besides answering in the chat: each job can be switched off. They are short,
+/// well-defined tasks with a JSON or plain-text answer, which a small model does well; anything that needs to read
+/// the code stays with Claude.
+/// </summary>
+public sealed class LocalAiSettings
+{
+    /// <summary>Model for these jobs; empty = the chat's local model. A 7B one (qwen2.5:7b) is more reliable than a 3B.</summary>
+    public string Model { get; set; } = "";
+
+    /// <summary>Reads each message first: an action of the buddy, a question for the notes, or a job for Claude.</summary>
+    public bool Router { get; set; } = true;
+
+    /// <summary>In Claude mode too, a message that asks to note something is caught (always with a confirmation).</summary>
+    public bool RouterInClaudeMode { get; set; } = true;
+
+    /// <summary>"✨ Sistema" in the card form: pasted text (Jira, PDF) tidied up and split into the form's fields.</summary>
+    public bool FormAssist { get; set; } = true;
+
+    /// <summary>Saved conversations get a short title written by the local model.</summary>
+    public bool ConversationTitles { get; set; } = true;
+
+    /// <summary>"/suggerisci": where each appunto of To-do Appunti could go, proposed without moving anything.</summary>
+    public bool SortSuggestions { get; set; } = true;
+
+    /// <summary>/commit and /pr drafted by the local model when the changes are small ("/commit claude" to use Claude).</summary>
+    public bool LocalDrafts { get; set; } = true;
+
+    /// <summary>Largest prompt (characters, diff included) drafted locally; bigger ones go to Claude.</summary>
+    public int LocalDraftMaxChars { get; set; } = 8000;
+
+    /// <summary>A long attachment (log, stack trace) is condensed locally before it goes to Claude.</summary>
+    public bool CondenseAttachments { get; set; } = true;
+
+    /// <summary>Attachments longer than this (characters) are condensed.</summary>
+    public int CondenseAboveChars { get; set; } = 8000;
+
+    /// <summary>/cerca and the local answers also find notes by meaning (Ollama embeddings), not only by words.</summary>
+    public bool SemanticSearch { get; set; } = true;
+
+    /// <summary>Embedding model in Ollama (ollama pull nomic-embed-text).</summary>
+    public string EmbeddingModel { get; set; } = "nomic-embed-text";
+
+    /// <summary>Dictation cleaned up (punctuation, "ehm", repetitions) before it lands in the box or the appunti.</summary>
+    public bool CleanDictation { get; set; } = true;
 }
 
 public sealed class OllamaSettings

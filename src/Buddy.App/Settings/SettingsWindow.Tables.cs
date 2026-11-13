@@ -50,8 +50,8 @@ public partial class SettingsWindow
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("56,150,2*,2*,40"), Margin = new Thickness(0, 2) };
         var enabled = new CheckBox { IsChecked = rule.Enabled, VerticalAlignment = VerticalAlignment.Center };
         var kind = new ComboBox { ItemsSource = RuleKinds, SelectedIndex = rule.Allow ? 0 : 1, HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 6, 0) };
-        var tool = new TextBox { Text = rule.Tool, Watermark = "es. Bash(git status:*)", FontFamily = (Avalonia.Media.FontFamily)this.FindResource("MonoFont")!, Margin = new Thickness(0, 0, 6, 0) };
-        var note = new TextBox { Text = rule.Note, Watermark = "a cosa serve", Margin = new Thickness(0, 0, 6, 0) };
+        var tool = new TextBox { Text = rule.Tool, PlaceholderText = "es. Bash(git status:*)", FontFamily = (Avalonia.Media.FontFamily)this.FindResource("MonoFont")!, Margin = new Thickness(0, 0, 6, 0) };
+        var note = new TextBox { Text = rule.Note, PlaceholderText = "a cosa serve", Margin = new Thickness(0, 0, 6, 0) };
         var remove = new Button { Content = new Buddy.App.Chat.IconLabel { Label = "🗑" }, VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(remove, "Togli la regola");
         Grid.SetColumn(kind, 1);
@@ -149,7 +149,7 @@ public partial class SettingsWindow
     private TextBox AddDirectoryRow(string path)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,40"), Margin = new Thickness(0, 2) };
-        var box = new TextBox { Text = path, Watermark = @"C:\percorso\della\cartella", Margin = new Thickness(0, 0, 6, 0) };
+        var box = new TextBox { Text = path, PlaceholderText = @"C:\percorso\della\cartella", Margin = new Thickness(0, 0, 6, 0) };
         var browse = new Button { Content = "Sfoglia…", Margin = new Thickness(0, 0, 6, 0) };
         var remove = new Button { Content = new Buddy.App.Chat.IconLabel { Label = "🗑" } };
         ToolTip.SetTip(remove, "Togli la cartella");
@@ -175,6 +175,66 @@ public partial class SettingsWindow
     }
 
     private void OnAddDirectoryClick(object? sender, RoutedEventArgs e) => AddDirectoryRow("").Focus();
+
+    // ---- Behaviours -------------------------------------------------------------------------------------------
+
+    private readonly List<(Buddy.Core.Claude.Behavior Behavior, CheckBox Check)> _behaviorRows = [];
+
+    private void BuildBehaviorTable()
+    {
+        GuidedModeProject.Text = string.IsNullOrWhiteSpace(_settings.ActivePreset)
+            ? "Vale per il progetto aperto."
+            : $"Vale solo per «{_settings.ActivePreset}»: gli altri progetti hanno la loro.";
+        foreach (var behavior in Buddy.Core.Claude.Behaviors.All)
+        {
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("56,230,*,90") };
+            var check = new CheckBox { IsChecked = Buddy.Core.Claude.Behaviors.IsOn(_settings, behavior), VerticalAlignment = VerticalAlignment.Top };
+            var label = new TextBlock { Text = behavior.Label, FontWeight = Avalonia.Media.FontWeight.SemiBold, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 0, 8, 0) };
+            var description = new TextBlock { Text = behavior.Description, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 0, 8, 0) };
+            var skill = new TextBlock { Text = behavior.SkillDefault ? "sì" : "no", Classes = { "hint" } };
+            Grid.SetColumn(label, 1);
+            Grid.SetColumn(description, 2);
+            Grid.SetColumn(skill, 3);
+            grid.Children.AddRange([check, label, description, skill]);
+            _behaviorRows.Add((behavior, check));
+            BehaviorRows.Children.Add(grid);
+        }
+    }
+
+    private void OnResetBehaviorsClick(object? sender, RoutedEventArgs e)
+    {
+        foreach (var (behavior, check) in _behaviorRows)
+        {
+            check.IsChecked = behavior.SkillDefault;
+        }
+    }
+
+    /// <summary>Only the behaviours switched away from the skills' are kept: the rest follows the skills.</summary>
+    private void CollectBehaviors() =>
+        _settings.Behaviors = _behaviorRows
+            .Where(r => (r.Check.IsChecked == true) != r.Behavior.SkillDefault)
+            .ToDictionary(r => r.Behavior.Key, r => r.Check.IsChecked == true);
+
+    // ---- Local AI ---------------------------------------------------------------------------------------------
+
+    /// <summary>"Controlla i modelli": whether the chat, jobs and embedding models are installed in Ollama.</summary>
+    private async void OnCheckLocalModelsClick(object? sender, RoutedEventArgs e)
+    {
+        LocalModelsResult.Text = "Controllo…";
+        var installed = await _ollama.ListModelsAsync(_settings.Ollama.BaseUrl);
+        if (installed.Count == 0)
+        {
+            LocalModelsResult.Text = $"✗ Ollama non risponde su {_settings.Ollama.BaseUrl}: è avviato?";
+            return;
+        }
+
+        bool Has(string model) => installed.Any(m => m.Equals(model, StringComparison.OrdinalIgnoreCase)
+                                                     || (!model.Contains(':') && m.StartsWith(model + ":", StringComparison.OrdinalIgnoreCase)));
+        var jobs = string.IsNullOrWhiteSpace(_settings.LocalAi.Model) ? _settings.Ollama.Model : _settings.LocalAi.Model;
+        var lines = new[] { ("Chat", _settings.Ollama.Model), ("Lavori", jobs), ("Embedding", _settings.LocalAi.EmbeddingModel) }
+            .Select(m => Has(m.Item2) ? $"✓ {m.Item1}: {m.Item2}" : $"✗ {m.Item1}: {m.Item2} non installato (ollama pull {m.Item2})");
+        LocalModelsResult.Text = string.Join("   ", lines);
+    }
 
     // ---- Commands ---------------------------------------------------------------------------------------------
 
@@ -255,6 +315,7 @@ public partial class SettingsWindow
 
     internal void CollectTables()
     {
+        CollectBehaviors();
         _settings.Claude.ToolRules = CollectRules();
         _settings.Claude.AutoAllowTools = []; // now in the table
         _settings.Claude.AdditionalDirectories = _directories.Select(d => d.Text?.Trim() ?? "").Where(d => d.Length > 0)

@@ -55,7 +55,7 @@ public class BoardEntriesTests
     public void An_item_to_review_has_what_changed_and_how_to_test()
     {
         var text = BoardEntries.ToReview(new NewEntry { Title = "Fix login", Changed = "riga\nseconda", HowToTest = "1. apri", Commit = "fix: login" }, "T-003");
-        Assert.That(text, Is.EqualTo("- [ ] T-003 · Fix login\n  - Cambiato: riga seconda\n  - Come testare: 1. apri\n  - Commit: `fix: login`"));
+        Assert.That(text, Is.EqualTo("- [ ] T-003 · Fix login\n  - Cambiato:\n    riga\n    seconda\n  - Come testare: 1. apri\n  - Commit: `fix: login`"));
     }
 
     [Test]

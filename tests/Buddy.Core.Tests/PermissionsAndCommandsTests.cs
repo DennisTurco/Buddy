@@ -79,3 +79,26 @@ public class PermissionsAndCommandsTests
         Assert.That(new ClaudeSettings { HeavyCommands = [ClaudeSettings.NoHeavyCommand] }.EffectiveHeavyCommands(), Does.Not.Contain("/lavora"));
     }
 }
+
+public class DetailLinesTests
+{
+    [Test]
+    public void A_new_line_goes_on_the_text_above_and_only_list_items_become_points()
+    {
+        Assert.That(Buddy.Core.Vault.BoardEdits.Detail("Fatto quando", "Quando un cliente contatta\ntramite mail\n- il campo c'è\n1. passo"),
+            Is.EqualTo("  - Fatto quando:\n    Quando un cliente contatta\n    tramite mail\n    - il campo c'è\n    1. passo"));
+        Assert.That(Buddy.Core.Vault.BoardEdits.Detail("Dove", "una riga"), Is.EqualTo("  - Dove: una riga"));
+        Assert.That(Buddy.Core.Vault.BoardEdits.Detail(null, "prima\nseconda"), Is.EqualTo("  - prima\n    seconda"));
+        Assert.That(Buddy.Core.Vault.BoardEdits.Detail(null, "uno\n\ndue\ncontinua"), Is.EqualTo("  - uno\n  - due\n    continua"));
+        Assert.That(Buddy.Core.Vault.BoardEdits.Detail("Fatto quando", "uno\n\ndue"), Is.EqualTo("  - Fatto quando:\n    - uno\n    - due"));
+        Assert.That(Buddy.Core.Vault.BoardEdits.Detail("Dove", " \n "), Is.Null);
+    }
+
+    [Test]
+    public void The_card_shows_the_nested_lines_as_written()
+    {
+        var raw = "- [ ] T-1 · Titolo\n  - Contesto: x\n  - Fatto quando:\n    Quando un cliente\n    tramite mail\n    - punto";
+        Assert.That(Buddy.Core.Vault.ProjectBoard.NestedText(raw),
+            Is.EqualTo("- Contesto: x\n- Fatto quando:\n  Quando un cliente\n  tramite mail\n  - punto"));
+    }
+}

@@ -80,9 +80,9 @@ public static partial class BoardEdits
             }
             else
             {
-                foreach (var line in BoardEntries.Lines(after.Details))
+                if (Detail(null, after.Details) is { } details)
                 {
-                    text.Append("\n  - ").Append(line);
+                    text.Append('\n').Append(details);
                 }
             }
 
@@ -298,16 +298,53 @@ public static partial class BoardEdits
         _ => "",
     };
 
-    /// <summary>"  - Label: value", or with several lines "  - Label:" and the lines nested under it; null when empty.</summary>
-    private static string? Detail(string label, string value)
+    /// <summary>
+    /// A form field as nested lines, null when empty. As in markdown, a new line goes on the text above (indented, no
+    /// bullet) and a blank line starts a new point; a line written as a list item ("- …", "1. …") stays one.
+    /// With a label: "  - Label: value", or "  - Label:" with the text under it (one point per paragraph when there
+    /// are several). Without one (an appunto's details): one "  - " point per paragraph.
+    /// </summary>
+    internal static string? Detail(string? label, string value)
     {
-        var lines = BoardEntries.Lines(value).ToList();
-        return lines.Count switch
+        var paragraphs = Paragraphs(value);
+        if (paragraphs.Count == 0)
         {
-            0 => null,
-            1 => $"  - {label}: {lines[0]}",
-            _ => $"  - {label}:" + string.Concat(lines.Select(l => "\n    " + (ListMark().IsMatch(l) ? l : "- " + l))),
-        };
+            return null;
+        }
+
+        if (label is not null && paragraphs is [[var only]])
+        {
+            return $"  - {label}: {only}";
+        }
+
+        if (label is not null && paragraphs is [var single])
+        {
+            return $"  - {label}:" + string.Concat(single.Select(l => "\n    " + l));
+        }
+
+        var (head, indent) = label is null ? ("", "  ") : ($"  - {label}:", "    ");
+        var points = paragraphs.Select(p =>
+            "\n" + indent + (ListMark().IsMatch(p[0]) ? p[0] : "- " + p[0]) + string.Concat(p.Skip(1).Select(l => "\n" + indent + "  " + l)));
+        return (head + string.Concat(points)).TrimStart('\n');
+    }
+
+    /// <summary>The text's lines, trimmed, grouped by blank lines.</summary>
+    private static List<List<string>> Paragraphs(string value)
+    {
+        var paragraphs = new List<List<string>> { new() };
+        foreach (var line in value.Replace("\r\n", "\n").Split('\n').Select(l => l.Trim()))
+        {
+            if (line.Length > 0)
+            {
+                paragraphs[^1].Add(line);
+            }
+            else if (paragraphs[^1].Count > 0)
+            {
+                paragraphs.Add([]);
+            }
+        }
+
+        return paragraphs.Where(p => p.Count > 0).ToList();
     }
 
     private static string Normalize(string text) => string.Join('\n', BoardEntries.Lines(text));
@@ -341,7 +378,8 @@ public static partial class BoardEdits
             var labelMatch = LabelLine().Match(head);
             var label = labelMatch.Success ? labelMatch.Groups["label"].Value.Trim() : null;
             var first = labelMatch.Success ? labelMatch.Groups["value"].Value.Trim() : head;
-            var rest = block.Skip(1).Select(l => Unbullet(l.Trim()));
+            // As written: a list item keeps its mark, a plain line is a continuation of the text above.
+            var rest = block.Skip(1).Select(l => l.Trim());
             var value = string.Join('\n', new[] { first }.Concat(rest).Where(l => l.Length > 0));
             return new DetailBlock(label, value, string.Join('\n', new[] { head }.Concat(rest).Where(l => l.Length > 0)), string.Join('\n', block));
         }).ToList();

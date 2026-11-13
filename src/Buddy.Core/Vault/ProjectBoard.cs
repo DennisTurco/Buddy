@@ -235,6 +235,23 @@ public sealed partial record ProjectBoard(
             Done: mark is "x" or "X", Rejected: mark == "-", waiting, due, dueLabel, rework, block.Text, fields, inProgress);
     }
 
+    /// <summary>
+    /// The lines under an item's first line, moved left by their common indent: markdown of their own, where "- a"
+    /// is a point and an indented line without a bullet goes on the text above.
+    /// </summary>
+    public static string NestedText(string raw)
+    {
+        var lines = raw.Replace("\r\n", "\n").Split('\n').Skip(1).Where(l => l.Trim().Length > 0).ToList();
+        if (lines.Count == 0)
+        {
+            return "";
+        }
+
+        lines = lines.Select(l => l.Replace("\t", "    ")).ToList();
+        var indent = lines.Min(l => l.TakeWhile(c => c == ' ').Count());
+        return string.Join('\n', lines.Select(l => l[indent..]));
+    }
+
     [GeneratedRegex(@"^[-*] (?:\[(?<mark>[ xX-])\] )?(?<text>.+)$")]
     private static partial Regex ItemLineRegex();
 
