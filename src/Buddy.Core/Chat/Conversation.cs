@@ -802,6 +802,8 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
         });
         Commands.Add(new("/appunto", "aggiunge una riga a To-do Appunti (anche Shift+🎤)", "testo"),
             call => Done(() => Instant(call.Input, _commands.AddQuickNote(call.Rest))));
+        Commands.Add(new("/sentita", "segna che oggi hai sentito una persona (pagina Persone)", "nome"),
+            call => Done(() => Instant(call.Input, _commands.MarkContacted(call.Rest, DateOnly.FromDateTime(DateTime.Today)))));
         Commands.Add(new("/modelli", "i tuoi modelli di richiesta", "[nome = testo]"),
             call => Done(() => TemplatesCommand(call.Input, call.Rest)));
         Commands.Add(new("/log", "ultimi avvisi ed errori del Buddy (tutto: ultime righe)", "[tutto]"),

@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Buddy.App.Chat;
@@ -37,6 +38,8 @@ public partial class ProjectWindow : Window
         ("costs", "💳  Costi", "Costi di Claude"),
         ("decisions", "⚖  Decisioni", "Decisioni"),
         ("glossary", "📖  Glossario", "Glossario"),
+        ("people", "👥  Persone", "Persone"),
+        ("episodes", "📓  Episodi", "Episodi"),
         ("prs", "🔀  PR", "Pull request aperte"),
     ];
 
@@ -144,6 +147,14 @@ public partial class ProjectWindow : Window
         PageFindBox.TextChanged += (_, _) => UpdatePageFind();
         PageFindBox.AddHandler(KeyDownEvent, OnPageFindKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         NoteEditor.AddHandler(KeyDownEvent, OnNoteEditorKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        // Images pasted (Ctrl+V) or dropped into the note and card editors are saved in Allegati and embedded.
+        CardEditor.AddHandler(KeyDownEvent, OnCardEditorPasteKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        foreach (var editor in new[] { NoteEditor, CardEditor })
+        {
+            DragDrop.SetAllowDrop(editor, true);
+            editor.AddHandler(DragDrop.DragOverEvent, OnEditorDragOver, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            editor.AddHandler(DragDrop.DropEvent, OnEditorDrop, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        }
         _notePreview = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _notePreview.Tick += (_, _) =>
         {
@@ -176,7 +187,12 @@ public partial class ProjectWindow : Window
                 };
             }
         };
-        NotesList.SelectionChanged += (_, _) => ShowNote(NotesList.SelectedItem as NoteView);
+        NotesList.SelectionChanged += (_, _) =>
+        {
+            OnNoteShown((NotesList.SelectedItem as NoteView)?.Note.RelativePath);
+            ShowNote(NotesList.SelectedItem as NoteView);
+        };
+        SetUpHistory();
         ManualDocsList.SelectionChanged += (_, _) =>
         {
             if (!_refillingManualDocs)
@@ -257,8 +273,8 @@ public partial class ProjectWindow : Window
             return;
         }
 
-        NotesList.SelectedItem = _notes.FirstOrDefault(n => n.Note.RelativePath == selectedNote)
-                                 ?? (NotesList.ItemsSource as IEnumerable<NoteView>)?.FirstOrDefault();
+        SelectNoteQuietly(_notes.FirstOrDefault(n => n.Note.RelativePath == selectedNote)
+                          ?? (NotesList.ItemsSource as IEnumerable<NoteView>)?.FirstOrDefault());
     }
 
     internal void ShowView(string key)
@@ -269,6 +285,7 @@ public partial class ProjectWindow : Window
             return;
         }
 
+        RememberBeforeView(key);
         _lastRealView = key;
         _view = key;
         GenericView.IsVisible = IsGeneric(key);
@@ -342,7 +359,7 @@ public partial class ProjectWindow : Window
             var cards = column.Items.Where(i => i.Matches(filter))
                 .Where(i => _tagFilter is null || !Flow.Active.Contains(key) || i.TagList.Contains(_tagFilter, StringComparer.OrdinalIgnoreCase))
                 .Select(i => new CardView(i, column, today, PullRequestOf(i),
-                    i.Id is { } id && manualByTask.TryGetValue(id, out var manual) ? manual : null));
+                    i.Id is { } id && manualByTask.TryGetValue(id, out var manual) ? manual : null) { Root = _settings.ProjectPath });
             return key switch
             {
                 "todo" or "corso" => cards.OrderBy(c => c.Priority).ThenBy(c => c.Item.Date ?? DateOnly.MaxValue).ToList(),
@@ -1773,7 +1790,7 @@ public partial class ProjectWindow : Window
 
         Filter.Text = "";
         ShowView("notes");
-        NotesList.SelectedItem = note;
+        SelectNoteQuietly(note);
         NotesList.ScrollIntoView(note);
         return true;
     }
@@ -1898,6 +1915,13 @@ public partial class ProjectWindow : Window
             return;
         }
 
+        if (e.Key == Key.V && !e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            e.Handled = true; // decided once the clipboard is read: text is then pasted by hand
+            _ = PasteImageAsync(NoteEditor);
+            return;
+        }
+
         var command = e.Key switch
         {
             Key.B => "bold",
@@ -1911,6 +1935,131 @@ public partial class ProjectWindow : Window
             e.Handled = true;
             ApplyFormat(command);
         }
+    }
+
+    /// <summary>Ctrl+V in the card editor: images as in the note editor (<see cref="PasteImageAsync"/>).</summary>
+    private void OnCardEditorPasteKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.V && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            _ = PasteImageAsync(CardEditor);
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+V in the note or card editor: an image (a screenshot) or image files on the clipboard are saved in the
+    /// project's Allegati folder and embedded at the cursor as ![[…]]; anything else is a normal paste.
+    /// </summary>
+    private async Task PasteImageAsync(TextBox editor)
+    {
+        var root = ImageRoot(editor);
+        try
+        {
+            if ((TopLevel.GetTopLevel(editor)?.Clipboard ?? Clipboard) is { } clipboard)
+            {
+                if (await clipboard.TryGetFilesAsync() is { Length: > 0 } files
+                    && files.Select(f => Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(f)).OfType<string>().Where(NoteImages.IsImage).ToList() is { Count: > 0 } images)
+                {
+                    InsertImages(editor, images.Select(i => NoteImages.AddFile(root, i)));
+                    return;
+                }
+
+                if (await clipboard.TryGetBitmapAsync() is { } bitmap)
+                {
+                    using var stream = new MemoryStream();
+                    bitmap.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                    InsertImages(editor, [NoteImages.SavePasted(root, stream.ToArray(), DateTime.Now)]);
+                    return;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, $"Non riesco a salvare l'immagine: {ex.Message}");
+            return;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            // Clipboard busy or unreadable: fall back to a normal paste.
+        }
+
+        editor.Paste();
+    }
+
+    private static List<string> DroppedImages(DragEventArgs e) =>
+        Buddy.App.Input.AttachmentReader.DroppedFiles(e.DataTransfer).Where(NoteImages.IsImage).ToList();
+
+    private void OnEditorDragOver(object? sender, DragEventArgs e)
+    {
+        if (DroppedImages(e).Count > 0)
+        {
+            e.DragEffects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Image files dropped on the note or card editor: copied into Allegati (when outside the project) and embedded.</summary>
+    private async void OnEditorDrop(object? sender, DragEventArgs e)
+    {
+        var images = DroppedImages(e);
+        if (images.Count == 0 || sender is not TextBox editor)
+        {
+            return; // text and other files: the editor's own drop
+        }
+
+        e.Handled = true;
+        try
+        {
+            InsertImages(editor, images.Select(i => NoteImages.AddFile(ImageRoot(editor), i)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, $"Non riesco a copiare l'immagine: {ex.Message}");
+        }
+    }
+
+    /// <summary>Where a text box's images go (its Allegati folder): the project, unless <see cref="EnableImages"/> said otherwise.</summary>
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBox, string> _imageRoots = new();
+
+    private string ImageRoot(TextBox editor) => _imageRoots.TryGetValue(editor, out var root) ? root : _settings.ProjectPath;
+
+    /// <summary>
+    /// Ctrl+V and drop of images in any text box (e.g. a field of a form): saved in <paramref name="root"/>/Allegati and
+    /// embedded as ![[…]], like in the note editor.
+    /// </summary>
+    internal void EnableImages(TextBox box, string root)
+    {
+        _imageRoots.AddOrUpdate(box, root);
+        box.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key == Key.V && e.KeyModifiers == KeyModifiers.Control)
+            {
+                e.Handled = true;
+                _ = PasteImageAsync(box);
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        DragDrop.SetAllowDrop(box, true);
+        box.AddHandler(DragDrop.DragOverEvent, OnEditorDragOver, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        box.AddHandler(DragDrop.DropEvent, OnEditorDrop, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+    }
+
+    /// <summary>
+    /// Puts the embeds in place of the selection. In a note each goes on its own line; in a card (a list item) they stay
+    /// on the line, with spaces around, so the item keeps its indentation and is not split.
+    /// </summary>
+    private static void InsertImages(TextBox editor, IEnumerable<string> embeds)
+    {
+        var text = editor.Text ?? "";
+        var start = Math.Min(editor.SelectionStart, editor.SelectionEnd);
+        var end = Math.Max(editor.SelectionStart, editor.SelectionEnd);
+        var separator = editor.Name == "CardEditor" ? ' ' : '\n';
+        var before = start > 0 && !char.IsWhiteSpace(text[start - 1]) ? separator.ToString() : "";
+        var after = end < text.Length && !char.IsWhiteSpace(text[end]) ? separator.ToString() : "";
+        var insert = before + string.Join(separator, embeds) + after;
+        editor.Text = text[..start] + insert + text[end..];
+        editor.SelectionStart = editor.SelectionEnd = start + insert.Length;
+        editor.Focus();
     }
 
     private void OnNotePreviewToggled(object? sender, RoutedEventArgs e)
@@ -2075,7 +2224,7 @@ public partial class ProjectWindow : Window
         var checklists = TestNotes.ManualTests(_vault, _settings.TaskIdPattern);
         // The rest of the Obsidian vault is read once per window: links resolved there are not broken.
         _elsewhere ??= VaultHealth.TitlesElsewhere(_settings.ProjectPath);
-        var all = VaultHealth.Check(_board, _graph, checklists, today, int.MaxValue, _elsewhere);
+        var all = VaultHealth.Check(_board, _graph, checklists, today, int.MaxValue, _elsewhere, _settings.ProjectPath);
         HealthPanel.IsVisible = true;
         HealthList.ItemsSource = all.Take(8).ToList();
         HealthOk.IsVisible = all.Count == 0;
@@ -2260,8 +2409,16 @@ public partial class ProjectWindow : Window
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         var ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        var alt = e.KeyModifiers == KeyModifiers.Alt;
         switch (e.Key)
         {
+            // Alt+← / Alt+→: back and forward between pages, like the mouse's side buttons.
+            case Key.Left when alt:
+                e.Handled = GoBack();
+                break;
+            case Key.Right when alt:
+                e.Handled = GoForward();
+                break;
             case Key.K when ctrl:
                 OpenPalette();
                 break;

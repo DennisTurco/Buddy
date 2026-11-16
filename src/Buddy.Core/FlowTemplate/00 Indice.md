@@ -22,6 +22,7 @@ Punto di partenza per Claude: **da qui si apre solo quello che serve**. Ogni not
 - [[Intelligenza Artificiale/Template flusso/Test web]] — configurazione e script dei test web. Solo per `verifica-web`.
 - [[Intelligenza Artificiale/Template flusso/Mappa codice]] — dove si tocca il codice, per area o tipo. Cercare la sezione per titolo, non leggere tutto.
 - [[Intelligenza Artificiale/Template flusso/Glossario]] — termini del progetto. Se un termine manca, chiedere invece di indovinare.
+- [[Intelligenza Artificiale/Template flusso/Persone]] — chi fa cosa nel progetto e quando sentirlo. Per sapere con chi parlare di un argomento.
 
 > [!warning] Credenziali
 > Mai password, chiavi o token nel vault: solo il riferimento indicato nella [[Intelligenza Artificiale/Template flusso/Scheda progetto]] (es. `🔑 KeePass: Gruppo/Voce`).

@@ -54,7 +54,9 @@ public static class MentorPrompts
         - Diario/AAAA-MM-GG.md — una nota per giorno, con sezioni "## Check-in", "## Check-out", "## Riflessioni", "## Approcci",
           "## Ripassi", "## Chiacchiere".
         - Profilo.md — sezioni "## Obiettivi", "## Sto leggendo", "## Sto imparando", "## Interessi", "## Punti di forza",
-          "## Da migliorare", "## Profilo personale".
+          "## Da migliorare", "## Profilo personale", "## Come comunico".
+        - Episodi.md — episodi successi al lavoro con i colleghi (fatti, reazione, esito, "Su di me"): li scrive il buddy,
+          tu li leggi soltanto. Privati: mai citarli fuori da questa cartella.
           Aggiorna le sezioni con informazioni nuove, senza duplicare e senza cancellare la storia (segna la data).
         - Pillole.md — registro delle pillole date, una riga ciascuna: "- AAAA-MM-GG · argomento · titolo — ripassi: "
           seguita dagli esiti dei ripassi ("AAAA-MM-GG ✓", "AAAA-MM-GG ~", "AAAA-MM-GG ✗", separati da virgola).
@@ -199,6 +201,11 @@ public static class MentorPrompts
            codice o ai task aperti, che lo faccia esercitare invece di delegare: per esempio "scrivi tu il test per X
            prima di chiederlo a Claude", "fai la review del tuo diff prima della PR con questa checklist", "spiega a un
            collega come funziona Y". Scrivila nella retro sotto "## Sfida", con come capire se è riuscita.
+        4) Come comunico. Se Episodi.md ha episodi di questa settimana, rileggili (anche le righe "Su di me") insieme alla
+           sezione "## Come comunico" di Profilo.md e aggiornala: i modi ricorrenti di comunicare e di reagire (sotto
+           pressione, nei disaccordi, con chi è diretto o con chi è vago), cosa funziona, UN punto su cui lavorare e cosa sta
+           migliorando, con la data. Solo comportamenti osservati negli episodi: niente diagnosi, tipi di personalità o
+           etichette psicologiche. Nella retro aggiungi una riga "## Comunicazione" con il punto su cui lavorare.
         Poi rispondi solo con un riepilogo breve (max 6 righe, con una riga sull'andamento e una sulla sfida della
         settimana scorsa, se c'era), la nuova sfida in grassetto e una domanda per scegliere l'obiettivo della prossima
         settimana.

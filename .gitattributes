@@ -1,0 +1,12 @@
+# One line ending everywhere: tests compare multi-line strings and the flow template's markdown, which must not
+# depend on how git checked the files out (core.autocrlf).
+* text=auto eol=lf
+
+# Windows scripts need CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.png binary
+*.ico binary
+*.jpg binary
+*.gif binary

@@ -67,6 +67,122 @@ public class MentorBehaviourTests
             new IdleActivity(), clock, options, statePath: Path.Combine(_root, "mentor-state.json"));
     }
 
+    [Test]
+    public void The_check_out_asks_how_it_went_only_with_people_whose_relationship_needs_care()
+    {
+        var settings = Settings(quietMinutes: 0);
+        Directory.CreateDirectory(settings.ProjectPath);
+        File.WriteAllText(Path.Combine(settings.ProjectPath, "Persone.md"), "# Persone\n\n"
+            + "## Chiara Bianchi\n\n- **Soprannome:** Chicca\n- **Rapporto:** delicato\n- **Sentita:** 2026-11-02\n\n"
+            + "## Marco Verdi\n\n- **Rapporto:** buono\n- **Sentita:** 2026-11-02\n\n"
+            + "## Gino Neri\n\n- **Rapporto:** da costruire\n- **Sentita:** 2026-10-20\n\n"
+            + "## Piero Gialli\n\n- **Rapporto:** critico\n- **Sentita:** 2026-11-02\n");
+        var mentor = Mentor(ModelCommandTests.Create(settings), settings, new StoppedClock(LateMonday));
+
+        var (heard, question) = mentor.PeopleHeardToday(new DateOnly(2026, 11, 2));
+
+        Assert.That(heard, Is.EqualTo(new[] { "Chicca", "Marco Verdi", "Piero Gialli" }));
+        Assert.That(question, Does.Contain("**Chiara Bianchi (Chicca)** e **Piero Gialli**").And.Contain("«delicato», «critico»").And.Contain("com'è andata"));
+        Assert.That(question, Does.Not.Contain("Marco").And.Not.Contain("Gino"), "a good relationship, or someone not heard today, is not asked about");
+
+        var (_, none) = mentor.PeopleHeardToday(new DateOnly(2026, 11, 3));
+        Assert.That(none, Is.Empty);
+    }
+
+    [Test]
+    public async Task An_episode_told_in_the_chat_is_saved_in_the_journal_even_when_claude_cannot_analyse_it()
+    {
+        var settings = Settings(quietMinutes: 0);
+        settings.Mentor.JournalPath = Path.Combine(_root, "diario");
+        settings.Claude.Executable = Path.Combine(_root, "nessun-claude.exe"); // fails at once: no analysis
+        Directory.CreateDirectory(settings.ProjectPath);
+        Directory.CreateDirectory(settings.Mentor.JournalPath);
+        File.WriteAllText(Path.Combine(settings.ProjectPath, "Persone.md"), "# Persone\n\n## Chiara Bianchi\n\n- **Soprannome:** Chicca\n");
+        var conversation = ModelCommandTests.Create(settings);
+        var mentor = Mentor(conversation, settings, new StoppedClock(LateMonday));
+
+        await conversation.SendAsync("/episodio con Chicca riunione tesa sul rilascio, ho alzato la voce");
+
+        var episode = Episodes.Read(Path.Combine(settings.Mentor.JournalPath, "Episodi.md")).Single();
+        Assert.That(episode.People, Is.EqualTo(new[] { "Chiara Bianchi" }), "named by nickname in the text");
+        Assert.That(episode.Facts, Does.Contain("ho alzato la voce"));
+        Assert.That(conversation.Entries.Concat(conversation.SideEntries).Last(e => e.Speaker == Speaker.Mentor).Text,
+            Does.Contain("non sono riuscito ad analizzarlo").And.Contain("/episodio-analizza 2026-11-02 · "));
+        GC.KeepAlive(mentor);
+    }
+
+    [Test]
+    public async Task People_named_in_an_episode_or_on_a_card_are_added_to_Persone_when_missing()
+    {
+        var settings = Settings(quietMinutes: 0);
+        settings.Mentor.JournalPath = Path.Combine(_root, "diario");
+        settings.Claude.Executable = Path.Combine(_root, "nessun-claude.exe");
+        Directory.CreateDirectory(settings.ProjectPath);
+        Directory.CreateDirectory(settings.Mentor.JournalPath);
+        var people = Path.Combine(settings.ProjectPath, "Persone.md");
+        File.WriteAllText(people, "# Persone\n\n## Chiara Bianchi\n\n- **Soprannome:** Chicca\n");
+        File.WriteAllText(Path.Combine(settings.ProjectPath, "To-Do.md"), "# To-Do\n\n## Task\n\n- [ ] T-1 · ⏸ Permessi [chi:: Gino Neri]\n- [ ] T-2 · Altro [chi:: Chicca]\n");
+        var conversation = ModelCommandTests.Create(settings);
+        using var vault = new VaultIndex(Options.Create(settings));
+        var mentor = new MentorService(conversation, new ClaudeOneShot(Options.Create(settings)), vault, new GitRepo(Options.Create(settings), TimeProvider.System),
+            new IdleActivity(), new StoppedClock(LateMonday), Options.Create(settings), statePath: Path.Combine(_root, "mentor-state.json"));
+
+        mentor.AddPeopleFromCards();
+        Assert.That(File.ReadAllText(people), Does.Contain("## Gino Neri\n\n- **Note:** aggiunta in automatico dal task T-1 (2026-11-02): da completare"));
+        Assert.That(People.Parse(File.ReadAllText(people)), Has.Count.EqualTo(2), "Chicca already has a card");
+        mentor.AddPeopleFromCards();
+        Assert.That(People.Parse(File.ReadAllText(people)), Has.Count.EqualTo(2), "only once");
+
+        // An episode: the people written in it are added before the analysis (here Claude is not there).
+        await mentor.RecordEpisodeAsync(new Episode(new DateOnly(2026, 11, 2), "Riunione", ["Laura Rossi", "Chicca"], "Laura ha chiesto una demo", "", "", "", []));
+        Assert.That(People.Parse(File.ReadAllText(people)).Select(p => p.Name), Is.EqualTo(new[] { "Chiara Bianchi", "Gino Neri", "Laura Rossi" }));
+        Assert.That(File.ReadAllText(people), Does.Contain("dall'episodio «Riunione»"));
+        Assert.That(conversation.Entries.Concat(conversation.SideEntries).Last(e => e.Speaker == Speaker.Mentor).Text, Does.Contain("Aggiunta a Persone**: Laura Rossi"));
+    }
+
+    [Test]
+    public async Task Sentita_brings_back_what_to_remember_and_prepara_falls_back_to_it_without_claude()
+    {
+        var settings = Settings(quietMinutes: 0);
+        settings.Mentor.JournalPath = Path.Combine(_root, "diario");
+        settings.Claude.Executable = Path.Combine(_root, "nessun-claude.exe");
+        Directory.CreateDirectory(settings.ProjectPath);
+        Directory.CreateDirectory(settings.Mentor.JournalPath);
+        File.WriteAllText(Path.Combine(settings.ProjectPath, "Persone.md"), "# Persone\n\n## Chiara Bianchi\n\n- **Soprannome:** Chicca\n");
+        Episodes.Add(Path.Combine(settings.Mentor.JournalPath, "Episodi.md"),
+            new Episode(new DateOnly(2026, 10, 30), "Rilascio", ["Chiara Bianchi"], "Tesa", "", "", "", [], Lesson: "mandarle i dati prima"));
+        var conversation = ModelCommandTests.Create(settings);
+        var mentor = Mentor(conversation, settings, new StoppedClock(LateMonday));
+        string LastText() => conversation.Entries.Concat(conversation.SideEntries).Last(e => e.Speaker != Speaker.User).Text;
+
+        await conversation.SendAsync("/sentita Chicca");
+        Assert.That(LastText(), Does.Contain("ti eri ripromesso: _mandarle i dati prima_"));
+
+        await conversation.SendAsync("/prepara Chicca rilascio");
+        Assert.That(LastText(), Does.Contain("Non riesco a preparare").And.Contain("💡 l'ultima volta con Chicca"));
+
+        await conversation.SendAsync("/prepara Gino");
+        Assert.That(LastText(), Does.Contain("Con chi?"));
+        GC.KeepAlive(mentor);
+    }
+
+    [Test]
+    public async Task The_scheda_command_changes_a_card_from_the_buttons_of_the_analysis()
+    {
+        var settings = Settings(quietMinutes: 0);
+        Directory.CreateDirectory(settings.ProjectPath);
+        var people = Path.Combine(settings.ProjectPath, "Persone.md");
+        File.WriteAllText(people, "# Persone\n\n## Chiara Bianchi\n\n- **Rapporto:** buono\n");
+        var conversation = ModelCommandTests.Create(settings);
+        var mentor = Mentor(conversation, settings, new StoppedClock(LateMonday));
+
+        await conversation.SendAsync("/scheda Chiara Bianchi | rapporto | imposta | delicato");
+
+        Assert.That(File.ReadAllText(people), Does.Contain("- **Rapporto:** delicato"));
+        Assert.That(conversation.Entries.Concat(conversation.SideEntries).Last(e => e.Speaker == Speaker.Mentor).Text, Does.Contain("aggiornata"));
+        GC.KeepAlive(mentor);
+    }
+
     private static int MentorMessages(Conversation conversation) =>
         conversation.Entries.Concat(conversation.SideEntries).Count(e => e.Speaker == Speaker.Mentor);
 

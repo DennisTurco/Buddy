@@ -291,8 +291,16 @@ public partial class App : Application
             }
         };
 
-        // Running from the sources: a newer build is announced, and /aggiorna rebuilds and restarts on it.
+        // Running from the sources (installed copy or bin): a newer build is announced, and /aggiorna publishes or
+        // rebuilds it and restarts on it.
         var exe = Environment.ProcessPath ?? "";
+
+        // "Start at login" follows the copy that runs: after scripts/install.ps1 it points to the installed one.
+        if (settings.Pet.StartWithWindows && _builds.IsInstalled)
+        {
+            PlatformServices.SetStartAtLogin(true);
+        }
+
         if (_builds.IsAvailable && !Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
         {
             _builds.NewerBuild += built => Dispatcher.UIThread.Post(() =>

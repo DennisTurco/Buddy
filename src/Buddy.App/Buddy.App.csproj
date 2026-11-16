@@ -45,6 +45,14 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+  <!--
+    A copy published from the sources (scripts/install.ps1, install.sh, or /aggiorna) remembers its project, so it can
+    announce newer builds and publish them over itself (see Platform/BuildWatcher.cs). Release builds for download
+    (-p:BuddyRelease=true) are not tied to any sources.
+  -->
+  <Target Name="WriteBuddySourceMarker" AfterTargets="Publish" Condition="'$(BuddyRelease)' != 'true'">
+    <WriteLinesToFile File="$(PublishDir)buddy-source.txt" Lines="$(MSBuildProjectFullPath)" Overwrite="true" />
+  </Target>
   <ItemGroup>
     <!-- WinForms is only for the tray icon: keep its types out of the global usings, they clash with Avalonia's. -->
     <Using Remove="System.Windows.Forms" />

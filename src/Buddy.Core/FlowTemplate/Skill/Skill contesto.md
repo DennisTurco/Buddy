@@ -1,6 +1,6 @@
 ---
 name: contesto
-description: Carica il contesto del progetto dal vault prima di rispondere - legge Scheda progetto e Stato attuale e, se viene dato un ID o un argomento, cerca solo le note collegate (To-Do, Decisioni, Glossario). Non modifica nulla. Usare con /contesto, /contesto ID o /contesto argomento, anche insieme a una richiesta nello stesso messaggio.
+description: Carica il contesto del progetto dal vault prima di rispondere - legge Scheda progetto e Stato attuale e, se viene dato un ID o un argomento, cerca solo le note collegate (To-Do, Decisioni, Glossario, Persone). Non modifica nulla. Usare con /contesto, /contesto ID o /contesto argomento, anche insieme a una richiesta nello stesso messaggio.
 ---
 
 # Contesto del progetto
@@ -19,6 +19,7 @@ Serve quando si lavora **fuori dalle skill del flusso** (domande, debug, piccole
 Con `/contesto ID` o `/contesto argomento`:
 - cerca l'ID o le parole chiave in `To-Do`, `Da controllare`, `Da valutare` e `To-Do Fatti` **con una ricerca**, senza leggere le note intere;
 - cerca l'argomento in `Decisioni`, `Glossario` e nei titoli di sezione della `Mappa codice`;
+- cerca in `Persone` chi si occupa dell'argomento, per poter dire con chi parlarne e quando;
 - controlla `To-Do Rifiutati`, per non riproporre qualcosa già scartato.
 
 Senza argomento non leggere altro: usa `00 Indice` solo per sapere cosa esiste.
@@ -28,6 +29,6 @@ Senza argomento non leggere altro: usa `00 Indice` solo per sapere cosa esiste.
 Massimo 6 righe:
 - cosa è in corso (`Stato attuale`);
 - le regole della Scheda che contano per la richiesta (comandi vietati, piattaforme, convenzioni);
-- decisioni, termini o task trovati al passo 2, con il nome della nota.
+- decisioni, termini, persone o task trovati al passo 2, con il nome della nota.
 
 Se nello stesso messaggio c'è una richiesta, dopo il riepilogo procedi con quella, rispettando quello che hai letto.

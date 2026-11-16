@@ -230,11 +230,16 @@ public sealed class CardView : INotifyPropertyChanged
     /// <summary>The nested lines as written in the note (lists, and lines that go on the text above), not one bullet per line.</summary>
     public string DetailsMarkdown => NoteLinks.ToMarkdown(Buddy.Core.Vault.ProjectBoard.NestedText(Item.Raw) is { Length: > 0 } nested
         ? nested
-        : string.Join('\n', Item.Details.Select(d => "- " + d)));
+        : string.Join('\n', Item.Details.Select(d => "- " + d)), Folder, Root);
 
     public bool HasDetails => Item.Details.Count > 0;
 
-    public string NoteMarkdown => NoteLinks.ToMarkdown(Item.Note ?? "");
+    public string NoteMarkdown => NoteLinks.ToMarkdown(Item.Note ?? "", Folder, Root);
+
+    /// <summary>The project folder: images embedded in the card (![[…]]) are found under it.</summary>
+    public string? Root { get; init; }
+
+    private string? Folder => Root is null ? null : Path.GetDirectoryName(Path.Combine(Root, Column.NotePath));
 
     public bool IsSelected
     {
@@ -270,6 +275,11 @@ public sealed class CardView : INotifyPropertyChanged
         if (item.Field(Buddy.Core.Vault.Reminders.Field) is { } remind && DateOnly.TryParse(remind, CultureInfo.InvariantCulture, out var remindOn))
         {
             chips.Add(new Chip($"🔔 {remindOn.ToString("d MMM", Culture)}", remindOn <= today ? ChipKind.Warm : ChipKind.Plain));
+        }
+
+        if (item.Field(Buddy.Core.Vault.People.CardField) is { } who)
+        {
+            chips.Add(new Chip($"👤 {who}", item.Waiting ? ChipKind.Warm : ChipKind.Plain));
         }
 
         if (item.Field("stima", "estimate") is { } estimate)

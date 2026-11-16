@@ -558,6 +558,129 @@ public class PagesAndPaletteTests
     }
 
     [AvaloniaTest]
+    public async Task A_person_is_edited_with_the_form_filled_in_from_their_section()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-person-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var people = Path.Combine(project, "Persone.md");
+            File.AppendAllText(people, "\n## Chiara Bianchi\n\n- **Compito:** DBA\n- **Sentita:** 2026-11-10\n\n## Marco Verdi\n\n- **Compito:** PO\n");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            Buddy.Core.Vault.PersonFields? shown = null;
+            window.ShowPersonForm = person =>
+            {
+                shown = person;
+                return Task.FromResult<Buddy.Core.Vault.PersonFields?>(person! with { Nicknames = "Chicca", Relationship = "delicato", Communication = "per iscritto" });
+            };
+            await window.EditPersonAsync("Chiara Bianchi");
+
+            Assert.That(shown?.Role, Is.EqualTo("DBA"), "the form starts from what the note says");
+            var text = File.ReadAllText(people);
+            Assert.That(text, Does.Contain("## Chiara Bianchi\n\n- **Soprannome:** Chicca\n- **Compito:** DBA\n- **Rapporto:** delicato\n- **Come comunicare:** per iscritto\n- **Sentita:** 2026-11-10\n"));
+            Assert.That(text, Does.Contain("## Marco Verdi\n\n- **Compito:** PO\n"), "the others are untouched");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
+    public async Task The_mouse_side_buttons_go_back_and_forward_between_pages()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-history-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            window.ShowView("board");
+            window.ShowView("people");
+            window.ShowView("glossary");
+            Assert.That(window.BackCount, Is.EqualTo(3), "overview, board, people");
+
+            window.MouseDown(new Avalonia.Point(600, 400), Avalonia.Input.MouseButton.XButton1);
+            window.MouseUp(new Avalonia.Point(600, 400), Avalonia.Input.MouseButton.XButton1);
+            Assert.That(window.ViewTitleText, Is.EqualTo("Persone"), "X1: back");
+
+            Assert.That(window.GoBack(), Is.True);
+            Assert.That(window.ViewTitleText, Is.EqualTo("Bacheca"));
+
+            window.MouseDown(new Avalonia.Point(600, 400), Avalonia.Input.MouseButton.XButton2);
+            window.MouseUp(new Avalonia.Point(600, 400), Avalonia.Input.MouseButton.XButton2);
+            Assert.That(window.ViewTitleText, Is.EqualTo("Persone"), "X2: forward");
+
+            window.ShowView("costs");
+            Assert.That(window.ForwardCount, Is.Zero, "a new page drops the steps forward, as in a browser");
+            Assert.That(window.GoForward(), Is.False);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
+    public async Task A_new_episode_is_saved_in_the_journal_and_sent_to_the_chat_for_the_analysis()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-episode-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var settings = new BuddySettings { ProjectPath = project, Mentor = { JournalPath = Path.Combine(root, "Diario") } };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            string? sent = null;
+            window.ChatCommandRequested += command => sent = command;
+            window.ShowEpisodeForm = _ => Task.FromResult<Buddy.Core.Vault.Episode?>(new Buddy.Core.Vault.Episode(
+                new DateOnly(2026, 11, 16), "Rilascio rimandato", ["Chiara Bianchi"], "Ha chiesto di rimandare", "", "", "", []));
+            await window.NewEpisodeAsync();
+
+            var file = Path.Combine(root, "Diario", "Episodi.md");
+            Assert.That(File.ReadAllText(file), Does.Contain("## 2026-11-16 · Rilascio rimandato"));
+            Assert.That(sent, Is.EqualTo("/episodio-analizza 2026-11-16 · Rilascio rimandato"));
+
+            // A click on it: the same form, filled in; the analysis' lines are kept, and changed facts are analysed again.
+            Buddy.Core.Vault.Episodes.Update(file, "2026-11-16 · Rilascio rimandato", e => e with { AboutMe = "Hai ascoltato.", Changes = ["Chiara · note + x"] });
+            Buddy.Core.Vault.Episode? shown = null;
+            window.ShowEpisodeForm = e =>
+            {
+                shown = e;
+                return Task.FromResult<Buddy.Core.Vault.Episode?>(e! with { Outcome = "Rimandato di una settimana" });
+            };
+            sent = null;
+            await window.EditEpisodeAsync("2026-11-16 · Rilascio rimandato");
+
+            Assert.That(shown?.Facts, Is.EqualTo("Ha chiesto di rimandare"), "the form starts from the episode");
+            var edited = Buddy.Core.Vault.Episodes.Read(file).Single();
+            Assert.That(edited.Outcome, Is.EqualTo("Rimandato di una settimana"));
+            Assert.That(edited.AboutMe, Is.EqualTo("Hai ascoltato."));
+            Assert.That(edited.Changes, Is.EqualTo(new[] { "Chiara · note + x" }));
+            Assert.That(sent, Is.EqualTo("/episodio-analizza 2026-11-16 · Rilascio rimandato"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
     public async Task A_page_note_is_edited_with_the_tool_bar_and_renamed_but_flow_notes_are_protected()
     {
         var root = Directory.CreateTempSubdirectory("buddy-editor-").FullName;

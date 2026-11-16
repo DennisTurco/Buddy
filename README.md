@@ -143,7 +143,10 @@ the settings window), which overrides them. Window position is kept in `<data>/s
     without Claude: live output, ■ stop, the outcome from
     Playwright's summary, and "Ultima esecuzione: <date> ✅ (2/2)" written back in the note. A failed run can be sent
     to Claude (🧠 *Chiedi a Claude*) with the end of its output;
-  - *Note*: every vault note, with `[[links]]` between them, editable as a whole (Ctrl+S).
+  - *Note*: every vault note, with `[[links]]` between them, editable as a whole (Ctrl+S). **Images**: Ctrl+V a
+    screenshot (or image files copied in Explorer), or drop image files, in the note or card editor: they are saved in
+    the project's `Allegati/` folder (files already in the vault are only linked) and embedded at the cursor as
+    `![[Pasted image 20261116143005.png]]`, the way Obsidian does; the preview shows them.
   - *Grafo*: the notes and their links as a graph, like Obsidian's (colour = top folder, size = links; wheel zooms,
     drag pans or moves a note, hover lights up its links, click opens it; options for unlinked notes and links to
     notes not yet created; *Colori per task* groups the notes of each task). *🕸 Grafo* in a note shows it there.
@@ -153,13 +156,46 @@ the settings window), which overrides them. Window position is kept in `<data>/s
     **Costi** (spending per week and per model, tasks by cost), **Decisioni** and **Glossario** (the notes as searchable
     cards, with *Registra decisione* / *Nuovo termine*; for a term, the notes that use it), **PR** (your open pull requests
     on GitHub via `gh`, with CI, review and task).
+  - **Episodi** (`Episodi.md` in the journal, or in the project folder without one; private): what happened at work with
+    someone, the facts kept apart from how you reacted and how it ended. *＋ Nuovo episodio* on the page, or
+    `/episodio testo` in the chat. Screenshots (a chat, an email) can be pasted with Ctrl+V or dropped in the form's
+    fields: saved in the `Allegati/` folder next to `Episodi.md`, shown on the episode's card and read by Claude. A click
+    on an episode opens the same form to edit it (*📄 Apri il file* shows the file); changed facts are analysed again. Claude reads it with the cards of the people involved: for a macroscopic event (open
+    conflict, escalation, trust broken or rebuilt, change of role) it updates their *Rapporto*, *Come comunicare* or
+    *Note* at once, each change with a *↩ Annulla* button and written in the episode; smaller ones come as proposals
+    with a button. A line on how you communicated goes in the episode («Su di me»), and the Friday retro turns the
+    week's episodes into the «Come comunico» section of Profilo.md (behaviours, not labels). The person's card shows
+    their episodes, and the buddy uses the last ones when advising how to approach them.
+    **Da ricordare**: the analysis also writes one practical line for next time («mandarle i dati prima»), from what
+    you would do differently; it comes back when that person does — under them in the mentor's daily list, in the
+    `/sentita` reply («ti eri ripromesso… com'è andata?»), on their card, in the buddy's context and in `/prepara`
+    (also *🗣 Prepara conversazione…* on the Persone page).
+    **Missing people are added**: someone named in an episode (in *Persone coinvolte*, or found by the analysis in the
+    text or the screenshots) or in a card's `[chi:: …]` who has no card in Persone gets one, with the role if known and
+    a note on where they came from, to complete later; Claude does the same for the people it meets in the tasks.
+  - **Persone** (the `Persone` note, one `## Nome` section each): nickname, role, what they take care of and notes on
+    when and how to reach them, as cards with the notes citing them and the cards that depend on them; *＋ Nuova persona*
+    adds one, and a click on a person (or choosing them in Ctrl+K) opens the same form filled in to edit them
+    (*📄 Apri la nota* shows the note as written). Two more
+    fields describe how to work together: **Rapporto** (ottimo, buono, da costruire, delicato, critico: what is needed, not a
+    judgement) and **Come comunicare** (what works with them). The buddy and Claude use them to suggest how to prepare a
+    conversation and to adapt drafts, and never quote them outside the vault; the evening check-out asks how it went
+    with whoever you heard today when the relationship needs care. Ask the buddy «con chi parlo dei permessi?» or name someone (also by nickname) and the local model gets
+    their cards, to suggest who to contact and when. **👤 Chi…** in a card's panel sets `[chi:: Chicca]` (the person the
+    card waits on, or to hear): a chip on the card, and once a day, on weekdays, the mentor lists those cards, waiting
+    ones first, with each person's role and notes. **Last contact**: `/sentita Chicca` in the chat (or *✅ Ho sentito…*
+    on the page, or the *✅ Sentita* buttons under the mentor's list) writes `- **Sentita:** date` in their section;
+    each person shows «sentita 3 giorni fa», a card waiting on someone not heard for 3 days or more gets a ⚠, and
+    *Settimana* shows who you heard each day. **Ctrl+K** finds people by name or nickname, with the cards that depend
+    on them.
   - On the board, **drag a card** to another column (Da valutare, Da fare, In attesa, Da controllare: written to the vault;
     appunti, closing and refusing stay with /smista, /chiudi, /rifiuta). **🔔 Ricordamelo…** in a card's panel sets
     `[promemoria:: date]` (also «lunedì», «domani», «+3»): that day the chat brings it back. The panel shows the estimate
     against the real duration and cost.
   - In a note or a checklist **Ctrl+F** finds in the page (↑/↓, Esc); Ctrl+Shift+F is the lists filter. A task's side
     panel shows its **🕒 Cronologia** (board steps, PR, notes and checklists, screenshots, journal days, commits with
-    its id). In *Salute del vault* a broken link can be fixed with *Crea la nota* or *Collega a «nota simile»*.
+    its id). In *Salute del vault* a broken link can be fixed with *Crea la nota* or *Collega a «nota simile»*; images in
+    `Allegati/` that no note uses any more are listed there too.
 - **💡 Nuove idee** (project window side bar, Ctrl+I): describe what you would like to add; Claude (one-off
   `claude -p` in the vault) or the local model proposes 3/5/8 ideas, given the Scheda, Stato attuale and the items
   already planned, done or rejected. They go straight into To-do Appunti as `- <date> · 💡 idea`; *Togli queste idee*
@@ -177,7 +213,7 @@ the settings window), which overrides them. Window position is kept in `<data>/s
   *Modifica* / *Elimina* of the item's markdown. A skill button only appears when the skill is installed
   (`~/.claude/skills` or the project's `.claude/skills`); the flow's skills ship with Buddy (the template's `Skill/` notes)
   and the missing ones are installed in `~/.claude/skills` at startup, never overwriting one already there. The side bar adds an appunto (Ctrl+N, Enter); 🗂 Smista sends
-  `/smista`. Shortcuts: Ctrl+1…9 views, **Ctrl+K** finds anything (notes, tasks, pages, saved conversations, chat commands), Ctrl+F search, Esc closes edit → panel → window. It refreshes by itself when
+  `/smista`. Shortcuts: Ctrl+1…9 views, the mouse's **side buttons** (or Alt+← / Alt+→) go back and forward between the pages and notes you opened, **Ctrl+K** finds anything (notes, tasks, pages, saved conversations, chat commands), Ctrl+F search, Esc closes edit → panel → window. It refreshes by itself when
   a note changes; an edit never overwrites a note changed meanwhile (it asks to reload instead).
 - **Hide/show**: pet menu → *Nascondi Buddy*; the tray icon (*Mostra/Nascondi Buddy*, or a click), the shortcut and
   notifications bring it back.
@@ -203,6 +239,9 @@ the settings window), which overrides them. Window position is kept in `<data>/s
 | `/l [text]` | Switch back to the local model |
 | `/stop` | Interrupt Claude's current answer |
 | `/nuova` | Close the Claude conversation and start a new one |
+| `/sentita nome` | Note that you talked to that person today (Persone); without a name, who you have not heard for longest |
+| `/prepara persona [argomento]` | How to set up a conversation with that person (goal, order, what to bring, what to avoid) and a draft of the first message, from their card, the last episodes and the cards waiting on them |
+| `/episodio testo` | Tell what happened with a colleague: saved in Episodi.md, and the people's cards updated (important events) or changes proposed |
 | `/aiuto` | Command list |
 
 Local answers end with **Fonti**: links to the vault notes (open in Obsidian) and guideline sections they were
@@ -253,6 +292,26 @@ dotnet run --project src/Buddy.App -- --snapshot <folder>   # renders sprites, c
 The target framework follows the OS that builds it: `net10.0-windows` on Windows (adds WinForms for the tray icon),
 `net10.0` elsewhere. `dotnet build src/Buddy.App -p:BuddyWindows=true` compiles the Windows flavour from Linux, as a
 check (it does not run there).
+
+**Use an installed copy while you develop.** A Buddy started from `bin/Debug` holds its files there, so `dotnet build`
+and the UI tests fail while it runs. Install it instead (close the running one first):
+
+```bash
+pwsh scripts/install.ps1     # Windows: publishes to %LOCALAPPDATA%\Buddy\app and starts it
+bash scripts/install.sh      # Linux: ~/.local/share/Buddy/app
+```
+
+The copy remembers its sources (`buddy-source.txt`): build as usual, the buddy announces the newer build and
+`/aggiorna` publishes it over the installed copy and restarts. Settings, logs and conversations are unchanged (they
+live in the user's settings folder), and *Avvia con Windows* follows the installed copy.
+
+**Releases.** Pushing a tag `v*` (e.g. `git tag v1.0.0 && git push origin v1.0.0`) runs
+`.github/workflows/release.yml`: tests, then self-contained builds for `win-x64` and `linux-x64` attached as zips to a
+GitHub release.
+
+**CI.** `.github/workflows/ci.yml` builds and runs every test on Windows and Linux for each push to `master` and each
+pull request. Line endings are LF everywhere (`.gitattributes`, `.cmd` files excepted), so tests on multi-line text do
+not depend on `core.autocrlf`.
 
 **Changing the look.** Colours, fonts and form styles are in `src/Buddy.App/Theme.axaml`; each window has its
 `.axaml`. With the *Avalonia for VS Code* extension (or JetBrains Rider) the `.axaml` files have a live preview,

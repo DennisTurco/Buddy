@@ -72,7 +72,7 @@ public sealed class LocalAi
         - cerca: cercare nelle note. testo = le parole da cercare.
         - oggi: cosa c'è oggi, riepilogo della giornata. testo = "".
         - modifiche: quali file ha modificato nel repository. testo = "".
-        tipo "locale": domanda breve sulle note del progetto (task, decisioni, glossario, stato) o due chiacchiere.
+        tipo "locale": domanda breve sulle note del progetto (task, decisioni, glossario, persone, stato), con chi parlare di qualcosa, o due chiacchiere.
         tipo "claude": scrivere, modificare, spiegare o correggere codice, analisi, debug, qualunque cosa richieda di leggere il repository o ragionare a lungo.
         Nel dubbio tra "locale" e "claude" scegli "locale"; scegli "azione" solo se la richiesta è chiara.
 
@@ -82,6 +82,7 @@ public sealed class LocalAi
         "dove abbiamo scritto della retention dei dati?" -> {"tipo":"azione","azione":"cerca","testo":"retention dati"}
         "cosa c'è da fare oggi" -> {"tipo":"azione","azione":"oggi","testo":""}
         "chi ha assegnato il task del report reclami?" -> {"tipo":"locale","azione":"","testo":""}
+        "con chi devo parlare per i permessi del database?" -> {"tipo":"locale","azione":"","testo":""}
         "perché il test di login fallisce con NullReferenceException?" -> {"tipo":"claude","azione":"","testo":""}
         "aggiungi un campo canale al form dei reclami" -> {"tipo":"claude","azione":"","testo":""}
         """;

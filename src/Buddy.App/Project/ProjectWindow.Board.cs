@@ -291,6 +291,41 @@ public partial class ProjectWindow
         }
     }
 
+    /// <summary>"👤 Chi…": a [chi:: name] field on the item, the person it depends on (see the Persone page).</summary>
+    private async void OnCardPersonClick(object? sender, RoutedEventArgs e)
+    {
+        if (_selected is not { } card || card.Item.Raw.Length == 0)
+        {
+            return;
+        }
+
+        var people = NoteTitled(People.Note) is { } note ? People.Parse(note.Content) : [];
+        var known = people.Count == 0
+            ? "Nella pagina Persone non c'è ancora nessuno: scrivi comunque il nome."
+            : "Persone: " + string.Join(", ", people.Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name)) + ".";
+        var answer = await Settings.Dialogs.AskAsync(this, "Chi",
+            $"Da chi dipende questa voce, o chi devi sentire? (nome o soprannome; vuoto per togliere)\n{known}",
+            card.Item.Field(People.CardField) ?? "");
+        if (answer is null)
+        {
+            return;
+        }
+
+        var updated = ItemFields.Set(card.Item.Raw, People.CardField, answer.Trim());
+        if (await WriteAsync(() => VaultWriter.ReplaceBlock(FullPath(card.Column.NotePath), card.Item.Raw, updated)))
+        {
+            // Someone new: their card in Persone, to fill in later (a click on them in the Persone page).
+            if (answer.Trim().Length > 0)
+            {
+                var peoplePath = NoteTitled(People.Note) is { } peopleNote ? FullPath(peopleNote.RelativePath) : FullPath(People.Note + ".md");
+                var source = card.Item.Id is { } id ? $"dal task {id}" : $"dalla voce «{card.Item.Title}»";
+                await WriteAsync(() => People.EnsureExists(peoplePath, answer, source, DateOnly.FromDateTime(DateTime.Today)));
+            }
+
+            AfterEdit();
+        }
+    }
+
     // ---- Estimate against reality -----------------------------------------------------------------------------
 
     /// <summary>"⏱ stima 4h · 🗓 3 giorni lavorativi (2–5 nov) · 💳 7,22 $": what was planned and what happened.</summary>

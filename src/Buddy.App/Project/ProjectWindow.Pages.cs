@@ -17,7 +17,7 @@ namespace Buddy.App.Project;
 public partial class ProjectWindow
 {
     /// <summary>The built-in generic pages (also in <see cref="Views"/>).</summary>
-    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "prs"];
+    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "people", "episodes", "prs"];
 
     private const string PagePrefix = "page:";
     private const string NewPageKey = "page:+";
@@ -111,6 +111,8 @@ public partial class ProjectWindow
             {
                 "decisions" => DecisionsPage(filter),
                 "glossary" => GlossaryPage(filter),
+                "people" => PeoplePage(filter),
+                "episodes" => EpisodesPage(filter),
                 "costs" => CostsPage(filter),
                 "week" => await WeekPageAsync(refresh),
                 "prs" => await PullRequestsPageAsync(filter, refresh),
@@ -161,14 +163,29 @@ public partial class ProjectWindow
         }
     }
 
-    private void OnPageCardTapped(object? sender, TappedEventArgs e)
+    /// <summary>The target of a person's card on the Persone page: a click opens the edit form, not the note.</summary>
+    private const string PersonTarget = "person:";
+
+    private async void OnPageCardTapped(object? sender, TappedEventArgs e)
     {
         if ((sender as Control)?.DataContext is not PageCard { Target: { } target })
         {
             return;
         }
 
-        if (target.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        if (target.StartsWith(PersonTarget, StringComparison.Ordinal))
+        {
+            await EditPersonAsync(target[PersonTarget.Length..]);
+        }
+        else if (target.StartsWith(EpisodeTarget, StringComparison.Ordinal))
+        {
+            await EditEpisodeAsync(target[EpisodeTarget.Length..]);
+        }
+        else if (Path.IsPathRooted(target) && File.Exists(target))
+        {
+            Shell.Open(target); // a note outside the vault (Episodi.md in the journal)
+        }
+        else if (target.StartsWith("http", StringComparison.OrdinalIgnoreCase))
         {
             Shell.Open(target);
         }
@@ -203,6 +220,25 @@ public partial class ProjectWindow
                 break;
             case "term:new":
                 await NewTermAsync();
+                break;
+            case "person:new":
+                await NewPersonAsync();
+                break;
+            case "person:contacted":
+                await MarkContactedAsync();
+                break;
+            case "person:prepare":
+                await PrepareConversationAsync();
+                break;
+            case "person:note" when NoteTitled(People.Note) is { } peopleNote:
+                OpenInNotesView(peopleNote.RelativePath);
+                break;
+            case "episode:new":
+                await NewEpisodeAsync();
+                break;
+            case "episode:file":
+                var episodesFile = Episodes.PathFor(_settings);
+                Shell.Open(File.Exists(episodesFile) ? episodesFile : Path.GetDirectoryName(episodesFile)!);
                 break;
             case "note:new" when _view.StartsWith(PagePrefix, StringComparison.Ordinal):
                 await NewPageNoteAsync(_view[PagePrefix.Length..]);
@@ -390,6 +426,399 @@ public partial class ProjectWindow
         }
     }
 
+    // ---- Persone ----------------------------------------------------------------------------------------------
+
+    private PageContent PeoplePage(string filter)
+    {
+        var note = NoteTitled(People.Note);
+        var people = note is null ? [] : People.Parse(note.Content);
+        var others = _vault.Notes.Where(n => note is null || n.RelativePath != note.RelativePath).ToList();
+        var onCards = _board is null ? [] : People.OnCards(_board, people);
+        var episodes = Episodes.Read(Episodes.PathFor(_settings));
+        var cards = people
+            .Where(p => filter.Length == 0 || p.Raw.Contains(filter, StringComparison.CurrentCultureIgnoreCase))
+            .Select(p =>
+            {
+                var theirs = onCards.Where(c => c.Person == p).ToList();
+                // Full name or nickname: a first name alone would count every namesake.
+                var pattern = new Regex($@"(?<!\w)(?:{string.Join("|", p.Nicknames.Prepend(p.Name).Select(Regex.Escape))})(?!\w)", RegexOptions.IgnoreCase);
+                var citedIn = others.Where(n => pattern.IsMatch(n.Content)).Select(n => n.Title).ToList();
+                var today = DateOnly.FromDateTime(DateTime.Today);
+                var chips = new List<Chip>
+                {
+                    new("👥 " + p.LastContactLabel(today),
+                        theirs.Any(c => c.Column.Key == "attesa") && (p.LastContact is not { } last || today.DayNumber - last.DayNumber >= People.StaleContactDays)
+                            ? ChipKind.Warm
+                            : ChipKind.Plain),
+                };
+                if (p.Relationship.Length > 0)
+                {
+                    chips.Add(new Chip($"🤝 {p.Relationship}", p.Relationship switch
+                    {
+                        "ottimo" or "buono" => ChipKind.Good,
+                        "delicato" => ChipKind.Warm,
+                        "critico" => ChipKind.Hot,
+                        _ => ChipKind.Plain,
+                    }));
+                }
+
+                var lived = Episodes.Involving(episodes, p);
+                if (lived.Count > 0)
+                {
+                    chips.Add(new Chip($"📓 {lived.Count} episod{(lived.Count == 1 ? "io" : "i")}", ChipKind.Plain));
+                }
+
+                if (theirs.Count > 0)
+                {
+                    chips.Add(new Chip($"👤 {theirs.Count} card", theirs.Any(c => c.Column.Key == "attesa") ? ChipKind.Warm : ChipKind.Plain));
+                }
+
+                if (citedIn.Count > 0)
+                {
+                    chips.Add(new Chip($"in {citedIn.Count} not{(citedIn.Count == 1 ? "a" : "e")}", ChipKind.Plain));
+                }
+
+                if (p.Notes.Length == 0)
+                {
+                    chips.Add(new Chip("senza note su quando sentirla", ChipKind.Warm));
+                }
+
+                var body = new StringBuilder();
+                // A list stays a list (each line an item); a single line is inline after its label.
+                void Section(string? label, string value)
+                {
+                    if (value.Length == 0)
+                    {
+                        return;
+                    }
+
+                    var text = People.IsList(value) ? People.AsList(value) : value;
+                    body.AppendLine(label is null ? text : People.IsList(value) ? $"**{label}:**\n\n{text}" : $"**{label}:** {text}").AppendLine();
+                }
+
+                Section(null, p.Description);
+                Section("Come comunicare", p.Communication);
+                Section("Note", p.Notes);
+                if (Episodes.LessonLine(episodes, p) is { Length: > 0 } lesson)
+                {
+                    body.AppendLine(lesson).AppendLine();
+                }
+
+                if (lived.Count > 0)
+                {
+                    Section("Ultimi episodi", string.Join("\n", lived.Take(3).Select(e => $"- {e.Date.ToString("d MMM", Italian)} · {e.Title}")));
+                }
+
+                if (theirs.Count > 0)
+                {
+                    body.AppendLine("**Card:** " + string.Join(", ", theirs.Select(c =>
+                        $"{(c.Item.Id ?? PlainTitle(c.Item.Title, 40)).Replace("`", "")} ({c.Column.Title})"))).AppendLine();
+                }
+
+                if (citedIn.Count > 0)
+                {
+                    body.AppendLine($"Citata in: {string.Join(", ", citedIn.Take(6).Select(c => $"[[{c}]]"))}{(citedIn.Count > 6 ? "…" : "")}");
+                }
+
+                return new PageCard(p.Display, p.Role.Length > 0 ? p.Role : null, chips, NoteLinks.ToMarkdown(body.ToString().TrimEnd()),
+                    PersonTarget + p.Name, "#E39BC4");
+            }).ToList();
+        return new PageContent(
+            note is null ? "Nel vault non c'è ancora la nota «Persone»: la crea la prima «Nuova persona»."
+                : $"{people.Count} persone del progetto · click su una persona per modificarla · chiedi al Buddy «con chi parlo di …?»",
+            null, cards,
+            [
+                new PageButton("＋ Nuova persona", "person:new", "Una scheda in Persone.md: nome, soprannome, compito, descrizione e note"),
+                new PageButton("🗣 Prepara conversazione…", "person:prepare",
+                    "Come impostare una conversazione con una persona e la bozza del primo messaggio (anche /prepara in chat)"),
+                new PageButton("✅ Ho sentito…", "person:contacted", "Segna che oggi hai sentito una persona (anche /sentita nome in chat)"),
+                new PageButton("📄 Apri la nota", "person:note", "La nota Persone.md così com'è scritta nel vault"),
+            ],
+            filter.Length > 0 ? "Nessuna persona corrisponde alla ricerca." : "Ancora nessuna persona: aggiungine una con «＋ Nuova persona».");
+    }
+
+    /// <summary>The form of a person, empty for a new one or filled in to edit; null when cancelled.</summary>
+    internal Func<PersonFields?, Task<PersonFields?>>? ShowPersonForm { get; set; }
+
+    private async Task<PersonFields?> PersonFormAsync(PersonFields? person)
+    {
+        if (ShowPersonForm is { } stub)
+        {
+            return await stub(person); // tests
+        }
+
+        var values = await Settings.Dialogs.FormAsync(this, person is null ? "Nuova persona" : $"Modifica «{person.Name}»",
+            new Settings.Dialogs.Field("Nome", person?.Name ?? "", Required: true),
+            new Settings.Dialogs.Field("Soprannome (come la chiamate di solito; più di uno separati da virgola)", person?.Nicknames ?? ""),
+            new Settings.Dialogs.Field("Compito (ruolo nel progetto, es. product owner, DBA, tester)", person?.Role ?? ""),
+            new Settings.Dialogs.Field("Descrizione (di cosa si occupa, per cosa sentirla)", person?.Description ?? "", Multiline: true, Height: 80),
+            new Settings.Dialogs.Field("Rapporto (cosa serve per lavorarci bene, non un giudizio sulla persona)", person?.Relationship ?? "",
+                Choices: People.Relationships),
+            new Settings.Dialogs.Field("Come comunicare (cosa funziona: per iscritto, brevi, con i dati, orari…)", person?.Communication ?? "",
+                Multiline: true, Height: 80),
+            new Settings.Dialogs.Field("Note (quando contattarla, cosa chiederle; Ctrl+Invio per salvare)", person?.Notes ?? "", Multiline: true, Height: 100));
+        return values is null ? null : new PersonFields(values[0], values[1], values[2], values[3], values[6], values[4], values[5], person?.LastContact);
+    }
+
+    private async Task NewPersonAsync()
+    {
+        if (await PersonFormAsync(null) is not { } person)
+        {
+            return;
+        }
+
+        var path = NoteTitled(People.Note) is { } note ? FullPath(note.RelativePath) : FullPath(People.Note + ".md");
+        if (await WriteAsync(() => People.Add(path, People.Format(person))))
+        {
+            AfterEdit();
+        }
+    }
+
+    /// <summary>
+    /// "✏ Modifica…": the same form, filled in; the person's section is rewritten (the date of the last contact kept).
+    /// With the page filtered down to one person (e.g. from Ctrl+K) that one, otherwise it asks who.
+    /// </summary>
+    internal async Task EditPersonAsync(string? name = null)
+    {
+        if (NoteTitled(People.Note) is not { } note)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, "Aggiungi prima qualcuno con «＋ Nuova persona».");
+            return;
+        }
+
+        var people = People.Parse(note.Content);
+        var filter = Filter.Text?.Trim() ?? "";
+        var shown = people.Where(p => filter.Length == 0 || p.Raw.Contains(filter, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        name ??= shown.Count == 1 ? shown[0].Name
+            : await Settings.Dialogs.AskAsync(this, "Modifica persona",
+                "Chi vuoi modificare? (nome o soprannome)\nPersone: " + string.Join(", ", people.Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name)) + ".");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        if (People.Find(people, name) is not { } person)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, $"Nelle Persone non trovo «{name.Trim()}».");
+            return;
+        }
+
+        if (await PersonFormAsync(person.Fields) is not { } edited)
+        {
+            return;
+        }
+
+        if (await WriteAsync(() => People.Update(FullPath(note.RelativePath), person.Name, edited)))
+        {
+            if (filter.Equals(person.Name, StringComparison.CurrentCultureIgnoreCase) && edited.Name.Trim() != person.Name)
+            {
+                Filter.Text = edited.Name.Trim(); // renamed while the page showed just them: keep showing them
+            }
+
+            AfterEdit();
+        }
+    }
+
+    /// <summary>"🗣 Prepara conversazione…": who and about what, then /prepara in the chat (Claude answers there).</summary>
+    private async Task PrepareConversationAsync()
+    {
+        var people = NoteTitled(People.Note) is { } note ? People.Parse(note.Content) : [];
+        var filter = Filter.Text?.Trim() ?? "";
+        var shown = people.Where(p => filter.Length > 0 && p.Raw.Contains(filter, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        var text = await Settings.Dialogs.AskAsync(this, "Prepara una conversazione",
+            "Con chi e di cosa? (es. «Chicca rilascio di venerdì»)\nPersone: "
+            + string.Join(", ", people.Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name)) + ".",
+            shown.Count == 1 ? (shown[0].Nicknames.Count > 0 ? shown[0].Nicknames[0] : shown[0].Name) + " " : "");
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            ChatCommandRequested?.Invoke($"/prepara {text.Trim()}");
+        }
+    }
+
+    private async Task MarkContactedAsync()
+    {
+        if (NoteTitled(People.Note) is not { } note)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, "Aggiungi prima qualcuno con «＋ Nuova persona».");
+            return;
+        }
+
+        var people = People.Parse(note.Content);
+        var name = await Settings.Dialogs.AskAsync(this, "Ho sentito…",
+            "Chi hai sentito oggi? (nome o soprannome)\nPersone: " + string.Join(", ", people.Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name)) + ".");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        Person? marked = null;
+        if (await WriteAsync(() => marked = People.MarkContacted(FullPath(note.RelativePath), name, DateOnly.FromDateTime(DateTime.Today))))
+        {
+            if (marked is null)
+            {
+                await Settings.Dialogs.ShowMessageAsync(this, $"Nelle Persone non trovo «{name.Trim()}».");
+                return;
+            }
+
+            AfterEdit();
+        }
+    }
+
+    // ---- Episodi ----------------------------------------------------------------------------------------------
+
+    private PageContent EpisodesPage(string filter)
+    {
+        var path = Episodes.PathFor(_settings);
+        var episodes = Episodes.Read(path);
+        var cards = episodes
+            .Where(e => filter.Length == 0 || e.Raw.Contains(filter, StringComparison.CurrentCultureIgnoreCase))
+            .Select(e =>
+            {
+                var chips = e.People.Select(p => new Chip($"👤 {p}", ChipKind.Plain)).ToList();
+                if (e.Changes.Count > 0)
+                {
+                    chips.Add(new Chip($"✏ {e.Changes.Count} modific{(e.Changes.Count == 1 ? "a" : "he")} alle schede", ChipKind.Warm));
+                }
+
+                var body = new StringBuilder();
+                void Section(string label, string value)
+                {
+                    if (value.Length > 0)
+                    {
+                        body.AppendLine(People.IsList(value) ? $"**{label}:**\n\n{People.AsList(value)}" : $"**{label}:** {value}").AppendLine();
+                    }
+                }
+
+                Section("Cosa è successo", e.Facts);
+                Section("Come ho reagito", e.Reaction);
+                Section("Com'è finita", e.Outcome);
+                Section("Su di me", e.AboutMe);
+                Section("💡 Da ricordare", e.Lesson);
+                if (e.Changes.Count > 0)
+                {
+                    Section("Modifiche alle schede", string.Join("\n", e.Changes.Select(c => "- " + c)));
+                }
+
+                // Screenshots (![[…]]) are found in the episodes' folder, where the form saved them.
+                return new PageCard(e.Title, e.Date.ToString("dddd d MMMM yyyy", Italian), chips,
+                    NoteLinks.ToMarkdown(body.ToString().TrimEnd(), EpisodesFolder, EpisodesFolder), EpisodeTarget + e.Key, "#C9A86A");
+            }).ToList();
+        var where = string.IsNullOrWhiteSpace(_settings.Mentor.JournalPath) ? "nella cartella del progetto" : "nel tuo diario";
+        return new PageContent(
+            $"{episodes.Count} episodi · in {Episodes.FileName} {where}, privati · dopo ogni episodio l'AI aggiorna le schede delle Persone (se è importante) o te lo propone",
+            null, cards,
+            [
+                new PageButton("＋ Nuovo episodio", "episode:new", "Cosa è successo, con chi, come hai reagito e com'è finita (anche /episodio testo in chat)"),
+                new PageButton("📄 Apri il file", "episode:file", $"{Episodes.FileName} così com'è scritto"),
+            ],
+            filter.Length > 0 ? "Nessun episodio corrisponde alla ricerca." : "Ancora nessun episodio: raccontane uno con «＋ Nuovo episodio» o con /episodio in chat.");
+    }
+
+    /// <summary>The folder of Episodi.md (the journal, or the project): its images go in its Allegati folder.</summary>
+    private string EpisodesFolder => Path.GetDirectoryName(Path.GetFullPath(Episodes.PathFor(_settings)))!;
+
+    /// <summary>The form of an episode, empty for a new one or filled in to edit; null when cancelled (tests set it).</summary>
+    internal Func<Episode?, Task<Episode?>>? ShowEpisodeForm { get; set; }
+
+    /// <summary>The target of an episode's card on the Episodi page: a click opens its form, not the file.</summary>
+    private const string EpisodeTarget = "episode:";
+
+    private async Task<Episode?> EpisodeFormAsync(Episode? episode)
+    {
+        if (ShowEpisodeForm is { } stub)
+        {
+            return await stub(episode);
+        }
+
+        var people = NoteTitled(People.Note) is { } note ? People.Parse(note.Content) : [];
+        var names = people.Count == 0 ? "" : " — " + string.Join(", ", people.Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name));
+        // Screenshots (a chat, an email…) pasted with Ctrl+V or dropped: saved next to Episodi.md, in its Allegati folder.
+        var folder = EpisodesFolder;
+        void Images(TextBox box) => EnableImages(box, folder);
+        var values = await Settings.Dialogs.FormAsync(this, episode is null ? "Nuovo episodio" : $"Episodio «{episode.Title}»",
+            new Settings.Dialogs.Field("Quando (AAAA-MM-GG, «oggi», «ieri», «lunedì»…)", episode?.Date.ToString("yyyy-MM-dd") ?? "oggi"),
+            new Settings.Dialogs.Field("Titolo (in breve)", episode?.Title ?? "", Required: true),
+            new Settings.Dialogs.Field("Persone coinvolte (separate da virgola)" + names, string.Join(", ", episode?.People ?? [])),
+            new Settings.Dialogs.Field("Cosa è successo (solo i fatti; Ctrl+V incolla anche uno screenshot)", episode?.Facts ?? "", Multiline: true,
+                Required: true, Height: 110, Prepare: Images),
+            new Settings.Dialogs.Field("Come ho reagito, come mi sono sentito", episode?.Reaction ?? "", Multiline: true, Height: 80, Prepare: Images),
+            new Settings.Dialogs.Field("Com'è finita; cosa rifarei diversamente", episode?.Outcome ?? "", Multiline: true, Height: 80, Prepare: Images));
+        if (values is null)
+        {
+            return null;
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var when = values[0].Trim().ToLowerInvariant() switch
+        {
+            "" or "oggi" => today,
+            "ieri" => today.AddDays(-1),
+            var text => Reminders.ParseDay(text, today) is { } day ? (day > today ? day.AddDays(-7) : day) : episode?.Date ?? today, // "lunedì": the last one
+        };
+        var named = values[2].Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(n => People.Find(people, n)?.Name ?? n).Distinct().ToList();
+
+        // Editing keeps what the analysis wrote (Su di me, the changes made to the cards).
+        return new Episode(when, values[1].Trim(), named, values[3], values[4], values[5], episode?.AboutMe ?? "", episode?.Changes ?? [],
+            Lesson: episode?.Lesson ?? "");
+    }
+
+    /// <summary>
+    /// "＋ Nuovo episodio": the form, then the episode is saved and the chat analyses it (/episodio-analizza): the cards of
+    /// the people involved change at once for a macroscopic event, otherwise the changes are proposed there.
+    /// </summary>
+    internal async Task NewEpisodeAsync()
+    {
+        if (await EpisodeFormAsync(null) is not { } episode)
+        {
+            return;
+        }
+
+        Episode? saved = null;
+        if (await WriteAsync(() => saved = Episodes.Add(Episodes.PathFor(_settings), episode)) && saved is not null)
+        {
+            ChatCommandRequested?.Invoke($"/episodio-analizza {saved.Key}");
+            Reload();
+        }
+    }
+
+    /// <summary>
+    /// A click on an episode: its form, filled in. Saved in place; when what happened (facts, reaction, outcome) changed,
+    /// the chat analyses it again (a change already on a card is not made twice).
+    /// </summary>
+    internal async Task EditEpisodeAsync(string key)
+    {
+        var path = Episodes.PathFor(_settings);
+        if (Episodes.Read(path).FirstOrDefault(e => e.Key == key) is not { } episode)
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, $"L'episodio «{key}» non è più in {Episodes.FileName}: la nota è cambiata.");
+            return;
+        }
+
+        if (await EpisodeFormAsync(episode) is not { } edited)
+        {
+            return;
+        }
+
+        if (edited.Key != episode.Key && Episodes.Read(path).Any(e => e.Key.Equals(edited.Key, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            await Settings.Dialogs.ShowMessageAsync(this, $"C'è già un episodio «{edited.Key}»: cambia il titolo.");
+            return;
+        }
+
+        Episode? saved = null;
+        if (await WriteAsync(() => saved = Episodes.Update(path, episode.Key, _ => edited)) && saved is not null)
+        {
+            if (edited.Facts != episode.Facts || edited.Reaction != episode.Reaction || edited.Outcome != episode.Outcome
+                || !edited.People.SequenceEqual(episode.People))
+            {
+                ChatCommandRequested?.Invoke($"/episodio-analizza {saved.Key}");
+            }
+
+            Reload();
+        }
+    }
+
     // ---- Costi ------------------------------------------------------------------------------------------------
 
     private PageContent CostsPage(string filter)
@@ -502,11 +931,19 @@ public partial class ProjectWindow
         var spending = _usage?.Days ?? new Dictionary<DateOnly, Buddy.Core.Claude.ClaudeUsage.ModelStat>();
         var diary = string.IsNullOrWhiteSpace(_settings.Mentor.JournalPath) ? null : Path.Combine(_settings.Mentor.JournalPath, "Diario");
 
+        // Who you last heard on each day (only the latest contact per person is kept, in the Persone note).
+        var people = NoteTitled(People.Note) is { } peopleNote ? People.Parse(peopleNote.Content) : [];
+
         var cards = new List<PageCard>();
         for (var day = monday; day <= sunday; day = day.AddDays(1))
         {
             var chips = new List<Chip>();
             var body = new StringBuilder();
+            foreach (var person in people.Where(p => p.LastContact == day))
+            {
+                chips.Add(new Chip($"👥 {(person.Nicknames.Count > 0 ? person.Nicknames[0] : person.Name)}", ChipKind.Plain));
+            }
+
             if (spending.TryGetValue(day, out var spent) && spent.Cost > 0)
             {
                 chips.Add(new Chip($"💳 {spent.Cost.ToString("0.00", Italian)} $", spent.Cost > 3 ? ChipKind.Warm : ChipKind.Plain));

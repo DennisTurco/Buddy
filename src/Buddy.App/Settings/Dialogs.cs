@@ -111,8 +111,13 @@ public static class Dialogs
         return chosen;
     }
 
-    /// <summary>One field of <see cref="FormAsync"/>: its label, starting text, and whether it takes several lines.</summary>
-    public sealed record Field(string Label, string Initial = "", bool Multiline = false, bool Required = false);
+    /// <summary>
+    /// One field of <see cref="FormAsync"/>: its label, starting text, and whether it takes several lines. With
+    /// <paramref name="Choices"/> it is a drop-down of those values (plus an empty one: "not set"). <paramref name="Prepare"/>
+    /// runs on the field's text box once created (e.g. to accept pasted images).
+    /// </summary>
+    public sealed record Field(string Label, string Initial = "", bool Multiline = false, bool Required = false,
+        IReadOnlyList<string>? Choices = null, double Height = 140, Action<TextBox>? Prepare = null);
 
     /// <summary>
     /// A small form (title, then each field); the values in order, or null if cancelled or a required field is empty.
@@ -120,15 +125,38 @@ public static class Dialogs
     /// </summary>
     public static async Task<string[]?> FormAsync(Window? owner, string title, params Field[] fields)
     {
-        var boxes = fields.Select(f => new TextBox
+        var controls = fields.Select(Control (f) => f.Choices is { } choices
+            ? new ComboBox
+            {
+                ItemsSource = choices.Prepend("").ToList(),
+                SelectedItem = choices.FirstOrDefault(c => c.Equals(f.Initial, StringComparison.CurrentCultureIgnoreCase)) ?? "",
+                Margin = new Thickness(0, 4, 0, 10),
+                MinWidth = 200,
+            }
+            : new TextBox
+            {
+                Text = f.Initial,
+                Margin = new Thickness(0, 4, 0, 10),
+                AcceptsReturn = f.Multiline,
+                TextWrapping = f.Multiline ? Avalonia.Media.TextWrapping.Wrap : Avalonia.Media.TextWrapping.NoWrap,
+                Height = f.Multiline ? f.Height : double.NaN,
+                VerticalContentAlignment = f.Multiline ? VerticalAlignment.Top : VerticalAlignment.Center,
+            }).ToArray();
+        var boxes = controls.OfType<TextBox>().ToArray();
+        for (var i = 0; i < fields.Length; i++)
         {
-            Text = f.Initial,
-            Margin = new Thickness(0, 4, 0, 10),
-            AcceptsReturn = f.Multiline,
-            TextWrapping = f.Multiline ? Avalonia.Media.TextWrapping.Wrap : Avalonia.Media.TextWrapping.NoWrap,
-            Height = f.Multiline ? 140 : double.NaN,
-            VerticalContentAlignment = f.Multiline ? VerticalAlignment.Top : VerticalAlignment.Center,
-        }).ToArray();
+            if (fields[i].Prepare is { } prepare && controls[i] is TextBox box)
+            {
+                prepare(box);
+            }
+        }
+
+        string Value(int i) => controls[i] switch
+        {
+            TextBox box => box.Text?.Trim() ?? "",
+            ComboBox combo => combo.SelectedItem as string ?? "",
+            _ => "",
+        };
         var ok = new Button { Content = "OK", IsDefault = true, Width = 80, Margin = new Thickness(0, 0, 6, 0), HorizontalContentAlignment = HorizontalAlignment.Center };
         var cancel = new Button { Content = "Annulla", IsCancel = true, Width = 80, HorizontalContentAlignment = HorizontalAlignment.Center };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
@@ -139,16 +167,21 @@ public static class Dialogs
         for (var i = 0; i < fields.Length; i++)
         {
             panel.Children.Add(new TextBlock { Text = fields[i].Label + (fields[i].Required ? " *" : "") });
-            panel.Children.Add(boxes[i]);
+            panel.Children.Add(controls[i]);
         }
 
-        panel.Children.Add(buttons);
-        var window = FormWindow(title, panel, owner);
+        // A long form (e.g. a person's card) scrolls instead of growing past the screen; the buttons stay visible.
+        var form = new DockPanel();
+        buttons.Margin = new Thickness(14, 0, 14, 14);
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        form.Children.Add(buttons);
+        form.Children.Add(new ScrollViewer { Content = panel, MaxHeight = 620, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto });
+        var window = FormWindow(title, form, owner);
         window.Width = 500;
         var confirmed = false;
         void Confirm()
         {
-            if (fields.Select((f, i) => !f.Required || !string.IsNullOrWhiteSpace(boxes[i].Text)).All(ok => ok))
+            if (fields.Select((f, i) => !f.Required || Value(i).Length > 0).All(ok => ok))
             {
                 confirmed = true;
                 window.Close();
@@ -169,9 +202,9 @@ public static class Dialogs
             }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         }
 
-        window.Opened += (_, _) => boxes.FirstOrDefault()?.Focus();
+        window.Opened += (_, _) => controls.FirstOrDefault()?.Focus();
         await Show(window, owner);
-        return confirmed ? boxes.Select(b => b.Text?.Trim() ?? "").ToArray() : null;
+        return confirmed ? fields.Select((_, i) => Value(i)).ToArray() : null;
     }
 
     /// <summary>A yes/no question; true only for <paramref name="yes"/>.</summary>

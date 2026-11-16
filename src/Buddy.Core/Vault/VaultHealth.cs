@@ -25,8 +25,9 @@ public static class VaultHealth
     public const int StaleChecklistDays = 7;
 
     /// <param name="elsewhere">Note titles in the rest of the Obsidian vault: Obsidian resolves links there too.</param>
+    /// <param name="projectPath">The project folder: images in its Allegati folder that no note embeds are reported.</param>
     public static IReadOnlyList<HealthIssue> Check(ProjectBoard board, NoteGraph graph, IReadOnlyList<ManualTestDoc> checklists, DateOnly today,
-        int max = 8, IReadOnlySet<string>? elsewhere = null)
+        int max = 8, IReadOnlySet<string>? elsewhere = null, string? projectPath = null)
     {
         var issues = new List<HealthIssue>();
 
@@ -66,7 +67,38 @@ public static class VaultHealth
             issues.Add(new HealthIssue("🏝", $"Nota isolata: {orphan.Title} (nessun link da o verso altre note)", orphan.Id));
         }
 
+        // Images pasted into a note and then removed from it (or never saved): they only take space.
+        foreach (var image in projectPath is null ? [] : UnusedImages(projectPath, board.Notes))
+        {
+            issues.Add(new HealthIssue("🖼", $"Immagine non usata da nessuna nota: {NoteImages.Folder}/{image} (si può eliminare)", null));
+        }
+
         return issues.Take(max).ToList();
+    }
+
+    /// <summary>The images of the project's Allegati folder that no note embeds or links (by file name, as Obsidian does).</summary>
+    public static IReadOnlyList<string> UnusedImages(string projectPath, IReadOnlyList<VaultNote> notes)
+    {
+        var folder = Path.Combine(projectPath, NoteImages.Folder);
+        if (!Directory.Exists(folder))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Directory.EnumerateFiles(folder)
+                .Where(NoteImages.IsImage)
+                .Select(f => Path.GetFileName(f))
+                .Where(name => !notes.Any(n => n.Content.Contains(name, StringComparison.OrdinalIgnoreCase)
+                                               || n.Content.Contains(Uri.EscapeDataString(name), StringComparison.OrdinalIgnoreCase)))
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 
     /// <summary>How many issues there are in all (the list shown is cut at a few).</summary>

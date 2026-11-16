@@ -197,6 +197,45 @@ public sealed class AssistantCommands(VaultIndex vault, GitRepo repo, IOptions<B
     }
 
     /// <summary>
+    /// "/sentita Chicca": writes today as the last time you talked to that person (Persone note, "- **Sentita:** …"),
+    /// so the mentor stops flagging the cards waiting on them. Without a name: who you have not heard for longest.
+    /// </summary>
+    public string MarkContacted(string name, DateOnly today)
+    {
+        var note = vault.Notes.Where(n => n.Title.Equals(People.Note, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n.RelativePath.Length).FirstOrDefault();
+        if (note is null)
+        {
+            return "Nel vault non c'è ancora la nota «Persone»: aggiungi le persone dalla pagina 👥 Persone della bacheca.";
+        }
+
+        var people = People.Parse(note.Content);
+        if (name.Trim().Length == 0)
+        {
+            var oldest = people.OrderBy(p => p.LastContact ?? DateOnly.MinValue).Take(5)
+                .Select(p => $"- **{p.Display}** — {p.LastContactLabel(today)}");
+            return "Scrivi chi hai sentito: `/sentita Chicca`. Quelle che non senti da più tempo:\n\n" + string.Join("\n", oldest);
+        }
+
+        try
+        {
+            if (People.MarkContacted(Path.Combine(Settings.ProjectPath, note.RelativePath), name, today) is not { } person)
+            {
+                return $"Nelle Persone non trovo «{name.Trim()}». Ci sono: {string.Join(", ", people.Select(p => p.Display))}.";
+            }
+
+            // What the user wanted to do differently last time with them: did it work this time?
+            var lesson = Episodes.LessonsFor(Episodes.Read(Episodes.PathFor(Settings)), person, 1).FirstOrDefault();
+            return $"👥 Segnato: hai sentito **{person.Display}** oggi."
+                   + (lesson is null ? "" : $"\n\n💡 L'ultima volta ({lesson.Date:dd/MM}, «{lesson.Title}») ti eri ripromesso: _{People.Inline(lesson.Lesson)}_. Com'è andata?");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Non riesco a scrivere nella nota Persone: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Changed files that are on the "do not commit" list (Impostazioni: local config and the like). A line matches
     /// the whole path or its end ("app.Debug.config" matches "Common/.../Config/app.Debug.config"); "*" is a wildcard.
     /// </summary>

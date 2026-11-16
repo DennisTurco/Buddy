@@ -4,8 +4,8 @@ type: changelog
 tags:
   - flusso
   - template
-versione_template: "1.25"
-updated: 2026-11-11
+versione_template: "1.26"
+updated: 2026-11-16
 ---
 
 Storico delle modifiche al **flusso base**. Serve a tenere allineati i progetti: ognuno sa quale versione ha applicato (proprietà `versione_template` nella sua `Scheda progetto`) e può recuperare solo le modifiche arrivate dopo.
@@ -18,6 +18,13 @@ Storico delle modifiche al **flusso base**. Serve a tenere allineati i progetti:
 > ## 1.1 · AAAA-MM-GG
 > - Cosa è cambiato — note toccate: [[Nota]] · origine: progetto X
 > ```
+
+## 1.26 · 2026-11-16
+
+- **Persone**: nuova nota `Persone` con una scheda per persona (soprannome, compito, descrizione, note su quando sentirla). Buddy la mostra nella pagina 👥 Persone del progetto e, quando chiedi con chi parlare di qualcosa o nomini una persona (anche per soprannome), la usa per consigliarti chi sentire e quando; Claude la consulta quando serve coinvolgere qualcuno e `/contesto` la cerca per argomento — note toccate: [[Intelligenza Artificiale/Template flusso/Persone]], [[Intelligenza Artificiale/Template flusso/00 Indice]], [[Intelligenza Artificiale/Template flusso/LEGGIMI - Template flusso]], [[Intelligenza Artificiale/Template flusso/Configurazione/Configurazione Claude]], [[Intelligenza Artificiale/Template flusso/Skill/Skill contesto]] · origine: progetto Buddy
+- **Persone sulle card e ultimo contatto**: `[chi:: nome]` su una voce indica la persona da cui dipende o da sentire; nella scheda della persona `- **Sentita:** AAAA-MM-GG` è l'ultima volta che l'hai sentita (la scrive Buddy con `/sentita nome`). Ogni giorno feriale Buddy elenca le voci con `[chi:: …]`, prima quelle in attesa di chi non senti da più giorni — note toccate: [[Intelligenza Artificiale/Template flusso/Persone]] · origine: progetto Buddy
+- **Rapporto e come comunicare**: due campi nella scheda della persona, `Rapporto` (ottimo, buono, da costruire, delicato, critico: cosa serve, non un giudizio) e `Come comunicare` (cosa funziona con lei). Claude li usa per consigliare come preparare una conversazione e per adattare i testi, senza mai citarli fuori dal vault; il check-out di Buddy chiede com'è andata con chi ha un rapporto da curare — note toccate: [[Intelligenza Artificiale/Template flusso/Persone]], [[Intelligenza Artificiale/Template flusso/Configurazione/Configurazione Claude]] · origine: progetto Buddy
+- **Persone aggiunte in automatico**: un collega citato in un task, un appunto o un episodio che non è in `Persone` viene aggiunto con una scheda da completare ("aggiunta in automatico dal task …"); lo fa Claude quando lavora sui task e Buddy per `[chi:: …]` e per gli episodi — note toccate: [[Intelligenza Artificiale/Template flusso/Configurazione/Configurazione Claude]] · origine: progetto Buddy
 
 ## 1.25 · 2026-11-11
 

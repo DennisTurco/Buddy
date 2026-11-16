@@ -92,6 +92,8 @@ public sealed class ContextBuilder(
             }
         }
 
+        AppendPeople(sb, sources, budget, question);
+
         foreach (var hit in related)
         {
             if (budget.Used < _settings.MaxContextChars * 0.8
@@ -111,6 +113,44 @@ public sealed class ContextBuilder(
         }
 
         return Finish(sb, sources, budget);
+    }
+
+    /// <summary>
+    /// The people of the Persone note the question is about (named in it or in its task, or all when it asks who to talk to), so the
+    /// buddy can suggest who to contact about what and when, from the role, description and notes written there.
+    /// </summary>
+    private void AppendPeople(StringBuilder sb, List<ContextSource> sources, Budget budget, string question)
+    {
+        var note = vault.Notes.Where(n => n.Title.Equals(People.Note, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n.RelativePath.Length).FirstOrDefault();
+        if (note is null)
+        {
+            return;
+        }
+
+        // Also the people named in the task blocks already picked ([chi:: Chicca]): "a che punto è la 2700?" can then
+        // answer "aspetta Chicca, meglio sentirla la mattina".
+        var all = People.Parse(note.Content);
+        var people = People.RelevantTo(all, question).Union(People.Named(all, sb.ToString())).ToList();
+        if (people.Count == 0)
+        {
+            return;
+        }
+
+        // Their last episodes too: "l'ultima volta con Chicca ha funzionato mandarle prima i dati".
+        var episodes = Episodes.Read(Episodes.PathFor(_settings));
+        string WithEpisodes(Person person) => People.Describe(person) + string.Concat(Episodes.Involving(episodes, person).Take(2).Select(e =>
+            $"\n  Episodio {e.Date:yyyy-MM-dd} «{e.Title}»: {Short(People.Inline(e.Facts))}"
+            + (e.Outcome.Length > 0 ? $" — com'è finita: {Short(People.Inline(e.Outcome))}" : "")
+            + (e.Lesson.Length > 0 ? $" — da ricordare: {Short(People.Inline(e.Lesson))}" : "")));
+        static string Short(string text) => text.Length > 220 ? text[..220] + "…" : text;
+
+        var text = "\n## PERSONE (chi sentire, per cosa e quando: consiglia la persona giusta e il momento in base a compito, note ed episodi)\n"
+                   + string.Join("\n", people.Select(WithEpisodes)) + "\n";
+        if (budget.Used < _settings.MaxContextChars * 0.8 && budget.TryAppend(sb, text))
+        {
+            sources.Add(new ContextSource(note.RelativePath, Links.Obsidian(Path.Combine(_settings.ProjectPath, note.RelativePath))));
+        }
     }
 
     /// <summary>

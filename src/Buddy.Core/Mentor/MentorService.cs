@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Buddy.Core.Chat;
 using Buddy.Core.Claude;
@@ -161,6 +162,8 @@ public sealed class MentorService : IDisposable
 
             PostGuideNudge();
             PostReminders();
+            AddPeopleFromCards();
+            PostPeopleOnCards();
             TrackTasksInReview();
             if (!IsWorkingInChat && _state.PendingTaskRetros.Count > 0 && Settings.Enabled)
             {
@@ -285,11 +288,37 @@ public sealed class MentorService : IDisposable
             lines.Add($"💬 in chat: {string.Join("; ", chats)}");
         }
 
-        return lines.Count == 0
-            ? MentorPrompts.CheckOut
-            : $"Fine giornata. Ecco una **bozza del diario** di oggi, da quello che ho visto:\n\n{string.Join('\n', lines.Select(l => "- " + l))}\n\n"
-              + "Correggila o completala: cosa è andato bene, cosa ti ha bloccato o rallentato, cosa faresti diversamente domani, "
-              + "e come ti senti da 1 a 5.";
+        var (heard, careQuestion) = PeopleHeardToday(today);
+        if (heard.Count > 0)
+        {
+            lines.Add($"👥 sentite: {string.Join(", ", heard)}");
+        }
+
+        return (lines.Count == 0
+                   ? MentorPrompts.CheckOut
+                   : $"Fine giornata. Ecco una **bozza del diario** di oggi, da quello che ho visto:\n\n{string.Join('\n', lines.Select(l => "- " + l))}\n\n"
+                     + "Correggila o completala: cosa è andato bene, cosa ti ha bloccato o rallentato, cosa faresti diversamente domani, "
+                     + "e come ti senti da 1 a 5.")
+               + careQuestion;
+    }
+
+    /// <summary>
+    /// The people marked "sentita" today (Persone note) and, for those whose relationship needs care ("critico", "delicato", "da
+    /// costruire"), a question for the check-out: how did it go, and is the relationship still what the note says? So the
+    /// field stays true, and a difficult relationship is something to work on, not a label.
+    /// </summary>
+    internal (IReadOnlyList<string> Heard, string CareQuestion) PeopleHeardToday(DateOnly today)
+    {
+        var note = _vault.IsAvailable
+            ? _vault.Notes.Where(n => n.Title.Equals(People.Note, StringComparison.OrdinalIgnoreCase)).OrderBy(n => n.RelativePath.Length).FirstOrDefault()
+            : null;
+        var heard = note is null ? [] : People.Parse(note.Content).Where(p => p.LastContact == today).ToList();
+        var care = heard.Where(p => p.NeedsCare).ToList();
+        var question = care.Count == 0 ? ""
+            : $"\n\n🤝 Oggi hai sentito {string.Join(" e ", care.Select(p => $"**{p.Display}**"))}"
+              + $" (rapporto «{string.Join("», «", care.Select(p => p.Relationship).Distinct())}»): com'è andata? Cosa ha funzionato nel modo di comunicare? "
+              + "Se il rapporto è cambiato, aggiornalo con ✏ Modifica nella pagina Persone.";
+        return (heard.Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name).ToList(), question);
     }
 
     /// <summary>"## Obiettivi del trimestre" of Profilo.md, or null when it has none yet.</summary>
@@ -439,6 +468,328 @@ public sealed class MentorService : IDisposable
         }
 
         SaveState();
+    }
+
+    /// <summary>
+    /// Once a day, on a weekday: the open cards that depend on someone ([chi:: Chicca]), the waiting ones first, with
+    /// their role and, from the Persone note, when and how to reach them. So "sentire Chicca" is not forgotten.
+    /// </summary>
+    internal void PostPeopleOnCards()
+    {
+        var today = DateOnly.FromDateTime(Now);
+        if (!_vault.IsAvailable || _state.PeopleNudgedOn == today || today.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+        {
+            return;
+        }
+
+        _state.PeopleNudgedOn = today;
+        SaveState();
+        var note = _vault.Notes.Where(n => n.Title.Equals(People.Note, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n.RelativePath.Length).FirstOrDefault();
+        var cards = People.OnCards(ProjectBoard.Load(_vault, _settings.TaskIdPattern), note is null ? [] : People.Parse(note.Content));
+        if (cards.Count == 0)
+        {
+            return;
+        }
+
+        const int Shown = 5;
+        // Under each person, what to remember from the last episode with them (once per person).
+        var episodes = Episodes.Read(EpisodesPath);
+        var reminded = new HashSet<string>();
+        string WithLesson(PersonOnCard card) =>
+            People.Line(card, today)
+            + (card.Person is { } p && reminded.Add(p.Name) && Episodes.LessonLine(episodes, p) is { Length: > 0 } lesson ? $"\n  {lesson}" : "");
+        var text = "👥 **Persone da sentire** per le tue card:\n\n" + string.Join("\n", cards.Take(Shown).Select(WithLesson))
+                   + (cards.Count > Shown ? $"\n- …e altre {cards.Count - Shown}" : "");
+        // "✅ Sentita Chicca" for the first people listed: one click once you have talked to them.
+        var contacted = cards.Take(Shown).Select(c => c.Person).OfType<Person>().DistinctBy(p => p.Name).Take(3)
+            .Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name)
+            .Select(n => new ChatAction($"✅ Sentita {n}", $"/sentita {n}", "Segna che oggi l'hai sentita (pagina Persone)"));
+        _conversation.Suggest(text,
+            [.. contacted, .. cards[0].Item.Id is { } id ? new[] { new ChatAction($"Scheda di {id}", $"/stato {id}") } : []]);
+    }
+
+    // ---- Episodes -----------------------------------------------------------------------------------------------
+
+    private VaultNote? PeopleNote() =>
+        _vault.IsAvailable
+            ? _vault.Notes.Where(n => n.Title.Equals(People.Note, StringComparison.OrdinalIgnoreCase)).OrderBy(n => n.RelativePath.Length).FirstOrDefault()
+            : null;
+
+    private string EpisodesPath => Episodes.PathFor(_settings);
+
+    /// <summary>Saves a new episode (newest first in Episodi.md), then analyses it.</summary>
+    internal async Task RecordEpisodeAsync(Episode episode)
+    {
+        Episode saved;
+        try
+        {
+            saved = Episodes.Add(EpisodesPath, episode);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _conversation.PostMentor($"Non riesco a salvare l'episodio: {ex.Message}");
+            return;
+        }
+
+        await AnalyzeEpisodeAsync(saved.Key);
+    }
+
+    /// <summary>
+    /// Reads an episode with Claude: changes that matter (a macroscopic event) are made on the people's cards at once,
+    /// each with a button to undo it; the others are proposed with a button to make them. The changes and what the
+    /// episode says about the user are written in the episode (the retro reads them for Profilo.md).
+    /// </summary>
+    internal async Task AnalyzeEpisodeAsync(string key)
+    {
+        var episode = Episodes.Read(EpisodesPath).FirstOrDefault(e => e.Key.Equals(key.Trim(), StringComparison.CurrentCultureIgnoreCase));
+        if (episode is null)
+        {
+            _conversation.PostMentor($"Non trovo l'episodio «{key.Trim()}» in {Episodes.FileName}.");
+            return;
+        }
+
+        // The people written in the episode who have no card get one now, so the analysis can already work on them.
+        var peopleFile = PeopleFile;
+        var added = new List<string>();
+        foreach (var name in episode.People)
+        {
+            if (AddMissingPerson(peopleFile, name, $"dall'episodio «{episode.Title}»") is { } person)
+            {
+                added.Add(person.Name);
+            }
+        }
+
+        var all = File.Exists(peopleFile) ? People.Parse(File.ReadAllText(peopleFile)) : [];
+        var involved = episode.People.Select(n => People.Find(all, n)).OfType<Person>()
+            .Concat(People.Named(all, $"{episode.Facts}\n{episode.Outcome}"))
+            .DistinctBy(p => p.Name).ToList();
+
+        var folder = Path.GetDirectoryName(Path.GetFullPath(EpisodesPath))!;
+        _conversation.SetThinking(true);
+        var result = await _claude.RunAsync(EpisodeAnalysis.Prompt(episode, involved, CommunicationProfile(), Episodes.Images(episode, folder)),
+            folder, Settings.Model);
+        _conversation.SetThinking(false);
+        if (!result.Success || EpisodeAnalysis.Parse(result.Text, all) is not { } findings)
+        {
+            _conversation.PostMentor($"📓 Episodio salvato in {Episodes.FileName}, ma non sono riuscito ad analizzarlo"
+                                     + (result.Success ? "." : $": {result.Text}") + $" Riprova con `/episodio-analizza {episode.Key}`."
+                                     + AddedPeopleLine(added));
+            return;
+        }
+
+        // Colleagues the analysis found in the text or the screenshots, without a card: added with what the episode says.
+        foreach (var person in findings.NewPeople)
+        {
+            if (AddMissingPerson(peopleFile, person.Name, $"dall'episodio «{episode.Title}»", person.Role, person.Description) is { } done)
+            {
+                added.Add(done.Name);
+            }
+        }
+
+        var peoplePath = File.Exists(peopleFile) ? peopleFile : null;
+        var applied = new List<string>();
+        var actions = new List<ChatAction>();
+        var proposed = new List<string>();
+        foreach (var change in findings.Changes)
+        {
+            if (change.Important && peoplePath is not null
+                && People.ApplyChange(peoplePath, change.Person, change.Field, change.Mode, change.Value) is { } done)
+            {
+                applied.Add(EpisodeAnalysis.Describe(change, done.Before));
+                actions.Add(new ChatAction($"↩ Annulla: {change.Person} · {change.Field}", EpisodeAnalysis.UndoCommand(change, done.Before),
+                    "Rimette la scheda com'era prima di questo episodio"));
+            }
+            else if (!change.Important)
+            {
+                proposed.Add(EpisodeAnalysis.Describe(change));
+                actions.Add(new ChatAction($"✅ {change.Person} · {change.Field}", EpisodeAnalysis.Command(change.Person, change.Field, change.Mode, change.Value),
+                    "Scrive questa modifica nella scheda della persona"));
+            }
+        }
+
+        try
+        {
+            Episodes.Update(EpisodesPath, episode.Key, e => e with
+            {
+                AboutMe = findings.AboutMe.Length > 0 ? findings.AboutMe : e.AboutMe,
+                Lesson = findings.Lesson.Length > 0 ? findings.Lesson : e.Lesson,
+                Changes = [.. e.Changes, .. applied.Select(a => $"{Today} (automatica) {a}")],
+            });
+        }
+        catch (IOException ex)
+        {
+            _log.LogWarning(ex, "Episodio non aggiornato dopo l'analisi");
+        }
+
+        var text = new StringBuilder($"📓 **Episodio salvato**: {episode.Title}\n");
+        if (applied.Count > 0)
+        {
+            text.AppendLine().AppendLine("**Schede aggiornate** (evento importante):").AppendLine(string.Join("\n", applied.Select(a => "- " + a)));
+        }
+
+        if (proposed.Count > 0)
+        {
+            text.AppendLine().AppendLine("**Da valutare** (un clic per scriverle):").AppendLine(string.Join("\n", proposed.Select(p => "- " + p)));
+        }
+
+        if (applied.Count == 0 && proposed.Count == 0)
+        {
+            text.AppendLine().AppendLine(involved.Count == 0 && added.Count == 0
+                ? "Nessuna persona citata: se c'era qualcuno, scrivilo in «Persone coinvolte»."
+                : "Niente da cambiare nelle schede.");
+        }
+
+        if (findings.AboutMe.Length > 0)
+        {
+            text.AppendLine().AppendLine($"🪞 **Su di te:** {findings.AboutMe}");
+        }
+
+        if (findings.Lesson.Length > 0)
+        {
+            text.AppendLine().AppendLine($"💡 **Da ricordare la prossima volta:** {findings.Lesson} (te lo ripropongo quando ti ricapita con loro)");
+        }
+
+        _conversation.PostMentor(text.ToString().TrimEnd() + AddedPeopleLine(added), actions: actions);
+    }
+
+    /// <summary>
+    /// The people named on the board's cards ([chi:: Chicca]) who have no card in Persone yet: added, with the task they
+    /// come from, and told once in the chat.
+    /// </summary>
+    internal void AddPeopleFromCards()
+    {
+        if (!_vault.IsAvailable)
+        {
+            return;
+        }
+
+        var peopleFile = PeopleFile;
+        var known = File.Exists(peopleFile) ? People.Parse(File.ReadAllText(peopleFile)) : [];
+        var added = new List<string>();
+        foreach (var item in ProjectBoard.Load(_vault, _settings.TaskIdPattern).Columns
+                     .Where(c => c.Key is not ("fatti" or "rifiutati"))
+                     .SelectMany(c => c.Items))
+        {
+            if (item.Field(People.CardField) is { } name && People.Find(known, name) is null
+                && AddMissingPerson(peopleFile, name, item.Id is { } id ? $"dal task {id}" : $"dalla voce «{item.Title}»") is { } person)
+            {
+                added.Add(person.Name);
+                known = [.. known, person];
+            }
+        }
+
+        if (added.Count > 0)
+        {
+            _conversation.Suggest(AddedPeopleLine(added).Trim());
+        }
+    }
+
+    /// <summary>The Persone note's path: the one in the vault, or a new "Persone.md" in the project folder.</summary>
+    private string PeopleFile =>
+        PeopleNote() is { } note ? Path.Combine(_settings.ProjectPath, note.RelativePath) : Path.Combine(_settings.ProjectPath, People.Note + ".md");
+
+    /// <summary>Adds a person met in an episode or a task to Persone when missing; null when already there or not possible.</summary>
+    private Person? AddMissingPerson(string peopleFile, string name, string source, string role = "", string description = "")
+    {
+        try
+        {
+            return People.EnsureExists(peopleFile, name, source, DateOnly.FromDateTime(Now), role, description);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.LogWarning(ex, "Persona {Name} non aggiunta a Persone", name);
+            return null;
+        }
+    }
+
+    private static string AddedPeopleLine(IReadOnlyCollection<string> added) =>
+        added.Count == 0 ? ""
+            : $"\n\n👥 **Aggiunt{(added.Count == 1 ? "a" : "e")} a Persone**: {string.Join(", ", added.Distinct())} "
+              + "(scheda da completare: clic sulla persona nella pagina 👥 Persone).";
+
+    /// <summary>
+    /// "/prepara Chicca rilascio di venerdì": a plan for the conversation and a draft of the first message, from the
+    /// person's card, the last episodes with them (what to remember first), the cards waiting on them and how the user
+    /// communicates.
+    /// </summary>
+    internal async Task PrepareConversationAsync(string rest)
+    {
+        var people = File.Exists(PeopleFile) ? People.Parse(File.ReadAllText(PeopleFile)) : [];
+        if (rest.Trim().Length == 0 || ConversationPrep.Split(people, rest) is not var (person, topic))
+        {
+            _conversation.PostMentor(people.Count == 0
+                ? "Non c'è ancora nessuno nella pagina 👥 Persone: aggiungi la persona e poi `/prepara nome argomento`."
+                : $"Con chi? `/prepara Chicca rilascio di venerdì`. Persone: {string.Join(", ", people.Select(p => p.Nicknames.Count > 0 ? p.Nicknames[0] : p.Name))}.");
+            return;
+        }
+
+        var episodes = Episodes.Involving(Episodes.Read(EpisodesPath), person).Take(3).ToList();
+        var cards = _vault.IsAvailable
+            ? People.OnCards(ProjectBoard.Load(_vault, _settings.TaskIdPattern), people).Where(c => c.Person?.Name == person.Name).ToList()
+            : [];
+        var folder = Path.GetDirectoryName(Path.GetFullPath(EpisodesPath))!;
+        Directory.CreateDirectory(folder);
+        _conversation.SetThinking(true);
+        var result = await _claude.RunAsync(
+            ConversationPrep.Prompt(person, topic, episodes, cards, CommunicationProfile(), DateOnly.FromDateTime(Now)), folder, Settings.Model);
+        _conversation.SetThinking(false);
+        if (!result.Success || result.Text.Length == 0)
+        {
+            var lesson = Episodes.LessonLine(episodes, person);
+            _conversation.PostMentor($"Non riesco a preparare la conversazione con Claude: {result.Text}"
+                                     + (lesson.Length > 0 ? $"\n\nIntanto: {lesson}" : ""));
+            return;
+        }
+
+        _conversation.PostMentor($"🗣 **Conversazione con {person.Display}**{(topic.Length > 0 ? $" · {topic}" : "")}\n\n{result.Text}",
+            actions: [new ChatAction($"✅ Sentita {(person.Nicknames.Count > 0 ? person.Nicknames[0] : person.Name)}", $"/sentita {person.Name}",
+                "Segna che oggi l'hai sentita")]);
+    }
+
+    /// <summary>"/scheda Nome | campo | modo | valore": one change to a card (the buttons of an episode's analysis).</summary>
+    private string ChangeCardCommand(string rest)
+    {
+        if (EpisodeAnalysis.ParseCommand(rest) is not var (person, field, mode, value))
+        {
+            return "Formato: `/scheda Nome | rapporto, come comunicare o note | imposta, aggiungi o togli | valore`.";
+        }
+
+        if (PeopleNote() is not { } note)
+        {
+            return "Nel vault non c'è la nota «Persone».";
+        }
+
+        try
+        {
+            return People.ApplyChange(Path.Combine(_settings.ProjectPath, note.RelativePath), person, field, mode, value) is { } done
+                ? $"👥 Scheda di **{done.Person.Display}** aggiornata ({field})."
+                : $"Niente da cambiare nella scheda di «{person}» ({field}): forse è già così, o il campo non si può modificare.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Non riesco a scrivere nella nota Persone: {ex.Message}";
+        }
+    }
+
+    /// <summary>"## Come comunico" of Profilo.md, written by the weekly retro from the episodes; null when there is none.</summary>
+    private string? CommunicationProfile()
+    {
+        var profile = Path.Combine(Settings.JournalPath, "Profilo.md");
+        if (!HasJournal || !File.Exists(profile))
+        {
+            return null;
+        }
+
+        var text = File.ReadAllText(profile).ReplaceLineEndings("\n");
+        var start = text.IndexOf("## Come comunico", StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        var end = text.IndexOf("\n## ", start + 3, StringComparison.Ordinal);
+        return text[start..(end < 0 ? text.Length : end)].Trim();
     }
 
     /// <summary>
@@ -755,6 +1106,29 @@ public sealed class MentorService : IDisposable
             GoalsCommand(call.Rest);
             return Task.CompletedTask;
         }, "[nuovi]");
+        Add("/episodio", "racconta un episodio con un collega: aggiorno le schede delle Persone", call =>
+        {
+            if (call.Rest.Trim().Length == 0)
+            {
+                _conversation.PostMentor("Raccontami cosa è successo: `/episodio con Chicca riunione tesa sul rilascio, ho alzato la voce…`. "
+                                         + "Dalla pagina 📓 Episodi della bacheca puoi anche separare fatti, reazione ed esito.");
+                return Task.CompletedTask;
+            }
+
+            var text = call.Rest.Trim();
+            var people = PeopleNote() is { } note ? People.Named(People.Parse(note.Content), text).Select(p => p.Name).ToList() : [];
+            return RecordEpisodeAsync(new Episode(DateOnly.FromDateTime(Now), Episodes.TitleFrom(text), people, text, "", "", "", []));
+        }, "cosa è successo");
+        Add("/prepara", "prepara una conversazione con una persona: come impostarla e il primo messaggio", call => PrepareConversationAsync(call.Rest),
+            "persona [argomento]");
+        commands.Add(new ChatCommand("/episodio-analizza", "analizza un episodio salvato", "data · titolo", CommandGroup.Mentor, Hidden: true),
+            call => AnalyzeEpisodeAsync(call.Rest));
+        commands.Add(new ChatCommand("/scheda", "cambia un campo della scheda di una persona", "Nome | campo | modo | valore", CommandGroup.Mentor, Hidden: true),
+            call =>
+            {
+                _conversation.PostMentor(ChangeCardCommand(call.Rest));
+                return Task.CompletedTask;
+            });
         Add("/mentore", "i comandi del mentore", _ =>
         {
             _conversation.PostMentor($"Mentore:\n{commands.Help(CommandGroup.Mentor)}\n{CommandsFooter}");

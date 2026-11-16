@@ -6,7 +6,7 @@ using Buddy.Core.Vault;
 namespace Buddy.App.Project;
 
 /// <summary>
-/// Ctrl+K: one box to reach anything — the views and your pages, the notes, the cards of the board, the saved chat
+/// Ctrl+K: one box to reach anything — the views and your pages, the people (and their cards), the notes, the cards of the board, the saved chat
 /// conversations and the chat commands. Results are ranked by where the text matches (start of the title first).
 /// </summary>
 public partial class ProjectWindow
@@ -26,6 +26,9 @@ public partial class ProjectWindow
         PaletteBox.Focus();
         UpdatePalette();
     }
+
+    /// <summary>The "🔎 Cerca ovunque… Ctrl+K" box in the header: the palette, for who does not know the shortcut.</summary>
+    private void OnPaletteOpenerClick(object? sender, RoutedEventArgs e) => OpenPalette();
 
     private void ClosePalette()
     {
@@ -153,6 +156,45 @@ public partial class ProjectWindow
                         }
                     }, s + (item.Id?.Equals(query, StringComparison.OrdinalIgnoreCase) == true ? 50 : 0));
                 }
+            }
+        }
+
+        // People (by name or nickname; role and description count less), then the cards that depend on them.
+        var people = NoteTitled(People.Note) is { } peopleNote ? People.Parse(peopleNote.Content) : [];
+        var onCards = people.Count > 0 && _board is not null ? People.OnCards(_board, people) : [];
+        foreach (var person in people)
+        {
+            var score = person.Nicknames.Prepend(person.Name).Max(n => Score(query, n));
+            if (score == 0)
+            {
+                score = Score(query, "", $"{person.Role} {person.Description}");
+            }
+
+            if (score == 0)
+            {
+                continue;
+            }
+
+            var role = person.Role.Length > 0 ? $"{person.Role} · " : "";
+            yield return new PaletteItem("👤", person.Display, role + person.LastContactLabel(DateOnly.FromDateTime(DateTime.Today)), "persona", () =>
+            {
+                ShowView("people");
+                Filter.Text = person.Name; // the page shows just this person, and their form opens on it
+                _ = EditPersonAsync(person.Name);
+            }, score + 1);
+
+            foreach (var card in onCards.Where(c => c.Person == person))
+            {
+                var title = (card.Item.Id is { } id ? $"{id} · {card.Item.Title}" : card.Item.Title).Replace("`", "");
+                var view = _cards.FirstOrDefault(c => c.Item == card.Item);
+                yield return new PaletteItem("👤", title, $"{card.Column.Title} · dipende da {person.Display}", "task", () =>
+                {
+                    ShowView("board");
+                    if (view is not null)
+                    {
+                        Select(view);
+                    }
+                }, score);
             }
         }
 

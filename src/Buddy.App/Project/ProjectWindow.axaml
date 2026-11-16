@@ -429,6 +429,19 @@
                         ToolTip.Tip="La chat con il buddy, la stessa della nuvoletta, qui accanto (Ctrl+J)">
                     <chat:IconLabel Label="💬 Chat" />
                 </Button>
+                <!-- Ctrl+K, always in sight: looks like a search box, opens the palette (notes, tasks, people, pages, commands). -->
+                <Button x:Name="PaletteOpener" DockPanel.Dock="Right" Width="230" Margin="8,0,0,0" VerticalAlignment="Center"
+                        HorizontalContentAlignment="Stretch" Padding="10,5" Click="OnPaletteOpenerClick"
+                        Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource Frame}" BorderThickness="1" CornerRadius="6"
+                        ToolTip.Tip="Trova qualsiasi cosa: note, task, persone, pagine, conversazioni, comandi (Ctrl+K)">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Right" Padding="5,1" CornerRadius="4" BorderThickness="1"
+                                BorderBrush="{DynamicResource Frame}" VerticalAlignment="Center">
+                            <TextBlock Text="Ctrl+K" FontSize="11" Classes="muted" />
+                        </Border>
+                        <TextBlock Text="🔎 Cerca ovunque…" Classes="muted" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Button>
                 <TextBox x:Name="Filter" DockPanel.Dock="Right" Width="280" VerticalAlignment="Center"
                          PlaceholderText="🔍 Cerca ID, titolo, testo… (Ctrl+F)"
                          ToolTip.Tip="Filtra le liste. Con una nota o una checklist aperta Ctrl+F cerca nella pagina; Ctrl+Shift+F torna qui" />
@@ -1309,6 +1322,10 @@
                             <Button Classes="small" Click="OnRemindClick" Margin="0,0,6,6"
                                     ToolTip.Tip="Scrive [promemoria:: data] nella voce: quel giorno il Buddy te la ripropone in chat">
                                 <chat:IconLabel Label="🔔 Ricordamelo…" />
+                            </Button>
+                            <Button Classes="small" Click="OnCardPersonClick" Margin="0,0,6,6"
+                                    ToolTip.Tip="Scrive [chi:: nome] nella voce: la persona da cui dipende o da sentire. Il Buddy te la ricorda, con i consigli della pagina Persone">
+                                <chat:IconLabel Label="👤 Chi…" />
                             </Button>
                             <Button Classes="small" Click="OnDeleteCardClick" Margin="0,0,6,6">
                                 <chat:IconLabel Label="🗑 Elimina" />

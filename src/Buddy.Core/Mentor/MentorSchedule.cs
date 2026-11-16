@@ -63,6 +63,9 @@ public sealed class MentorState
     /// <summary>Card reminders already brought back, by item (its id or first line) and the day of the reminder.</summary>
     public Dictionary<string, DateOnly> Reminded { get; set; } = [];
 
+    /// <summary>Day the cards waiting on someone ([chi:: …]) were last brought up: once a day.</summary>
+    public DateOnly? PeopleNudgedOn { get; set; }
+
     /// <summary>Tasks just gone to review, waiting for a quiet moment to ask what was learned.</summary>
     public List<string> PendingTaskRetros { get; set; } = [];
 

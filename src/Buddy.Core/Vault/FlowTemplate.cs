@@ -21,7 +21,7 @@ public static partial class FlowTemplate
     public static readonly string[] ProjectNotes =
     [
         "Scheda progetto.md", "00 Indice.md", "Stato attuale.md", "Cruscotto.md", "To-do Appunti.md", "Da valutare.md",
-        "To-Do.md", "Da controllare.md", "To-Do Fatti.md", "To-Do Rifiutati.md", "Decisioni.md", "Glossario.md",
+        "To-Do.md", "Da controllare.md", "To-Do Fatti.md", "To-Do Rifiutati.md", "Decisioni.md", "Glossario.md", "Persone.md",
         "Test web.md", "Mappa codice.md",
     ];
 
@@ -181,12 +181,15 @@ public static partial class FlowTemplate
         {(recentCommits.Length > 0 ? recentCommits : "(nessun commit o non è un repository git)")}
         """;
 
-    /// <summary>The name and the two paths of the "Template base" section, the only parts known without the repo.</summary>
+    /// <summary>
+    /// The name and the two paths of the "Template base" section, the only parts known without the repo. Works with
+    /// either line ending: the template may be checked out with CRLF.
+    /// </summary>
     internal static string FillScheda(string text, string name, string templateFolder, string projectFolder)
     {
         text = text.Replace("- **Percorso del template base:** `…`", $"- **Percorso del template base:** `{templateFolder}`");
-        text = Regex.Replace(text, @"^- \*\*Cartella del progetto nel vault:\*\* `…`.*$", $"- **Cartella del progetto nel vault:** `{projectFolder}`", RegexOptions.Multiline);
-        text = Regex.Replace(text, @"^- \*\*Nome:\*\* *$", $"- **Nome:** {name}", RegexOptions.Multiline);
+        text = Regex.Replace(text, @"^- \*\*Cartella del progetto nel vault:\*\* `…`[^\r\n]*", $"- **Cartella del progetto nel vault:** `{projectFolder}`", RegexOptions.Multiline);
+        text = Regex.Replace(text, @"^- \*\*Nome:\*\*[ \t]*(?=\r?$)",$"- **Nome:** {name}", RegexOptions.Multiline);
         return text;
     }
 
