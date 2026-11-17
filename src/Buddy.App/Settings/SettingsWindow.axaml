@@ -219,6 +219,7 @@
                             <ComboBoxItem Content="haiku" />
                             <ComboBoxItem Content="sonnet" />
                             <ComboBoxItem Content="opus" />
+                            <ComboBoxItem Content="fable" />
                         </ComboBox>
                         <CheckBox Grid.Row="11" Grid.Column="1" Content="Scegli il modello da solo: Haiku per le domande brevi, Opus per /lavora e /analisi"
                                   IsChecked="{Binding Claude.AutoModel}" ToolTip.Tip="La sessione resta la stessa: cambia solo il modello del messaggio" />

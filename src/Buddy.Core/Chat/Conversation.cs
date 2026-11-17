@@ -190,6 +190,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
     public static readonly IReadOnlyList<(string Alias, string Label)> ClaudeModels =
     [
         ("", "Predefinito"),
+        ("fable", "Fable"),
         ("opus", "Opus"),
         ("sonnet", "Sonnet"),
         ("haiku", "Haiku"),
@@ -786,7 +787,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
             AddSystem(Phrases.NewConversation);
         });
         Commands.Add(new("/uso", "uso di Claude oggi e limiti del piano"), call => Done(() => Instant(call.Input, _usage.Describe())));
-        Commands.Add(new("/modello", "mostra o cambia il modello (anche dal nome in alto)", "[opus|sonnet|haiku|locale <nome>]"),
+        Commands.Add(new("/modello", "mostra o cambia il modello (anche dal nome in alto)", "[fable|opus|sonnet|haiku|locale <nome>]"),
             call => ModelCommandAsync(call.Input, call.Rest));
         Commands.Add(new("/riprendi", "dove ero rimasto: task, ultima conversazione, modifiche, test"), call => ResumeAsync(call.Input));
         Commands.Add(new("/riapri", "riapre una conversazione salvata", "ID", Hidden: true), async call =>
@@ -913,7 +914,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
                 - Claude: **{ClaudeModelLabel(ClaudeModel)}**
                 - Locale (Ollama): **{LocalModel}**
 
-                Per cambiarli: click sul nome del modello in alto, oppure `/modello opus|sonnet|haiku|predefinito`
+                Per cambiarli: click sul nome del modello in alto, oppure `/modello fable|opus|sonnet|haiku|predefinito`
                 (Claude) e `/modello locale <nome>` (un modello installato in Ollama).
                 """);
             return;
