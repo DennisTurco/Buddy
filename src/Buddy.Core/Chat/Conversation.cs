@@ -68,6 +68,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
         _ui = SynchronizationContext.Current;
         ChatGrouping.Track(Entries);
         ChatGrouping.Track(SideEntries);
+        Entries.CollectionChanged += (_, e) => CloseMentorQuestionWhenAnswered(e.NewItems);
         Commands.IsDisabled = command => _options.Value.Assistant.IsDisabled(command);
         RegisterCommands();
     }
@@ -424,6 +425,27 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
             Notify(nameof(HasPendingReply));
         });
         return true;
+    }
+
+    /// <summary>
+    /// The mentor's open question in the work chat is over once Claude or the local model answers after it: the chat
+    /// has moved on, and the next message is for the model the user is talking to (e.g. the reply to Claude's own
+    /// question), not an answer to the mentor that arrived minutes earlier.
+    /// </summary>
+    private void CloseMentorQuestionWhenAnswered(System.Collections.IList? added)
+    {
+        if (_pendingReply is null || added?.OfType<ChatEntry>().Any(e => e.Speaker is Speaker.Claude or Speaker.Local) != true)
+        {
+            return;
+        }
+
+        _pendingReply = null;
+        foreach (var entry in Entries.Where(e => e.AwaitsReply))
+        {
+            entry.AwaitsReply = false;
+        }
+
+        Notify(nameof(HasPendingReply));
     }
 
     private void ClearAwaitingReply(ObservableCollection<ChatEntry>? entries = null) => OnUi(() =>

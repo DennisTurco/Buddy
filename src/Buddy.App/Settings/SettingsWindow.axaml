@@ -181,7 +181,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
@@ -193,27 +193,33 @@
                         <TextBox Classes="multiline" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" x:Name="AlwaysIncludedNotes" 
                                  Height="52" ToolTip.Tip="Una nota per riga, relativa alla cartella del progetto" />
 
-                        <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="Modello locale (Ollama)" FontWeight="SemiBold" Margin="0,12,0,4" />
-                        <TextBlock Grid.Row="4" Text="Indirizzo" Classes="label" />
-                        <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Ollama.BaseUrl}" />
-                        <TextBlock Grid.Row="5" Text="Modello" Classes="label" />
-                        <ComboBox Grid.Row="5" Grid.Column="1" x:Name="OllamaModels" IsEditable="True" HorizontalAlignment="Stretch" Margin="0,4"
+                        <TextBlock Grid.Row="3" Text="Template del flusso" Classes="label"
+                                   ToolTip.Tip="Le note condivise (Skill, Modelli, Configurazione), le skill di Claude e le note del progetto che mancano" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TemplateStatus" Classes="hint" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,4" />
+                        <Button Grid.Row="3" Grid.Column="2" x:Name="TemplateUpdateButton" Content="Aggiorna…" Click="OnUpdateTemplateClick"
+                                ToolTip.Tip="Porta il progetto all'ultima versione del template del flusso" />
+
+                        <TextBlock Grid.Row="4" Grid.ColumnSpan="3" Text="Modello locale (Ollama)" FontWeight="SemiBold" Margin="0,12,0,4" />
+                        <TextBlock Grid.Row="5" Text="Indirizzo" Classes="label" />
+                        <TextBox Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Ollama.BaseUrl}" />
+                        <TextBlock Grid.Row="6" Text="Modello" Classes="label" />
+                        <ComboBox Grid.Row="6" Grid.Column="1" x:Name="OllamaModels" IsEditable="True" HorizontalAlignment="Stretch" Margin="0,4"
                                   Text="{Binding Ollama.Model}" />
-                        <Button Grid.Row="5" Grid.Column="2" Content="Aggiorna" Click="OnRefreshModelsClick" />
-                        <TextBlock Grid.Row="6" Text="Contesto max (caratteri)" Classes="label" />
-                        <TextBox Grid.Row="6" Grid.Column="1" Width="100" HorizontalAlignment="Left"
+                        <Button Grid.Row="6" Grid.Column="2" Content="Aggiorna" Click="OnRefreshModelsClick" />
+                        <TextBlock Grid.Row="7" Text="Contesto max (caratteri)" Classes="label" />
+                        <TextBox Grid.Row="7" Grid.Column="1" Width="100" HorizontalAlignment="Left"
                                  Text="{Binding MaxContextChars}"
                                  ToolTip.Tip="Più testo = risposte più informate ma primo token più lento" />
 
-                        <TextBlock Grid.Row="7" Grid.ColumnSpan="3" Text="Claude Code" FontWeight="SemiBold" Margin="0,12,0,4" />
-                        <TextBlock Grid.Row="8" Text="Eseguibile" Classes="label" />
-                        <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding Claude.Executable}" />
-                        <Button Grid.Row="8" Grid.Column="2" Content="Sfoglia…" Click="OnBrowseClaudeExeClick" />
-                        <TextBlock Grid.Row="9" Text="Cartella di lavoro" Classes="label" />
-                        <TextBox Grid.Row="9" Grid.Column="1" Text="{Binding Claude.WorkingDirectory}" />
-                        <Button Grid.Row="9" Grid.Column="2" Content="Sfoglia…" Click="OnBrowseClaudeDirClick" />
-                        <TextBlock Grid.Row="10" Text="Modello" Classes="label" ToolTip.Tip="Vuoto = modello predefinito del CLI" />
-                        <ComboBox Grid.Row="10" Grid.Column="1" IsEditable="True" HorizontalAlignment="Stretch" Margin="0,4"
+                        <TextBlock Grid.Row="8" Grid.ColumnSpan="3" Text="Claude Code" FontWeight="SemiBold" Margin="0,12,0,4" />
+                        <TextBlock Grid.Row="9" Text="Eseguibile" Classes="label" />
+                        <TextBox Grid.Row="9" Grid.Column="1" Text="{Binding Claude.Executable}" />
+                        <Button Grid.Row="9" Grid.Column="2" Content="Sfoglia…" Click="OnBrowseClaudeExeClick" />
+                        <TextBlock Grid.Row="10" Text="Cartella di lavoro" Classes="label" />
+                        <TextBox Grid.Row="10" Grid.Column="1" Text="{Binding Claude.WorkingDirectory}" />
+                        <Button Grid.Row="10" Grid.Column="2" Content="Sfoglia…" Click="OnBrowseClaudeDirClick" />
+                        <TextBlock Grid.Row="11" Text="Modello" Classes="label" ToolTip.Tip="Vuoto = modello predefinito del CLI" />
+                        <ComboBox Grid.Row="11" Grid.Column="1" IsEditable="True" HorizontalAlignment="Stretch" Margin="0,4"
                                   Text="{Binding Claude.Model}">
                             <ComboBoxItem Content=" " />
                             <ComboBoxItem Content="haiku" />
@@ -221,12 +227,12 @@
                             <ComboBoxItem Content="opus" />
                             <ComboBoxItem Content="fable" />
                         </ComboBox>
-                        <CheckBox Grid.Row="11" Grid.Column="1" Content="Scegli il modello da solo: Haiku per le domande brevi, Opus per /lavora e /analisi"
+                        <CheckBox Grid.Row="12" Grid.Column="1" Content="Scegli il modello da solo: Haiku per le domande brevi, Opus per /lavora e /analisi"
                                   IsChecked="{Binding Claude.AutoModel}" ToolTip.Tip="La sessione resta la stessa: cambia solo il modello del messaggio" />
-                        <TextBlock Grid.Row="12" Text="Budget giornaliero ($)" Classes="label" ToolTip.Tip="Oltre questa spesa il Buddy te lo dice e propone un modello più leggero. 0 = nessun limite" />
-                        <NumericUpDown Grid.Row="12" Grid.Column="1" Value="{Binding Claude.DailyBudgetUsd}" Minimum="0" Maximum="500" Increment="1" FormatString="0.##" Width="140" HorizontalAlignment="Left" Margin="0,4" />
-                        <TextBlock Grid.Row="13" Text="File da non committare" Classes="label" ToolTip.Tip="Uno per riga, relativi al repo (es. Config/app.Debug.config): /commit avvisa se sono tra le modifiche" />
-                        <TextBox Grid.Row="13" Grid.Column="1" x:Name="DoNotCommit" AcceptsReturn="True" Height="60" TextWrapping="NoWrap" Margin="0,4" />
+                        <TextBlock Grid.Row="13" Text="Budget giornaliero ($)" Classes="label" ToolTip.Tip="Oltre questa spesa il Buddy te lo dice e propone un modello più leggero. 0 = nessun limite" />
+                        <NumericUpDown Grid.Row="13" Grid.Column="1" Value="{Binding Claude.DailyBudgetUsd}" Minimum="0" Maximum="500" Increment="1" FormatString="0.##" Width="140" HorizontalAlignment="Left" Margin="0,4" />
+                        <TextBlock Grid.Row="14" Text="File da non committare" Classes="label" ToolTip.Tip="Uno per riga, relativi al repo (es. Config/app.Debug.config): /commit avvisa se sono tra le modifiche" />
+                        <TextBox Grid.Row="14" Grid.Column="1" x:Name="DoNotCommit" AcceptsReturn="True" Height="60" TextWrapping="NoWrap" Margin="0,4" />
                     </Grid>
                 </ScrollViewer>
             </TabItem>

@@ -7,6 +7,7 @@ using Buddy.App.Pet;
 using Buddy.Core;
 using Buddy.Core.Llm;
 using Buddy.Core.Mentor;
+using Buddy.Core.Vault;
 
 namespace Buddy.App.Settings;
 
@@ -78,6 +79,7 @@ public partial class SettingsWindow : Window
         BuildDirectoryTable();
         BuildCommandTable(commands ?? []);
         BuildBehaviorTable();
+        ShowTemplateStatus();
 
         LoadProjectLists();
         RefreshPresetList();
@@ -418,6 +420,178 @@ public partial class SettingsWindow : Window
         OllamaModels.ItemsSource = models;
         OllamaModels.Text = current;
         ToolTip.SetTip(OllamaModels, models.Count == 0 ? "Ollama non raggiungibile a questo indirizzo" : null);
+    }
+
+    /// <summary>The project's flow template next to the button: up to date, or what an update would bring.</summary>
+    private TemplateUpdate? ShowTemplateStatus()
+    {
+        var project = _settings.ProjectPath?.Trim() ?? "";
+        if (project.Length == 0 || !Directory.Exists(project) || !FlowTemplate.HasFlow(project))
+        {
+            TemplateStatus.Text = "Nessuna nota del flusso nella cartella del progetto.";
+            TemplateUpdateButton.IsEnabled = false;
+            return null;
+        }
+
+        try
+        {
+            var update = FlowTemplate.CheckUpdate(project, _settings.FlowTemplatePath);
+            var version = update.ProjectVersion is { } v ? $"versione {v}" : "versione sconosciuta";
+            TemplateStatus.Text = !update.HasUpdates
+                ? $"✓ Aggiornato ({version})."
+                : $"Aggiornamenti disponibili: {version}{(update.VersionBehind ? $" → {update.TemplateVersion}" : "")}"
+                  + (update.Files.Count > 0 ? $", {update.Files.Count} file da aggiornare." : ".");
+            TemplateUpdateButton.IsEnabled = true;
+            TemplateUpdateButton.FontWeight = update.HasUpdates ? FontWeight.SemiBold : FontWeight.Normal;
+            return update;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            TemplateStatus.Text = $"Non riesco a leggere il template: {ex.Message}";
+            TemplateUpdateButton.IsEnabled = false;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Brings the project to the template built into Buddy (or the personal one): new notes and skills, shared notes,
+    /// installed skills; on request the ones edited by hand (with a backup) and, through Claude, the structure of the
+    /// project's own notes. Works on the files right away: nothing waits for "Salva e riavvia".
+    /// </summary>
+    private async void OnUpdateTemplateClick(object? sender, RoutedEventArgs e)
+    {
+        if (ShowTemplateStatus() is not { } update)
+        {
+            return;
+        }
+
+        if (!update.HasUpdates)
+        {
+            await Dialogs.ShowMessageAsync(this, "Il progetto usa già l'ultima versione del template del flusso.");
+            return;
+        }
+
+        static string Names(IEnumerable<TemplateFile> files) => string.Join(", ", files
+            .Select(f => f.Skill is { } skill ? $"/{skill}" : Path.GetFileNameWithoutExtension(f.Path)).Distinct().Take(8))
+            + (files.Select(f => f.Skill ?? f.Path).Distinct().Count() > 8 ? "…" : "");
+
+        var added = update.Files.Where(f => f.Change == TemplateChange.Added).ToList();
+        var updated = update.Files.Where(f => f.Change == TemplateChange.Updated).ToList();
+        var edited = update.Files.Where(f => f.NeedsConsent).ToList();
+        var lines = new List<string>
+        {
+            update.VersionBehind
+                ? $"Template del flusso: versione {update.ProjectVersion} → {update.TemplateVersion}."
+                : "Il template del flusso ha delle modifiche che il progetto non ha ancora.",
+        };
+        if (added.Count > 0)
+        {
+            lines.Add($"• Da aggiungere ({added.Count}): {Names(added)}");
+        }
+
+        if (updated.Count > 0)
+        {
+            lines.Add($"• Da aggiornare ({updated.Count}): {Names(updated)}");
+        }
+
+        if (edited.Count > 0)
+        {
+            lines.Add($"• Diverse dal template, forse modificate a mano ({edited.Count}): {Names(edited)}");
+        }
+
+        lines.Add("Task, appunti, decisioni e il resto del contenuto del progetto non vengono toccati.");
+
+        var options = new List<(string Label, bool Checked)>();
+        if (edited.Count > 0)
+        {
+            options.Add(($"Sostituisci anche le {edited.Count} diverse dal template (una copia resta in {FlowTemplate.BackupFolder} nella cartella del template)",
+                edited.All(f => f.Change == TemplateChange.Differs)));
+        }
+
+        if (update.CanAskClaude)
+        {
+            options.Add(("Fai aggiornare a Claude la struttura delle note del progetto secondo il changelog (circa un minuto)", true));
+        }
+
+        if (await Dialogs.ConfirmWithOptionsAsync(this, string.Join("\n", lines), options, "Aggiorna", "Aggiorna template") is not { } choices)
+        {
+            return;
+        }
+
+        var replaceEdited = edited.Count > 0 && choices[0];
+        var askClaude = update.CanAskClaude && choices[^1];
+        TemplateUpdateButton.IsEnabled = false;
+        try
+        {
+            var result = FlowTemplate.ApplyUpdate(update, replaceEdited, DateTime.Now);
+            var report = new List<string> { $"✓ {result.Written.Count} file aggiornati." };
+            if (result.Skipped.Count > 0)
+            {
+                report.Add($"Lasciati come sono: {Names(result.Skipped)}.");
+            }
+
+            if (result.Backup is { } backup)
+            {
+                report.Add($"Le versioni precedenti sono in {backup}.");
+            }
+
+            if (askClaude)
+            {
+                TemplateStatus.Text = "Claude sta aggiornando le note del progetto…";
+                var claude = await UpdateProjectNotesAsync(update);
+                report.Add(claude.Success
+                    ? $"Note del progetto portate alla versione {update.TemplateVersion}: {claude.Text}"
+                    : $"Claude non ha aggiornato le note del progetto ({claude.Text}): la versione resta {update.ProjectVersion}, riprova più tardi.");
+            }
+            else if (update.VersionBehind && !update.CanAskClaude)
+            {
+                FlowTemplate.SetProjectVersion(update.ProjectFolder, update.TemplateVersion!);
+            }
+
+            ShowTemplateStatus();
+            await Dialogs.ShowMessageAsync(this, string.Join("\n", report), "Aggiorna template");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ShowTemplateStatus();
+            await Dialogs.ShowMessageAsync(this, $"Non riesco ad aggiornare il template: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Claude applies the changelog to the project's notes, with the template's version of them in a temporary folder
+    /// to copy the structure from; the Scheda gets the new version only when it succeeds.
+    /// </summary>
+    private async Task<Buddy.Core.Claude.OneShotResult> UpdateProjectNotesAsync(TemplateUpdate update)
+    {
+        var notes = Directory.CreateTempSubdirectory("buddy-template-").FullName;
+        try
+        {
+            foreach (var (path, content) in update.ProjectTemplates)
+            {
+                await File.WriteAllTextAsync(Path.Combine(notes, path), content);
+            }
+
+            var result = await new Buddy.Core.Claude.ClaudeOneShot(Microsoft.Extensions.Options.Options.Create(_settings))
+                .RunAsync(FlowTemplate.UpdatePrompt(update, notes), update.ProjectFolder, "sonnet", [notes]);
+            if (result.Success)
+            {
+                FlowTemplate.SetProjectVersion(update.ProjectFolder, update.TemplateVersion!);
+            }
+
+            return result;
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(notes, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Only a temporary copy of the template.
+            }
+        }
     }
 
     private async void OnBrowseProjectClick(object? sender, RoutedEventArgs e) =>
