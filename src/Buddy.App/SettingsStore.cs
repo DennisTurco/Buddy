@@ -82,30 +82,61 @@ public static class SettingsStore
     private sealed record WindowState(
         double? Left = null, double? Top = null, double? BubbleWidth = null, double? BubbleHeight = null, string? ChatMode = null);
 
-    private static string UsageFoldedPath => Path.Combine(Folder, "usage-folded");
-
     /// <summary>Whether the Claude usage card of the project window is folded to one line (a marker file).</summary>
     public static bool UsageFolded
     {
-        get => File.Exists(UsageFoldedPath);
-        set
+        get => GetFlag("usage-folded");
+        set => SetFlag("usage-folded", value);
+    }
+
+    /// <summary>Whether the project window's side bar is hidden, to give the page all the width (a marker file).</summary>
+    public static bool SidebarCollapsed
+    {
+        get => GetFlag("sidebar-collapsed");
+        set => SetFlag("sidebar-collapsed", value);
+    }
+
+    /// <summary>Whether the list of notes in the Note view is hidden, to read the note on all the width (a marker file).</summary>
+    public static bool NotesListCollapsed
+    {
+        get => GetFlag("notes-list-collapsed");
+        set => SetFlag("notes-list-collapsed", value);
+    }
+
+    /// <summary>Whether a group of pages in the project window's side bar is folded (a marker file per group).</summary>
+    public static bool NavGroupClosed(string group) => GetFlag("nav-closed-" + group);
+
+    public static void SetNavGroupClosed(string group, bool closed) => SetFlag("nav-closed-" + group, closed);
+
+    /// <summary>Whether a folder in the notes list is folded (a marker file per folder name).</summary>
+    public static bool NotesFolderClosed(string folder) => GetFlag("notes-closed-" + SafeName(folder));
+
+    public static void SetNotesFolderClosed(string folder, bool closed) => SetFlag("notes-closed-" + SafeName(folder), closed);
+
+    /// <summary>A folder name as part of a file name: letters and digits kept, the rest "_" ("" is the project's top).</summary>
+    private static string SafeName(string name) =>
+        name.Length == 0 ? "_root" : new string(name.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '_').ToArray());
+
+    private static bool GetFlag(string name) => File.Exists(Path.Combine(Folder, name));
+
+    private static void SetFlag(string name, bool value)
+    {
+        try
         {
-            try
+            var path = Path.Combine(Folder, name);
+            if (value)
             {
-                if (value)
-                {
-                    Directory.CreateDirectory(Folder);
-                    File.WriteAllText(UsageFoldedPath, "");
-                }
-                else
-                {
-                    File.Delete(UsageFoldedPath);
-                }
+                Directory.CreateDirectory(Folder);
+                File.WriteAllText(path, "");
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            else
             {
-                // A convenience: losing it is harmless.
+                File.Delete(path);
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A convenience: losing it is harmless.
         }
     }
 }

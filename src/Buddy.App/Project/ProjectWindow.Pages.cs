@@ -34,7 +34,7 @@ public partial class ProjectWindow
     private string TitleOf(string key) =>
         key.StartsWith(PagePrefix, StringComparison.Ordinal) ? key[PagePrefix.Length..] : Views.FirstOrDefault(v => v.Key == key).Title ?? key;
 
-    /// <summary>The side bar's extra entries: your pages, then "＋ Nuova pagina…".</summary>
+    /// <summary>The side bar's extra entries (the group «Le tue pagine»): your pages, then "＋ Nuova pagina…".</summary>
     private IEnumerable<NavItem> CustomPageNav() =>
         CustomPages.List(_settings.ProjectPath)
             .Select(p => new NavItem(PagePrefix + p, $"📁  {p}", CustomPages.Notes(_vault, p).Count is var n and > 0 ? n.ToString(CultureInfo.InvariantCulture) : ""))

@@ -26,6 +26,11 @@ public partial class ProjectWindow
         _selectingNote = true;
         try
         {
+            if (note is NoteView view && !NotesList.Items.Contains(view))
+            {
+                BuildNotesList(NotesList.SelectedItem as NoteView, reveal: view); // in a folded folder: listed under its heading
+            }
+
             NotesList.SelectedItem = note;
         }
         finally

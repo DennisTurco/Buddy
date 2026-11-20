@@ -65,6 +65,9 @@ public partial class ProjectWindow : Window
     private bool _editingCard;
     private bool _reloadPending; // the vault changed while a card was being edited
     private NoteView? _editedNote;
+
+    /// <summary>The text the note editor opened with: what is typed is "unsaved" only when it differs.</summary>
+    private string _editedNoteOriginal = "";
     private bool _switchingView;
     private string? _tagFilter;
     private List<ManualDocView> _manualDocs = [];
@@ -100,6 +103,7 @@ public partial class ProjectWindow : Window
         }
 
         ShowUsage();
+        ApplyPanelsCollapsed();
         _skills = ClaudeSkills.Installed(_settings);
 
         Appearance.Apply(this, _settings.Appearance, font: false);
@@ -134,6 +138,7 @@ public partial class ProjectWindow : Window
             QuickNoteDone.IsVisible = false;
         };
         _vault.Changed += OnVaultChanged;
+        Closing += OnWindowClosing;
         Closed += (_, _) =>
         {
             _vault.Changed -= OnVaultChanged;
@@ -165,6 +170,7 @@ public partial class ProjectWindow : Window
         {
             _notePreview.Stop();
             _notePreview.Start();
+            OnNoteEditorTextChanged();
         };
         NoteEditor.TemplateApplied += (_, e) =>
         {
@@ -187,10 +193,21 @@ public partial class ProjectWindow : Window
                 };
             }
         };
-        NotesList.SelectionChanged += (_, _) =>
+        NotesList.SelectionChanged += (_, e) =>
         {
-            OnNoteShown((NotesList.SelectedItem as NoteView)?.Note.RelativePath);
-            ShowNote(NotesList.SelectedItem as NoteView);
+            if (_buildingNotes)
+            {
+                return;
+            }
+
+            if (NotesList.SelectedItem is NoteFolderHeader header)
+            {
+                // A heading is not a note: it folds or unfolds its folder, and the note being read stays selected.
+                ToggleNotesFolder(header.Folder, e.RemovedItems.OfType<NoteView>().FirstOrDefault());
+                return;
+            }
+
+            OnNoteSelectionChanged();
         };
         SetUpHistory();
         ManualDocsList.SelectionChanged += (_, _) =>
@@ -202,7 +219,16 @@ public partial class ProjectWindow : Window
         };
         Nav.SelectionChanged += (_, _) =>
         {
-            if (!_switchingView && Nav.SelectedItem is NavItem item)
+            if (_switchingView || Nav.SelectedItem is not NavItem item)
+            {
+                return;
+            }
+
+            if (item.IsHeader)
+            {
+                ToggleNavGroup(item.Key); // a heading is not a page: it folds or unfolds its group
+            }
+            else
             {
                 ShowView(item.Key);
             }
@@ -274,7 +300,7 @@ public partial class ProjectWindow : Window
         }
 
         SelectNoteQuietly(_notes.FirstOrDefault(n => n.Note.RelativePath == selectedNote)
-                          ?? (NotesList.ItemsSource as IEnumerable<NoteView>)?.FirstOrDefault());
+                          ?? NotesList.Items.OfType<NoteView>().FirstOrDefault());
     }
 
     internal void ShowView(string key)
@@ -321,7 +347,8 @@ public partial class ProjectWindow : Window
         }
 
         _switchingView = true;
-        Nav.SelectedItem = (Nav.ItemsSource as IEnumerable<NavItem>)?.FirstOrDefault(n => n.Key == key);
+        OpenGroupOf(key); // the page's group opens if it was folded (Ctrl+K, Ctrl+1…9, links)
+        BuildNav();
         _switchingView = false;
     }
 
@@ -435,6 +462,7 @@ public partial class ProjectWindow : Window
         attention.AddRange(Shown("todo").Where(c => c.Priority == 1).Select(c => new AttentionView(c, "🔥 Priorità alta")));
         AttentionList.ItemsSource = attention;
         RenderHealth(today);
+        RenderChecks(today);
         var inbox = Total("appunti");
         SortInboxButton.IsVisible = inbox > 0 && _skills.Contains("smista");
         SortInboxButton.Content = Icons.Label($"🗂 Smista {(inbox == 1 ? "l'appunto" : $"i {inbox} appunti")} con Claude");
@@ -474,12 +502,9 @@ public partial class ProjectWindow : Window
                 ? _notes
                 : _notes.Where(n => n.Note.RelativePath.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
                                     || n.Note.Content.Contains(filter, StringComparison.CurrentCultureIgnoreCase)).ToList();
-            var currentNote = NotesList.SelectedItem;
-            NotesList.ItemsSource = notes;
-            if (currentNote is NoteView view && notes.Contains(view))
-            {
-                NotesList.SelectedItem = view;
-            }
+            _shownNotes = notes;
+            _notesFiltered = filter.Length > 0;
+            BuildNotesList(NotesList.SelectedItem as NoteView);
         }
 
         RenderTests(filter);
@@ -487,8 +512,7 @@ public partial class ProjectWindow : Window
 
         // Side bar
         var open = Flow.Active.Sum(Total);
-        _switchingView = true;
-        Nav.ItemsSource = Views.Select(v => new NavItem(v.Key, v.Label, v.Key switch
+        _navPages = Views.Select(v => new NavItem(v.Key, v.Label, v.Key switch
         {
             "board" when open > 0 => open.ToString(CultureInfo.InvariantCulture),
             "archive" when Total("fatti") + Total("rifiutati") > 0 => (Total("fatti") + Total("rifiutati")).ToString(CultureInfo.InvariantCulture),
@@ -497,7 +521,8 @@ public partial class ProjectWindow : Window
             "webtests" when ScriptsList.ItemCount > 0 => ScriptsList.ItemCount.ToString(CultureInfo.InvariantCulture),
             _ => "",
         })).Concat(CustomPageNav()).ToList();
-        Nav.SelectedItem = (Nav.ItemsSource as IEnumerable<NavItem>)?.FirstOrDefault(n => n.Key == _view);
+        _switchingView = true;
+        BuildNav();
         if (IsGeneric(_view))
         {
             _ = RenderPageAsync(_view); // the vault changed, or the filter: the page follows
@@ -650,6 +675,48 @@ public partial class ProjectWindow : Window
         e.Handled = true;
     }
 
+    // ---- Collapsible side bar and notes list ------------------------------------------------------------------
+
+    /// <summary>Hides or shows the side bar and the notes list as remembered: hidden, their columns take no room.</summary>
+    private void ApplyPanelsCollapsed()
+    {
+        var sideBar = SettingsStore.SidebarCollapsed;
+        SideBar.IsVisible = !sideBar;
+        SideRail.IsVisible = sideBar; // folded to its icons, not gone
+        MainGrid.ColumnDefinitions[0].Width = sideBar ? new GridLength(56) : new GridLength(220);
+        SideBarToggleIcon.Data = FoldIcon(sideBar);
+        ToolTip.SetTip(SideBarToggle, sideBar ? "Mostra la barra laterale (Ctrl+B)" : "Nascondi la barra laterale (Ctrl+B)");
+
+        var list = SettingsStore.NotesListCollapsed;
+        NotesListPanel.IsVisible = !list;
+        NotesView.ColumnDefinitions[0].Width = list ? new GridLength(0) : new GridLength(250);
+        NotesView.ColumnDefinitions[1].Width = list ? new GridLength(0) : new GridLength(14);
+        NotesListToggleIcon.Data = FoldIcon(list);
+        ToolTip.SetTip(NotesListToggle, list ? "Mostra l'elenco delle note (Ctrl+Shift+B)" : "Nascondi l'elenco delle note (Ctrl+Shift+B)");
+    }
+
+    /// <summary>The panel icon with the arrow pointing where the panel goes: in (hidden) or out (shown).</summary>
+    private static Avalonia.Media.Geometry? FoldIcon(bool hidden) =>
+        Application.Current?.TryFindResource(hidden ? "IconPanelShow" : "IconPanelHide", out var icon) == true
+            ? icon as Avalonia.Media.Geometry
+            : null;
+
+    private void ToggleSideBar()
+    {
+        SettingsStore.SidebarCollapsed = !SettingsStore.SidebarCollapsed;
+        ApplyPanelsCollapsed();
+    }
+
+    private void ToggleNotesList()
+    {
+        SettingsStore.NotesListCollapsed = !SettingsStore.NotesListCollapsed;
+        ApplyPanelsCollapsed();
+    }
+
+    private void OnSideBarToggleClick(object? sender, RoutedEventArgs e) => ToggleSideBar();
+
+    private void OnNotesListToggleClick(object? sender, RoutedEventArgs e) => ToggleNotesList();
+
     // ---- Side panel -------------------------------------------------------------------------------------------
 
     internal void Select(CardView card)
@@ -678,6 +745,7 @@ public partial class ProjectWindow : Window
         ClaudeActions.ItemsSource = actions;
         ClaudeActionsPanel.IsVisible = actions.Count > 0;
         _ = LoadTimelineAsync(card);
+        LoadSheet(card);
 
         // Tag picker: the common tags plus any already used in the vault; the item's own is highlighted.
         var used = (_board?.Columns ?? []).SelectMany(c => c.Items).SelectMany(i => i.TagList);
@@ -820,6 +888,7 @@ public partial class ProjectWindow : Window
 
         _selected = null;
         StopEditingCard();
+        StopEditingSheet();
         Detail.IsVisible = false;
         if (_reloadPending)
         {
@@ -829,7 +898,7 @@ public partial class ProjectWindow : Window
 
     private void OnCardPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (e.InitialPressMouseButton == MouseButton.Left && sender is Control { DataContext: CardView card } && !_editingCard)
+        if (e.InitialPressMouseButton == MouseButton.Left && sender is Control { DataContext: CardView card } && !_editingCard && !SheetDirty)
         {
             if (card == _selected)
             {
@@ -842,7 +911,7 @@ public partial class ProjectWindow : Window
         }
     }
 
-    private void OnCloseDetailClick(object? sender, RoutedEventArgs e) => CloseDetail();
+    private void OnCloseDetailClick(object? sender, RoutedEventArgs e) => _ = CloseDetailAsync();
 
     private async void OnCardActionClick(object? sender, RoutedEventArgs e)
     {
@@ -1692,11 +1761,7 @@ public partial class ProjectWindow : Window
         }
     }
 
-    private void OnCancelCardClick(object? sender, RoutedEventArgs e)
-    {
-        StopEditingCard();
-        AfterEdit();
-    }
+    private void OnCancelCardClick(object? sender, RoutedEventArgs e) => _ = CancelCardEditAsync();
 
     private async void OnSaveCardClick(object? sender, RoutedEventArgs e) => await SaveCardAsync();
 
@@ -1747,12 +1812,17 @@ public partial class ProjectWindow : Window
         else if (e.Key == Key.Escape)
         {
             e.Handled = true;
-            StopEditingCard();
-            AfterEdit();
+            await CancelCardEditAsync();
         }
     }
 
     // ---- Notes ------------------------------------------------------------------------------------------------
+
+    private void OnNoteSelectionChanged()
+    {
+        OnNoteShown((NotesList.SelectedItem as NoteView)?.Note.RelativePath);
+        ShowNote(NotesList.SelectedItem as NoteView);
+    }
 
     private void ShowNote(NoteView? note)
     {
@@ -1761,7 +1831,8 @@ public partial class ProjectWindow : Window
             StopEditingNote();
         }
 
-        NoteTitle.Text = note?.Title ?? "";
+        UpdateNoteTitle();
+        UpdateDraftBar(note);
         RenameNoteButton.IsVisible = note is not null && CanManageSelectedNote;
         DeleteNoteButton.IsVisible = note is not null && CanManageSelectedNote;
         NoteViewer.Markdown = note?.Markdown ?? "";
@@ -1799,6 +1870,7 @@ public partial class ProjectWindow : Window
     {
         if (sender is Control { DataContext: NoteView note })
         {
+            BuildNotesList(NotesList.SelectedItem as NoteView, reveal: note); // its folder may be folded
             NotesList.SelectedItem = note;
             NotesList.ScrollIntoView(note);
         }
@@ -1806,15 +1878,97 @@ public partial class ProjectWindow : Window
 
     private void OnEditNoteClick(object? sender, RoutedEventArgs e)
     {
-        if (NotesList.SelectedItem is not NoteView note)
+        if (NotesList.SelectedItem is NoteView note)
+        {
+            StartEditingNote(note);
+        }
+    }
+
+    /// <summary>Opens the editor on <paramref name="note"/>, with its text or a recovered draft's (then unsaved from the start).</summary>
+    private void StartEditingNote(NoteView note, string? text = null)
+    {
+        _editedNote = note;
+        _editedNoteOriginal = note.Note.Content.Replace("\r\n", "\n");
+        NoteEditor.Text = text ?? _editedNoteOriginal;
+        SetNoteEditing(true);
+        UpdateNoteTitle();
+        NoteDraftBar.IsVisible = false;
+        NoteEditor.Focus();
+    }
+
+    // ---- Unsaved changes: the dot in the title, and the draft saved while typing --------------------------------
+
+    private readonly NoteDrafts _drafts = new(Path.Combine(SettingsStore.Folder, "note-drafts"));
+    private DispatcherTimer? _draftTimer;
+
+    private bool NoteIsDirty => _editedNote is not null && (NoteEditor.Text ?? "") != _editedNoteOriginal;
+
+    /// <summary>"● Title" while the note being edited has changes not saved yet.</summary>
+    private void UpdateNoteTitle()
+    {
+        var title = (_editedNote ?? NotesList.SelectedItem as NoteView)?.Title ?? "";
+        NoteTitle.Text = NoteIsDirty ? "● " + title : title;
+        ToolTip.SetTip(NoteTitle, NoteIsDirty ? "Modifiche non salvate (Ctrl+S per salvare)" : null);
+    }
+
+    /// <summary>While typing: the dot, and (a moment after the last key) the draft on disk.</summary>
+    private void OnNoteEditorTextChanged()
+    {
+        UpdateNoteTitle();
+        if (_draftTimer is null)
+        {
+            _draftTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+            _draftTimer.Tick += (_, _) =>
+            {
+                _draftTimer.Stop();
+                if (_editedNote is { } note)
+                {
+                    _drafts.Save(FullPath(note.Note.RelativePath), _editedNoteOriginal, NoteEditor.Text ?? "");
+                }
+            };
+        }
+
+        _draftTimer.Stop();
+        _draftTimer.Start();
+    }
+
+    /// <summary>Reading a note with a draft left from an edit not closed (a crash, a shutdown): offer to recover it.</summary>
+    private void UpdateDraftBar(NoteView? note)
+    {
+        var draft = note is null || _editedNote is not null ? null : _drafts.Load(FullPath(note.Note.RelativePath));
+        if (draft is not null && draft.Text == note!.Note.Content.Replace("\r\n", "\n"))
+        {
+            _drafts.Delete(draft.NotePath); // the note already says what the draft says
+            draft = null;
+        }
+
+        NoteDraftBar.IsVisible = draft is not null;
+        if (draft is null)
         {
             return;
         }
 
-        _editedNote = note;
-        NoteEditor.Text = note.Note.Content.Replace("\r\n", "\n");
-        SetNoteEditing(true);
-        NoteEditor.Focus();
+        var changed = draft.Original != note!.Note.Content.Replace("\r\n", "\n");
+        NoteDraftText.Text = $"Bozza non salvata del {draft.SavedAt.ToString("d MMM 'alle' H:mm", Italian)}"
+                             + (changed ? ": nel frattempo la nota è cambiata, recuperandola sostituisci la versione attuale." : ".");
+    }
+
+    private void OnRecoverDraftClick(object? sender, RoutedEventArgs e)
+    {
+        if (NotesList.SelectedItem is NoteView note && _drafts.Load(FullPath(note.Note.RelativePath)) is { } draft)
+        {
+            StartEditingNote(note, draft.Text);
+        }
+    }
+
+    private async void OnDiscardDraftClick(object? sender, RoutedEventArgs e)
+    {
+        if (NotesList.SelectedItem is NoteView note
+            && await Settings.Dialogs.ConfirmAsync(this, $"Elimino la bozza non salvata di «{note.Title}»?", "Elimina la bozza"))
+        {
+            _drafts.Delete(FullPath(note.Note.RelativePath));
+            UpdateDraftBar(note);
+        }
     }
 
     private async void OnSaveNoteClick(object? sender, RoutedEventArgs e)
@@ -1826,12 +1980,100 @@ public partial class ProjectWindow : Window
         }
     }
 
-    private void OnCancelNoteClick(object? sender, RoutedEventArgs e) => StopEditingNote();
+    private void OnCancelNoteClick(object? sender, RoutedEventArgs e) => _ = CancelNoteEditAsync();
 
+    /// <summary>"Annulla" or Esc in the note editor: with unsaved changes, asks before throwing them away.</summary>
+    private async Task CancelNoteEditAsync()
+    {
+        if (_editedNote is not { } note)
+        {
+            return;
+        }
+
+        if ((NoteEditor.Text ?? "") != _editedNoteOriginal
+            && !await Settings.Dialogs.ConfirmAsync(this,
+                $"Ci sono modifiche non salvate alla nota «{note.Title}». Le scarto?", "Scarta le modifiche"))
+        {
+            NoteEditor.Focus();
+            return;
+        }
+
+        if (_editedNote == note)
+        {
+            StopEditingNote();
+        }
+    }
+
+    /// <summary>What is being typed and not saved yet, in the note editor or the card editor; null when nothing is.</summary>
+    private string? UnsavedEdit =>
+        _editedNote is { } note && (NoteEditor.Text ?? "") != _editedNoteOriginal ? $"alla nota «{note.Title}»"
+        : _editingCard && _selected is { } card && (CardEditor.Text ?? "") != card.Item.Raw ? "alla voce"
+        : SheetDirty ? "alla scheda del task"
+        : null;
+
+    /// <summary>Set once the user agreed to throw the edit away, so the second Close goes through.</summary>
+    private bool _discardOnClose;
+
+    /// <summary>
+    /// Closing the window (X, Alt+F4) with unsaved changes asks first. Quitting Buddy or shutting the system down does not:
+    /// a dialog there would block the exit.
+    /// </summary>
+    private async void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_discardOnClose || e.IsProgrammatic || e.CloseReason != WindowCloseReason.WindowClosing
+            || UnsavedEdit is not { } what)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        if (await Settings.Dialogs.ConfirmAsync(this, $"Ci sono modifiche non salvate {what}. Chiudo e le scarto?", "Chiudi e scarta"))
+        {
+            _discardOnClose = true;
+            _draftTimer?.Stop();
+            if (_editedNote is { } note)
+            {
+                _drafts.Delete(FullPath(note.Note.RelativePath)); // thrown away on purpose: nothing to recover
+            }
+
+            Close();
+        }
+    }
+
+    /// <summary>"Annulla" or Esc in the card editor: with unsaved changes, asks before throwing them away.</summary>
+    private async Task CancelCardEditAsync()
+    {
+        if (!_editingCard)
+        {
+            return;
+        }
+
+        if (_selected is { } card && (CardEditor.Text ?? "") != card.Item.Raw
+            && !await Settings.Dialogs.ConfirmAsync(this, "Ci sono modifiche non salvate alla voce. Le scarto?", "Scarta le modifiche"))
+        {
+            CardEditor.Focus();
+            return;
+        }
+
+        if (_editingCard)
+        {
+            StopEditingCard();
+            AfterEdit();
+        }
+    }
+
+    /// <summary>Closes the editor (saved, or discarded on purpose): its draft goes too.</summary>
     private void StopEditingNote()
     {
+        _draftTimer?.Stop();
+        if (_editedNote is { } note)
+        {
+            _drafts.Delete(FullPath(note.Note.RelativePath));
+        }
+
         _editedNote = null;
         SetNoteEditing(false);
+        UpdateNoteTitle();
         AfterEdit();
     }
 
@@ -2259,6 +2501,35 @@ public partial class ProjectWindow : Window
         }
     }
 
+    // ---- Periodic checks --------------------------------------------------------------------------------------
+
+    private void RenderChecks(DateOnly today)
+    {
+        var log = _vault.Notes.FirstOrDefault(n => n.Title.Equals(ProjectChecks.NoteTitle, StringComparison.OrdinalIgnoreCase));
+        var checks = ProjectChecks.Status(log?.Content, _skills, today).Select(s => new PeriodicCheckView(s)).ToList();
+        ChecksList.ItemsSource = checks;
+        var due = checks.Count(c => c.IsDue);
+        ChecksTitle.Text = due == 0 ? "🔁 Controlli periodici" : $"🔁 Controlli periodici · {due} da fare";
+    }
+
+    /// <summary>«Lancia»: the request (with the log line Claude adds at the end) in the chat, to review and send.</summary>
+    private void OnLaunchCheckClick(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is PeriodicCheckView { CanRun: true } check)
+        {
+            AskRequested?.Invoke(ProjectChecks.Request(check.Status.Check, DateOnly.FromDateTime(DateTime.Today)));
+        }
+    }
+
+    private void OnChecksTitleClick(object? sender, RoutedEventArgs e)
+    {
+        if (!OpenInNotesView(ProjectChecks.NoteTitle))
+        {
+            _ = Settings.Dialogs.ShowMessageAsync(this,
+                "La nota «Controlli» non c'è ancora: la crea Claude al primo controllo lanciato da qui, con lo storico dei lanci.");
+        }
+    }
+
     private void OnHealthIssueClick(object? sender, RoutedEventArgs e)
     {
         if ((sender as Control)?.DataContext is HealthIssue { Target: { } target })
@@ -2404,7 +2675,8 @@ public partial class ProjectWindow : Window
 
     /// <summary>
     /// Esc: leave the edit, then the side panel, then the window (in the chat: close the chat). Ctrl+F search, Ctrl+N
-    /// new appunto, Ctrl+Z undo the last card moved, Ctrl+1…4 views, Ctrl+S save the note being edited, Ctrl+J open or close the chat.
+    /// new appunto, Ctrl+Z undo the last card moved, Ctrl+1…4 views, Ctrl+S save the note being edited, Ctrl+J open or close the chat,
+    /// Ctrl+B hide or show the side bar, Ctrl+Shift+B the notes list.
     /// </summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
@@ -2436,18 +2708,24 @@ public partial class ProjectWindow : Window
             case Key.J when ctrl:
                 ToggleChat();
                 break;
+            // Ctrl+B side bar, Ctrl+Shift+B notes list (in the note editor Ctrl+B is bold, and wins).
+            case Key.B when ctrl && e.KeyModifiers.HasFlag(KeyModifiers.Shift):
+                ToggleNotesList();
+                break;
+            case Key.B when ctrl:
+                ToggleSideBar();
+                break;
             case Key.Escape when PageFindBar.IsVisible:
                 ClosePageFind();
                 break;
             case Key.Escape when _editedNote is not null:
-                StopEditingNote();
+                _ = CancelNoteEditAsync();
                 break;
             case Key.Escape when _editingCard:
-                StopEditingCard();
-                AfterEdit();
+                _ = CancelCardEditAsync();
                 break;
             case Key.Escape when Detail.IsVisible:
-                CloseDetail();
+                _ = CloseDetailAsync();
                 break;
             case Key.Escape:
                 Close();

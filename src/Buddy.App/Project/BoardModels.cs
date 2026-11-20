@@ -336,16 +336,61 @@ public sealed record AttentionView(CardView Card, string Reason);
 /// <summary>One folder in the graph legend, with its colour.</summary>
 public sealed record GraphLegendItem(string Folder, Avalonia.Media.IBrush Color);
 
-/// <summary>A side-bar entry.</summary>
-public sealed record NavItem(string Key, string Label, string Badge)
+/// <summary>
+/// A side-bar entry: a page, or the heading of a group of pages (<see cref="IsHeader"/>) that folds and unfolds
+/// them; a folded heading shows its pages' numbers in its badge.
+/// </summary>
+public sealed record NavItem(string Key, string Label, string Badge, bool IsHeader = false, bool IsOpen = true)
 {
     public bool HasBadge => Badge.Length > 0;
+    public bool IsPage => !IsHeader;
+    public string Chevron => IsOpen ? "▾" : "▸";
+}
+
+/// <summary>A page in the side bar's rail (the side bar folded to its icons).</summary>
+public sealed record RailItem(string Key, string Icon, string Label, string Badge, bool IsCurrent, bool StartsGroup)
+{
+    public bool HasBadge => Badge.Length > 0;
+    public string Tip => HasBadge ? $"{Label} · {Badge}" : Label;
+    public Avalonia.Thickness Margin => new(0, StartsGroup ? 10 : 0, 0, 2);
+}
+
+/// <summary>A folder's heading in the notes list: click to fold or unfold its notes.</summary>
+/// <param name="Folder">The folder relative to the project ("" for the notes at the top).</param>
+public sealed record NoteFolderHeader(string Folder, int Count, bool IsOpen)
+{
+    public string Title => Folder.Length == 0 ? "Progetto" : Folder.Replace('\\', '/').Replace("/", " / ");
+    public string Chevron => IsOpen ? "▾" : "▸";
 }
 
 /// <summary>A "Stato attuale" line: label and markdown value.</summary>
 public sealed record StatusView(string Label, string Value)
 {
     public string Markdown => NoteLinks.ToMarkdown(Value);
+}
+
+/// <summary>A periodic check in the Panoramica: when it last ran, what came out, whether it is time to run it again.</summary>
+public sealed record PeriodicCheckView(CheckStatus Status)
+{
+    private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
+
+    public string Title => Status.Check.Title;
+    public string Description => Status.Check.Description;
+    public bool CanRun => Status.Installed;
+    public bool IsDue => Status.IsDue;
+
+    /// <summary>"Mai lanciato", "12 ott · 2 problemi trovati", or why it cannot run.</summary>
+    public string Last => !Status.Installed
+        ? $"Skill {Status.Check.Command} non installata: Impostazioni → Comandi"
+        : Status.Last is not { } run
+            ? "Mai lanciato"
+            : $"Ultimo: {run.Date.ToString("d MMM yyyy", Italian)}" + (run.Outcome.Length > 0 ? $" · {run.Outcome}" : "");
+
+    /// <summary>"Da rifare", "Da fare", or nothing while it is recent.</summary>
+    public string Badge => !IsDue ? "" : Status.Last is null ? "Da fare" : "Da rifare";
+
+    public string Tip => $"{Status.Check.Command} · consigliato ogni {Status.Check.EveryDays} giorni"
+                         + (Status.DueOn is { } due && !IsDue ? $" (il prossimo dal {due.ToString("d MMM", Italian)})" : "");
 }
 
 /// <summary>A vault note in the notes list.</summary>

@@ -20,7 +20,7 @@ public sealed record HealthIssue(string Icon, string Text, string? Target)
 public static class VaultHealth
 {
     /// <summary>Folders whose notes are not meant to be linked (screenshots, archives…).</summary>
-    private static readonly string[] UnlinkedFolders = ["Test web", "Test manuali", "Appunti", "Archivio", "Retro", "Diario"];
+    private static readonly string[] UnlinkedFolders = ["Test web", "Test manuali", "Task", "Appunti", "Archivio", "Retro", "Diario"];
 
     public const int StaleChecklistDays = 7;
 

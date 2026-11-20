@@ -429,6 +429,12 @@
                         </Grid>
                         <StackPanel x:Name="CommandRows" />
                         <TextBlock x:Name="CommandSummary" Classes="hint" Margin="0,4,0,0" />
+
+                        <!-- Skills by others that Buddy suggests but does not ship: installed for you with "npx skills add". -->
+                        <TextBlock Text="Skill consigliate" FontWeight="SemiBold" Margin="0,18,0,2" />
+                        <TextBlock Classes="hint" TextWrapping="Wrap"
+                                   Text="Skill di altri autori, non incluse in Buddy: «Installa» le scarica dal loro repository nelle tue skill di Claude (~/.claude/skills), valide per tutti i progetti. Servono Node.js e la rete; si aggiornano con «npx skills update»." />
+                        <StackPanel x:Name="RecommendedSkillRows" Margin="0,6,0,0" Spacing="8" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

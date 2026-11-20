@@ -60,7 +60,9 @@ public static partial class TaskTimeline
             }
 
             var icon = note.RelativePath.StartsWith("Test manuali", StringComparison.OrdinalIgnoreCase) ? "🧪"
-                : note.RelativePath.StartsWith("Analisi", StringComparison.OrdinalIgnoreCase) ? "🔎" : "📄";
+                : note.RelativePath.StartsWith("Analisi", StringComparison.OrdinalIgnoreCase) ? "🔎"
+                : note.RelativePath.StartsWith(TaskSheet.Folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                  || note.RelativePath.StartsWith(TaskSheet.Folder + "/", StringComparison.OrdinalIgnoreCase) ? "📋" : "📄";
             events.Add(new TimelineEvent(date.Value, icon, $"Nota «{note.Title}»"));
         }
 
