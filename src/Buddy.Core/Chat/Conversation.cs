@@ -68,6 +68,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
         _ui = SynchronizationContext.Current;
         ChatGrouping.Track(Entries);
         ChatGrouping.Track(SideEntries);
+        Entries.CollectionChanged += (_, e) => CloseMentorQuestionWhenAnswered(e.NewItems);
         Commands.IsDisabled = command => _options.Value.Assistant.IsDisabled(command);
         RegisterCommands();
     }
@@ -190,6 +191,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
     public static readonly IReadOnlyList<(string Alias, string Label)> ClaudeModels =
     [
         ("", "Predefinito"),
+        ("fable", "Fable"),
         ("opus", "Opus"),
         ("sonnet", "Sonnet"),
         ("haiku", "Haiku"),
@@ -423,6 +425,27 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
             Notify(nameof(HasPendingReply));
         });
         return true;
+    }
+
+    /// <summary>
+    /// The mentor's open question in the work chat is over once Claude or the local model answers after it: the chat
+    /// has moved on, and the next message is for the model the user is talking to (e.g. the reply to Claude's own
+    /// question), not an answer to the mentor that arrived minutes earlier.
+    /// </summary>
+    private void CloseMentorQuestionWhenAnswered(System.Collections.IList? added)
+    {
+        if (_pendingReply is null || added?.OfType<ChatEntry>().Any(e => e.Speaker is Speaker.Claude or Speaker.Local) != true)
+        {
+            return;
+        }
+
+        _pendingReply = null;
+        foreach (var entry in Entries.Where(e => e.AwaitsReply))
+        {
+            entry.AwaitsReply = false;
+        }
+
+        Notify(nameof(HasPendingReply));
     }
 
     private void ClearAwaitingReply(ObservableCollection<ChatEntry>? entries = null) => OnUi(() =>
@@ -786,7 +809,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
             AddSystem(Phrases.NewConversation);
         });
         Commands.Add(new("/uso", "uso di Claude oggi e limiti del piano"), call => Done(() => Instant(call.Input, _usage.Describe())));
-        Commands.Add(new("/modello", "mostra o cambia il modello (anche dal nome in alto)", "[opus|sonnet|haiku|locale <nome>]"),
+        Commands.Add(new("/modello", "mostra o cambia il modello (anche dal nome in alto)", "[fable|opus|sonnet|haiku|locale <nome>]"),
             call => ModelCommandAsync(call.Input, call.Rest));
         Commands.Add(new("/riprendi", "dove ero rimasto: task, ultima conversazione, modifiche, test"), call => ResumeAsync(call.Input));
         Commands.Add(new("/riapri", "riapre una conversazione salvata", "ID", Hidden: true), async call =>
@@ -913,7 +936,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
                 - Claude: **{ClaudeModelLabel(ClaudeModel)}**
                 - Locale (Ollama): **{LocalModel}**
 
-                Per cambiarli: click sul nome del modello in alto, oppure `/modello opus|sonnet|haiku|predefinito`
+                Per cambiarli: click sul nome del modello in alto, oppure `/modello fable|opus|sonnet|haiku|predefinito`
                 (Claude) e `/modello locale <nome>` (un modello installato in Ollama).
                 """);
             return;

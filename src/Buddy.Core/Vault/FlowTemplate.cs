@@ -107,51 +107,85 @@ public static partial class FlowTemplate
             Directory.CreateDirectory(Path.Combine(root, ".obsidian"));
         }
 
-        // The shared part: the personal template when it is inside this vault, otherwise a copy in the vault.
-        var customFull = !string.IsNullOrWhiteSpace(customTemplate) && Directory.Exists(customTemplate) ? Path.GetFullPath(customTemplate) : null;
-        var sharedFull = customFull is not null && IsInside(customFull, root)
-            ? customFull
-            : Path.Combine(root, TemplateFolder.Replace('/', Path.DirectorySeparatorChar));
-        var copyShared = sharedFull != customFull;
-        var sharedLink = VaultLink(root, sharedFull);
-        var projectLink = VaultLink(root, projectFull);
-        var projectNotes = ProjectNotes.Select(n => n[..^3]).ToHashSet(StringComparer.Ordinal);
-
-        string Rewrite(string content, bool inProject) => TemplateLink().Replace(content, m =>
-        {
-            var note = m.Groups["note"].Value;
-            var target = inProject && projectNotes.Contains(note) ? projectLink : sharedLink;
-            return target + "/" + note;
-        });
-
+        var layout = LayoutOf(projectFull, customTemplate);
+        var manifest = layout.CopyShared ? TemplateManifest.Open(layout.Shared) : null;
         foreach (var (path, content) in files)
         {
             var isProjectNote = ProjectNotes.Contains(path, StringComparer.Ordinal);
-            if (!isProjectNote && !copyShared)
+            if (!isProjectNote && !layout.CopyShared)
             {
                 continue; // the personal template already is the shared copy
             }
 
-            var target = isProjectNote
-                ? Path.Combine(projectFull, path)
-                : Path.Combine(sharedFull, path.Replace('/', Path.DirectorySeparatorChar));
+            var target = layout.TargetOf(path);
+            var text = layout.Rewrite(content, isProjectNote);
             if (File.Exists(target))
             {
+                // A shared note already identical to the template is Buddy's: a later update may replace it.
+                if (!isProjectNote && TemplateManifest.Same(File.ReadAllText(target), text))
+                {
+                    manifest?.Record(path, text);
+                }
+
                 continue;
             }
 
-            var text = Rewrite(content, isProjectNote);
             if (path == "Scheda progetto.md")
             {
-                text = FillScheda(text, name, sharedFull, projectFull);
+                text = FillScheda(text, name, layout.Shared, projectFull);
+                // A new project starts at the template's current version, whatever the model note says.
+                if (files.FirstOrDefault(f => f.Path == "Changelog template.md").Content is { } changelog
+                    && TemplateVersionOf(changelog) is { } version)
+                {
+                    text = WithTemplateVersion(text, version);
+                }
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, text);
             created.Add(target);
+            if (!isProjectNote)
+            {
+                manifest?.Record(path, text);
+            }
         }
 
+        manifest?.Save();
         return created;
+    }
+
+    /// <summary>
+    /// Where a project's notes and the shared part of the template go, and how the template's links are rewritten:
+    /// the personal template is the shared copy when it is inside the vault, otherwise the shared part is a copy in
+    /// the vault (<see cref="TemplateFolder"/>).
+    /// </summary>
+    private sealed record Layout(string Project, string Root, string Shared, bool CopyShared, string SharedLink, string ProjectLink)
+    {
+        private static readonly HashSet<string> ProjectTitles = ProjectNotes.Select(n => n[..^3]).ToHashSet(StringComparer.Ordinal);
+
+        public bool IsProjectNote(string path) => ProjectNotes.Contains(path, StringComparer.Ordinal);
+
+        public string TargetOf(string path) => IsProjectNote(path)
+            ? Path.Combine(Project, path)
+            : Path.Combine(Shared, path.Replace('/', Path.DirectorySeparatorChar));
+
+        public string Rewrite(string content, bool inProject) => TemplateLink().Replace(content, m =>
+        {
+            var note = m.Groups["note"].Value;
+            var target = inProject && ProjectTitles.Contains(note) ? ProjectLink : SharedLink;
+            return target + "/" + note;
+        });
+    }
+
+    private static Layout LayoutOf(string projectFolder, string? customTemplate)
+    {
+        var projectFull = Path.GetFullPath(projectFolder);
+        var root = VaultRootOf(projectFull);
+        var customFull = !string.IsNullOrWhiteSpace(customTemplate) && Directory.Exists(customTemplate) ? Path.GetFullPath(customTemplate) : null;
+        var sharedFull = customFull is not null && IsInside(customFull, root)
+            ? customFull
+            : Path.Combine(root, TemplateFolder.Replace('/', Path.DirectorySeparatorChar));
+        return new Layout(projectFull, root, sharedFull, sharedFull != customFull, VaultLink(root, sharedFull), VaultLink(root, projectFull));
     }
 
     /// <summary>

@@ -231,6 +231,44 @@ public static class Dialogs
         return confirmed;
     }
 
+    /// <summary>
+    /// A question with check boxes under the message: their states when the user confirms with <paramref name="yes"/>,
+    /// null when cancelled.
+    /// </summary>
+    public static async Task<bool[]?> ConfirmWithOptionsAsync(Window? owner, string message, IReadOnlyList<(string Label, bool Checked)> options,
+        string yes = "OK", string title = "Buddy")
+    {
+        var boxes = options.Select(o => new CheckBox
+        {
+            Content = new TextBlock { Text = o.Label, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+            IsChecked = o.Checked,
+        }).ToArray();
+        var ok = new Button { Content = yes, IsDefault = true, Margin = new Thickness(0, 0, 6, 0), HorizontalContentAlignment = HorizontalAlignment.Center };
+        var cancel = new Button { Content = "Annulla", IsCancel = true, HorizontalContentAlignment = HorizontalAlignment.Center };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(ok);
+        buttons.Children.Add(cancel);
+        var panel = new StackPanel { Margin = new Thickness(14), Spacing = 10 };
+        panel.Children.Add(new SelectableTextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        foreach (var box in boxes)
+        {
+            panel.Children.Add(box);
+        }
+
+        panel.Children.Add(buttons);
+        var window = FormWindow(title, new ScrollViewer { Content = panel, MaxHeight = 640 }, owner);
+        window.Width = 520;
+        var confirmed = false;
+        ok.Click += (_, _) =>
+        {
+            confirmed = true;
+            window.Close();
+        };
+        cancel.Click += (_, _) => window.Close();
+        await Show(window, owner);
+        return confirmed ? boxes.Select(b => b.IsChecked == true).ToArray() : null;
+    }
+
     public static async Task ShowMessageAsync(Window? owner, string message, string title = "Buddy")
     {
         var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true, Width = 80, HorizontalAlignment = HorizontalAlignment.Right, HorizontalContentAlignment = HorizontalAlignment.Center };

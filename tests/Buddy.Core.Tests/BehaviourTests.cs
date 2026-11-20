@@ -398,6 +398,27 @@ public class SmallFeatureTests
     }
 
     [Test]
+    public void A_model_answer_after_the_mentor_question_closes_it_and_the_next_message_goes_to_the_model()
+    {
+        var conversation = ModelCommandTests.Create(new BuddySettings { ProjectPath = Path.Combine(Path.GetTempPath(), "buddy-missing-vault") });
+        string? answer = null;
+        conversation.PostMentor("Quando dici \"chi vince\", cosa conta per te?", reply =>
+        {
+            answer = reply;
+            return Task.CompletedTask;
+        });
+        var question = conversation.Entries.Single();
+
+        // Claude answered meanwhile (e.g. asking its own question): the mentor's question is over.
+        conversation.Entries.Add(new ChatEntry(Speaker.Claude, "Quale DeepSeek? a) b) c)"));
+
+        Assert.That(conversation.HasPendingReply, Is.False);
+        Assert.That(question.AwaitsReply, Is.False, "no more «Spiegamelo tu»");
+        conversation.SendAsync("/salta").GetAwaiter().GetResult();
+        Assert.That(answer, Is.Null, "the reply meant for Claude never reaches the mentor");
+    }
+
+    [Test]
     public void Off_topic_mentor_messages_go_to_the_side_chat_and_only_answers_written_there_reach_them()
     {
         var conversation = ModelCommandTests.Create(new BuddySettings { ProjectPath = Path.Combine(Path.GetTempPath(), "buddy-missing-vault") });

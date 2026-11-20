@@ -36,27 +36,43 @@ public static partial class ClaudeSkills
         home ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var installed = Installed(settings, home);
         var added = new List<string>();
+        var skillsFolder = UserSkillsFolder(home);
+        var manifest = TemplateManifest.Open(skillsFolder);
         foreach (var (path, content) in FlowTemplate.Load(settings.FlowTemplatePath))
         {
-            var file = SkillNote().Match(path);
-            if (!file.Success)
+            if (SkillName(path, content) is not { } name || installed.Contains(name))
             {
                 continue;
             }
 
-            var name = FrontmatterName().Match(content) is { Success: true } m ? m.Groups[1].Value.Trim() : file.Groups[1].Value;
-            if (name.Length == 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || installed.Contains(name))
-            {
-                continue;
-            }
-
-            var folder = Path.Combine(home, ".claude", "skills", name);
+            var folder = Path.Combine(skillsFolder, name);
             Directory.CreateDirectory(folder);
             File.WriteAllText(Path.Combine(folder, "SKILL.md"), content);
+            manifest.Record(name, content);
             added.Add(name);
         }
 
+        manifest.Save();
         return added;
+    }
+
+    /// <summary>~/.claude/skills: where Buddy installs the flow's skills.</summary>
+    internal static string UserSkillsFolder(string home) => Path.Combine(home, ".claude", "skills");
+
+    /// <summary>
+    /// The skill a template file installs ("Skill/Skill &lt;name&gt;.md", or the "name:" of its frontmatter); null for
+    /// any other file or an unusable name.
+    /// </summary>
+    internal static string? SkillName(string templatePath, string content)
+    {
+        var file = SkillNote().Match(templatePath);
+        if (!file.Success)
+        {
+            return null;
+        }
+
+        var name = FrontmatterName().Match(content) is { Success: true } m ? m.Groups[1].Value.Trim() : file.Groups[1].Value;
+        return name.Length == 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ? null : name;
     }
 
     /// <summary>
