@@ -84,14 +84,14 @@ public sealed class IdeasWindow : Window
         // Fixed size: the window does not reliably grow on X11 once shown, so the ideas scroll in the middle.
         var top = new StackPanel();
         var panel = new DockPanel { Margin = new Thickness(22, 18) };
-        top.Children.Add(new TextBlock { Text = "💡 Cosa vorresti aggiungere o migliorare nel progetto?", FontSize = 17, FontWeight = FontWeight.Bold });
+        top.Children.Add(new TextBlock { Text = "💡 Cosa vorresti aggiungere o migliorare nel progetto?", FontSize = TextSize.Heading, FontWeight = FontWeight.Bold });
         top.Children.Add(new TextBlock
         {
             Text = "L'AI riceve il progetto (Scheda, Stato attuale, task aperti, fatti e rifiutati) e propone idee nuove, che finiscono "
                    + "subito in «To-do Appunti». Da lì le porta nel flusso /smista.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = (IBrush)Resources["Muted"]!,
-            FontSize = 12,
+            FontSize = TextSize.Body,
             Margin = new Thickness(0, 4, 0, 10),
         });
         top.Children.Add(_request);

@@ -21,7 +21,8 @@ public sealed class ClaudeOneShot(IOptions<BuddySettings> options, ILogger<Claud
         string workingDirectory,
         string? model,
         IEnumerable<string>? readOnlyDirectories = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? timeout = null)
     {
         var settings = options.Value;
         if (!Directory.Exists(workingDirectory))
@@ -77,11 +78,11 @@ public sealed class ClaudeOneShot(IOptions<BuddySettings> options, ILogger<Claud
             await process.StandardInput.WriteAsync(prompt);
             process.StandardInput.Close();
 
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromMinutes(5));
-            var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            var error = process.StandardError.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            limit.CancelAfter(timeout ?? TimeSpan.FromMinutes(5)); // long jobs (a call's transcript) pass more
+            var output = process.StandardOutput.ReadToEndAsync(limit.Token);
+            var error = process.StandardError.ReadToEndAsync(limit.Token);
+            await process.WaitForExitAsync(limit.Token);
 
             var text = (await output).Trim();
             if (process.ExitCode == 0 && !ClaudeAuth.IsAuthError(text))

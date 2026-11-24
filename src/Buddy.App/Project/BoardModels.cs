@@ -769,6 +769,11 @@ public sealed record TagOption(string Name, IBrush Brush, bool IsSelected, int C
 /// </summary>
 public sealed record PageCard(string Title, string? Subtitle, IReadOnlyList<Chip> Chips, string? Markdown, string? Target, string? Accent = null)
 {
+    /// <summary>Buttons on the card itself (a call's actions and open points): each sends its request to Claude.</summary>
+    public IReadOnlyList<PageCardAction> Actions { get; init; } = [];
+
+    public bool HasActions => Actions.Count > 0;
+
     public bool HasSubtitle => !string.IsNullOrWhiteSpace(Subtitle);
 
     public bool HasChips => Chips.Count > 0;
@@ -781,6 +786,9 @@ public sealed record PageCard(string Title, string? Subtitle, IReadOnlyList<Chip
         ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(color))
         : Avalonia.Media.Brushes.Transparent;
 }
+
+/// <summary>A button on a page's card: its label (with an emoji drawn as icon), the full text as tooltip, the request to Claude.</summary>
+public sealed record PageCardAction(string Label, string Tip, string Request);
 
 /// <summary>A button in a page's tool bar: what it says and the action it runs.</summary>
 public sealed record PageButton(string Label, string Action, string? Tip = null);

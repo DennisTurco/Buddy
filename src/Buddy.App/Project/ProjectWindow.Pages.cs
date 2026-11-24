@@ -17,7 +17,7 @@ namespace Buddy.App.Project;
 public partial class ProjectWindow
 {
     /// <summary>The built-in generic pages (also in <see cref="Views"/>).</summary>
-    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "people", "episodes", "prs"];
+    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "people", "episodes", "calls", "prs"];
 
     private const string PagePrefix = "page:";
     private const string NewPageKey = "page:+";
@@ -113,6 +113,7 @@ public partial class ProjectWindow
                 "glossary" => GlossaryPage(filter),
                 "people" => PeoplePage(filter),
                 "episodes" => EpisodesPage(filter),
+                "calls" => CallsPage(filter),
                 "costs" => CostsPage(filter),
                 "week" => await WeekPageAsync(refresh),
                 "prs" => await PullRequestsPageAsync(filter, refresh),
@@ -168,7 +169,8 @@ public partial class ProjectWindow
 
     private async void OnPageCardTapped(object? sender, TappedEventArgs e)
     {
-        if ((sender as Control)?.DataContext is not PageCard { Target: { } target })
+        if ((sender as Control)?.DataContext is not PageCard { Target: { } target }
+            || Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<Button>(e.Source as Avalonia.Visual, includeSelf: true) is not null) // a button on the card
         {
             return;
         }
@@ -239,6 +241,17 @@ public partial class ProjectWindow
             case "episode:file":
                 var episodesFile = Episodes.PathFor(_settings);
                 Shell.Open(File.Exists(episodesFile) ? episodesFile : Path.GetDirectoryName(episodesFile)!);
+                break;
+            case "call:new":
+                await NewCallAsync();
+                break;
+            case "call:retry":
+                await RetryPendingCallsAsync();
+                break;
+            case "call:folder":
+                var calls = Path.Combine(_settings.ProjectPath, CallTranscripts.Folder);
+                Directory.CreateDirectory(calls);
+                Shell.Open(calls);
                 break;
             case "note:new" when _view.StartsWith(PagePrefix, StringComparison.Ordinal):
                 await NewPageNoteAsync(_view[PagePrefix.Length..]);

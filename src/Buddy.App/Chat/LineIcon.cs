@@ -88,6 +88,13 @@ public static class Icons
         ["🤔"] = "IconHelp", ["✅"] = "IconCheckCircle", ["🌐"] = "IconGlobe", ["🔁"] = "IconRepeat", ["✚"] = "IconPlus",
         ["↗"] = "IconExternal", ["📝"] = "IconNote", ["✕"] = "IconClose", ["📌"] = "IconPin", ["💾"] = "IconSave",
         ["⟳"] = "IconRefresh", ["↶"] = "IconUndo",
+
+        // The pages of the project window and the headings of its panels.
+        ["🏠"] = "IconHome", ["📋"] = "IconBoard", ["🗄"] = "IconArchive", ["📚"] = "IconBook", ["📖"] = "IconBookOpen",
+        ["📅"] = "IconCalendar", ["💳"] = "IconCard", ["⚖"] = "IconScale", ["👥"] = "IconUsers", ["📓"] = "IconJournal",
+        ["🎙"] = "IconMic", ["🔀"] = "IconPullRequest", ["📁"] = "IconFolder", ["＋"] = "IconPlus", ["📈"] = "IconChart",
+        ["⚡"] = "IconBolt", ["🩺"] = "IconPulse", ["🤖"] = "IconBot", ["📸"] = "IconCamera", ["⏸"] = "IconPause",
+        ["🔍"] = "IconSearch",
     };
 
     /// <summary>"🐞 Bug" → ("IconBug", "Bug"); a label without a known leading emoji → (null, label).</summary>

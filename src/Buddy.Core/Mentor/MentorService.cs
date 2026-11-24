@@ -587,26 +587,7 @@ public sealed class MentorService : IDisposable
             }
         }
 
-        var peoplePath = File.Exists(peopleFile) ? peopleFile : null;
-        var applied = new List<string>();
-        var actions = new List<ChatAction>();
-        var proposed = new List<string>();
-        foreach (var change in findings.Changes)
-        {
-            if (change.Important && peoplePath is not null
-                && People.ApplyChange(peoplePath, change.Person, change.Field, change.Mode, change.Value) is { } done)
-            {
-                applied.Add(EpisodeAnalysis.Describe(change, done.Before));
-                actions.Add(new ChatAction($"↩ Annulla: {change.Person} · {change.Field}", EpisodeAnalysis.UndoCommand(change, done.Before),
-                    "Rimette la scheda com'era prima di questo episodio"));
-            }
-            else if (!change.Important)
-            {
-                proposed.Add(EpisodeAnalysis.Describe(change));
-                actions.Add(new ChatAction($"✅ {change.Person} · {change.Field}", EpisodeAnalysis.Command(change.Person, change.Field, change.Mode, change.Value),
-                    "Scrive questa modifica nella scheda della persona"));
-            }
-        }
+        var (applied, proposed, actions) = ApplyCardChanges(findings.Changes, peopleFile, "di questo episodio");
 
         try
         {
@@ -683,6 +664,139 @@ public sealed class MentorService : IDisposable
         {
             _conversation.Suggest(AddedPeopleLine(added).Trim());
         }
+    }
+
+    /// <summary>
+    /// The changes an analysis found for the people's cards (an episode, a call): the important ones are made at once,
+    /// each with a button to undo it; the others become proposals with a button to make them.
+    /// </summary>
+    private (List<string> Applied, List<string> Proposed, List<ChatAction> Actions) ApplyCardChanges(
+        IEnumerable<CardChange> changes, string peopleFile, string source)
+    {
+        var peoplePath = File.Exists(peopleFile) ? peopleFile : null;
+        var applied = new List<string>();
+        var actions = new List<ChatAction>();
+        var proposed = new List<string>();
+        foreach (var change in changes)
+        {
+            if (change.Important && peoplePath is not null
+                && People.ApplyChange(peoplePath, change.Person, change.Field, change.Mode, change.Value) is { } done)
+            {
+                applied.Add(EpisodeAnalysis.Describe(change, done.Before));
+                actions.Add(new ChatAction($"↩ Annulla: {change.Person} · {change.Field}", EpisodeAnalysis.UndoCommand(change, done.Before),
+                    $"Rimette la scheda com'era prima {source}"));
+            }
+            else if (!change.Important)
+            {
+                proposed.Add(EpisodeAnalysis.Describe(change));
+                actions.Add(new ChatAction($"✅ {change.Person} · {change.Field}", EpisodeAnalysis.Command(change.Person, change.Field, change.Mode, change.Value),
+                    "Scrive questa modifica nella scheda della persona"));
+            }
+        }
+
+        return (applied, proposed, actions);
+    }
+
+    // ---- Calls ----------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// After a call's transcript is cleaned (Trascrizioni page): the people who took part get a card when missing and
+    /// "Sentita" on the call's day; then Claude reads the summary and the transcript and, like for an episode, changes
+    /// their cards at once for what matters (role, responsibilities, an important agreement) and proposes the rest.
+    /// </summary>
+    internal async Task AnalyzeCallPeopleAsync(string relativePath)
+    {
+        var file = Path.Combine(_settings.ProjectPath, relativePath.Trim());
+        if (!File.Exists(file))
+        {
+            _conversation.PostMentor($"Non trovo la trascrizione «{Path.GetFileNameWithoutExtension(relativePath)}».");
+            return;
+        }
+
+        var call = CallTranscripts.Read(new VaultNote(relativePath.Trim(), await File.ReadAllTextAsync(file)));
+        var peopleFile = PeopleFile;
+        var source = $"dalla call «{call.Title}»";
+        var me = Settings.UserName.Trim();
+        bool IsMe(string name) => name.Equals("io", StringComparison.OrdinalIgnoreCase) || (me.Length > 0 && name.Equals(me, StringComparison.CurrentCultureIgnoreCase));
+
+        // Who took part: a card when missing, and the day of the call as the last time they were heard.
+        var added = new List<string>();
+        var heard = new List<string>();
+        foreach (var name in call.People.Where(n => !IsMe(n)))
+        {
+            if (AddMissingPerson(peopleFile, name, source) is { } person)
+            {
+                added.Add(person.Name);
+            }
+
+            try
+            {
+                var known = File.Exists(peopleFile) ? People.Find(People.Parse(File.ReadAllText(peopleFile)), name) : null;
+                if (call.Date != DateOnly.MinValue && known is not null && (known.LastContact is not { } last || last < call.Date)
+                    && People.MarkContacted(peopleFile, known.Name, call.Date) is not null)
+                {
+                    heard.Add(known.Name);
+                }
+            }
+            catch (IOException ex)
+            {
+                _log.LogWarning(ex, "Sentita non segnata per {Name}", name);
+            }
+        }
+
+        var all = File.Exists(peopleFile) ? People.Parse(File.ReadAllText(peopleFile)) : [];
+        var involved = call.People.Where(n => !IsMe(n)).Select(n => People.Find(all, n)).OfType<Person>()
+            .Concat(People.Named(all, call.Content))
+            .Where(p => !IsMe(p.Name))
+            .DistinctBy(p => p.Name).ToList();
+
+        _conversation.SetThinking(true);
+        var result = await _claude.RunAsync(CallPeople.Prompt(call, involved, me), _settings.ProjectPath, Settings.Model);
+        _conversation.SetThinking(false);
+        var text = new StringBuilder($"🎙 **Persone dalla call** «{call.Title}»\n");
+        if (heard.Count > 0)
+        {
+            text.AppendLine().AppendLine($"✅ Segnat{(heard.Count == 1 ? "a" : "e")} come sentit{(heard.Count == 1 ? "a" : "e")} il {call.Date:d MMM}: {string.Join(", ", heard)}");
+        }
+
+        if (!result.Success || EpisodeAnalysis.Parse(result.Text, all) is not { } findings)
+        {
+            _conversation.PostMentor(text.AppendLine().Append("Non sono riuscito a leggere la call per le schede")
+                .Append(result.Success ? "." : $": {result.Text}").Append($" Riprova con `/trascrizione-persone {relativePath.Trim()}`.")
+                .ToString() + AddedPeopleLine(added));
+            return;
+        }
+
+        foreach (var person in findings.NewPeople.Where(p => !IsMe(p.Name)))
+        {
+            if (AddMissingPerson(peopleFile, person.Name, source, person.Role, person.Description) is { } done)
+            {
+                added.Add(done.Name);
+            }
+        }
+
+        var (applied, proposed, actions) = ApplyCardChanges(findings.Changes, peopleFile, "di questa call");
+        if (applied.Count > 0)
+        {
+            text.AppendLine().AppendLine("**Schede aggiornate** (cosa importante):").AppendLine(string.Join("\n", applied.Select(a => "- " + a)));
+        }
+
+        if (proposed.Count > 0)
+        {
+            text.AppendLine().AppendLine("**Da valutare** (un clic per scriverle):").AppendLine(string.Join("\n", proposed.Select(p => "- " + p)));
+        }
+
+        if (applied.Count == 0 && proposed.Count == 0 && heard.Count == 0 && added.Count == 0)
+        {
+            return; // nothing for the people: no message
+        }
+
+        if (applied.Count == 0 && proposed.Count == 0)
+        {
+            text.AppendLine().AppendLine("Niente da cambiare nelle schede.");
+        }
+
+        _conversation.PostMentor(text.ToString().TrimEnd() + AddedPeopleLine(added), actions: actions);
     }
 
     /// <summary>The Persone note's path: the one in the vault, or a new "Persone.md" in the project folder.</summary>
@@ -1123,6 +1237,8 @@ public sealed class MentorService : IDisposable
             "persona [argomento]");
         commands.Add(new ChatCommand("/episodio-analizza", "analizza un episodio salvato", "data · titolo", CommandGroup.Mentor, Hidden: true),
             call => AnalyzeEpisodeAsync(call.Rest));
+        commands.Add(new ChatCommand("/trascrizione-persone", "aggiorna le schede delle persone da una call", "Trascrizioni/…md", CommandGroup.Mentor, Hidden: true),
+            call => AnalyzeCallPeopleAsync(call.Rest));
         commands.Add(new ChatCommand("/scheda", "cambia un campo della scheda di una persona", "Nome | campo | modo | valore", CommandGroup.Mentor, Hidden: true),
             call =>
             {

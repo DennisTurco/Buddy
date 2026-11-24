@@ -49,11 +49,13 @@ public partial class SettingsWindow : Window
     public SettingsWindow(BuddySettings current, OllamaClient ollama, IReadOnlyList<Buddy.Core.Chat.ChatCommand>? commands = null)
     {
         InitializeComponent();
+        Appearance.Form(this, current.Appearance);
         _settings = SettingsStore.Clone(current);
         _ollama = ollama;
         DataContext = _settings;
 
         FontCombo.ItemsSource = FontManager.Current.SystemFonts.Select(f => f.Name).Distinct().Order().ToList();
+        (Logo.UsesPixelArt(_settings.Appearance) ? LogoPixel : LogoModern).IsChecked = true;
         BuildThemeRows();
         BuildThemePresets();
         BuildPetColorRows();
@@ -380,6 +382,17 @@ public partial class SettingsWindow : Window
         ToolTip.SetTip(button, custom ? $"Tema personale «{name}»" : $"Tema {name}");
         button.Click += (_, _) => ApplyTheme(colors);
         return button;
+    }
+
+    /// <summary>Logo: the vector speech bubble or the pixel-art face (applied when Buddy restarts, like the rest).</summary>
+    private void OnLogoChanged(object? sender, RoutedEventArgs e)
+    {
+        if (LogoPixel is null || LogoModern is null)
+        {
+            return; // still loading
+        }
+
+        _settings.Appearance.Logo = LogoPixel.IsChecked == true ? Logo.Pixel : Logo.Modern;
     }
 
     private async void OnSaveThemeClick(object? sender, RoutedEventArgs e)

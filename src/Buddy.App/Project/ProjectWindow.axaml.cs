@@ -40,6 +40,7 @@ public partial class ProjectWindow : Window
         ("glossary", "📖  Glossario", "Glossario"),
         ("people", "👥  Persone", "Persone"),
         ("episodes", "📓  Episodi", "Episodi"),
+        ("calls", "🎙  Trascrizioni", "Trascrizioni delle call"),
         ("prs", "🔀  PR", "Pull request aperte"),
     ];
 
@@ -91,6 +92,10 @@ public partial class ProjectWindow : Window
         _settings = settings.Value;
         _usage = usage;
         Mascot.Source = mascot;
+
+        // Pixel art stays crisp without smoothing; the vector logo (drawn larger) needs it to scale down cleanly.
+        Avalonia.Media.RenderOptions.SetBitmapInterpolationMode(Mascot, mascot is Avalonia.Media.Imaging.RenderTargetBitmap
+            ? Avalonia.Media.Imaging.BitmapInterpolationMode.HighQuality : Avalonia.Media.Imaging.BitmapInterpolationMode.None);
         Mascot.IsVisible = mascot is not null;
         // A context menu, like the pet's: a MenuFlyout on this button did not open on the user's desktop (X11).
         _projectMenu = new ContextMenu { Placement = PlacementMode.BottomEdgeAlignedLeft, PlacementTarget = ProjectSwitcher };
@@ -2470,7 +2475,7 @@ public partial class ProjectWindow : Window
         HealthPanel.IsVisible = true;
         HealthList.ItemsSource = all.Take(8).ToList();
         HealthOk.IsVisible = all.Count == 0;
-        HealthTitle.Text = all.Count == 0 ? "🩺 Salute del vault"
+        HealthTitle.Label = all.Count == 0 ? "🩺 Salute del vault"
             : all.Count > 8 ? $"🩺 Salute del vault · {all.Count} cose da sistemare (le prime 8)"
             : $"🩺 Salute del vault · {all.Count} cos{(all.Count == 1 ? "a" : "e")} da sistemare";
     }
@@ -2509,7 +2514,7 @@ public partial class ProjectWindow : Window
         var checks = ProjectChecks.Status(log?.Content, _skills, today).Select(s => new PeriodicCheckView(s)).ToList();
         ChecksList.ItemsSource = checks;
         var due = checks.Count(c => c.IsDue);
-        ChecksTitle.Text = due == 0 ? "🔁 Controlli periodici" : $"🔁 Controlli periodici · {due} da fare";
+        ChecksTitle.Label = due == 0 ? "🔁 Controlli periodici" : $"🔁 Controlli periodici · {due} da fare";
     }
 
     /// <summary>«Lancia»: the request (with the log line Claude adds at the end) in the chat, to review and send.</summary>

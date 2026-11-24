@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="Buddy" style="image-rendering: pixelated" /></p>
+<p align="center"><img src="docs/icon.png" width="128" alt="Buddy" /></p>
 
 # Buddy
 
@@ -73,7 +73,7 @@ input box to check before sending. Nothing leaves the PC.
 ## Configuration
 
 Right click on the pet → **Impostazioni…** edits everything below and restarts the buddy to apply it:
-appearance (name, font, bubble colours with light/dark presets), the character (colours, size, animation speed,
+appearance (name, font, bubble colours with light/dark presets, the logo: the speech bubble or the pixel-art face), the character (colours, size, animation speed,
 always on top, remembered position, start at login, custom pixel art), models and paths, the local model's
 personality (system prompt), Claude tools allowed without asking, and the chat phrases.
 
@@ -173,6 +173,14 @@ the settings window), which overrides them. Window position is kept in `<data>/s
     **Missing people are added**: someone named in an episode (in *Persone coinvolte*, or found by the analysis in the
     text or the screenshots) or in a card's `[chi:: …]` who has no card in Persone gets one, with the role if known and
     a note on where they came from, to complete later; Claude does the same for the people it meets in the tasks.
+  - **Trascrizioni** (`Trascrizioni/` in the project folder, one note per call, `2026-11-24 Titolo.md`): *＋ Nuova
+    trascrizione* takes the text of a call (a WebVTT export of Teams/Meet/Zoom loses its timings and becomes
+    «Nome: testo» lines), with optional title, date, people and task. It is saved at once as pasted, then Claude
+    (one-shot `claude -p`, in the background, up to 20 minutes) cleans it with the names of Persone and the terms of
+    Glossario and writes *Riassunto*, *Decisioni*, *Azioni* (a `- [ ]` checklist), *Punti aperti* and the cleaned
+    *Trascrizione*; the original stays at the bottom. Cards show the summary, people, task and actions done; an empty
+    title becomes Claude's (the file is renamed). Then the people of the call get a card when missing and «Sentita» on its day, and Claude reads the call for their cards like for an episode (role, what they take care of, notes, how to communicate: important things written at once with ↩ Annulla, the rest proposed in the chat; `/trascrizione-persone Trascrizioni/…md` does it again). Each card has a button per action still to do (🛠) and per open point (🤔): Claude works on it in the chat with the call, the code and the vault, and answers with what it found, the steps and, when someone must be asked, a draft of the message (an analysis: nothing changed or committed). A note edited while Claude works is not overwritten; *🧹 Sistema in
+    sospeso* tries again.
   - **Persone** (the `Persone` note, one `## Nome` section each): nickname, role, what they take care of and notes on
     when and how to reach them, as cards with the notes citing them and the cards that depend on them; *＋ Nuova persona*
     adds one, and a click on a person (or choosing them in Ctrl+K) opens the same form filled in to edit them

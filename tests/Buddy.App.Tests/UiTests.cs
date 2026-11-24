@@ -633,6 +633,57 @@ public class PagesAndPaletteTests
     }
 
     [AvaloniaTest]
+    public async Task A_new_call_transcript_is_saved_then_summarised_by_Claude_on_the_Trascrizioni_page()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-call-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var settings = new BuddySettings { ProjectPath = project };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            string? prompt = null;
+            window.TranscriptSource = (p, _) =>
+            {
+                prompt = p;
+                return Task.FromResult((true, "TITOLO: Rilascio 3.2\nPARTECIPANTI: Marco\nTASK: -\n## Riassunto\nRimandato a lunedì.\n"
+                                              + "## Azioni\n- [ ] **Marco:** changelog\n## Trascrizione sistemata\n**Marco:** Rimandiamo."));
+            };
+            window.ShowCallForm = () => Task.FromResult<string[]?>(["", "2026-11-24", "", "", "marco: ehm rimandiamo"]);
+            window.ShowView("calls");
+            await window.NewCallAsync();
+            for (var i = 0; i < 40 && !File.Exists(Path.Combine(project, "Trascrizioni", "2026-11-24 Rilascio 3.2.md")); i++)
+            {
+                await Settle();
+            }
+
+            Assert.That(prompt, Does.Contain("marco: ehm rimandiamo"));
+            Assert.That(File.Exists(Path.Combine(project, "Trascrizioni", "2026-11-24 Call.md")), Is.False, "renamed after Claude's title");
+            await Settle();
+            var cards = (window.PageCards.ItemsSource as IEnumerable<PageCard>)!.ToList();
+            Assert.That(cards.Select(c => c.Title), Is.EqualTo(new[] { "Rilascio 3.2" }));
+            Assert.That(cards[0].Chips.Select(c => c.Text), Does.Contain("☑ 0/1 azioni").And.Contain("👤 Marco"));
+            Assert.That(cards[0].Markdown, Does.Contain("Rimandato a lunedì."));
+
+            // The action still to do is a button: Claude gets the request to work on it.
+            Assert.That(cards[0].Actions.Select(a => a.Label), Is.EqualTo(new[] { "🛠 Marco: changelog" }));
+            string? toClaude = null;
+            window.ClaudeRequested += request => toClaude = request;
+            var button = window.GetVisualDescendants().OfType<Button>().First(b => b.DataContext is PageCardAction);
+            button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.That(toClaude, Does.Contain("un'azione da fare: «Marco: changelog»").And.Contain("2026-11-24 Rilascio 3.2.md"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
     public async Task A_new_episode_is_saved_in_the_journal_and_sent_to_the_chat_for_the_analysis()
     {
         var root = Directory.CreateTempSubdirectory("buddy-episode-").FullName;

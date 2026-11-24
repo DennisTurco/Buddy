@@ -599,6 +599,12 @@ public sealed class AppearanceSettings
 
     public ThemeColors Theme { get; set; } = ThemeColors.Light();
 
+    /// <summary>
+    /// The app's icon (windows, tray, board header): "moderno", the vector speech bubble, or "pixel", the face of the
+    /// pixel-art character. The character on the desk is the same either way.
+    /// </summary>
+    public string Logo { get; set; } = "moderno";
+
     /// <summary>Colour sets saved by the user from Impostazioni → Aspetto, next to the built-in ones (<see cref="ThemeColors.BuiltIn"/>).</summary>
     public List<NamedTheme> CustomThemes { get; set; } = [];
 }

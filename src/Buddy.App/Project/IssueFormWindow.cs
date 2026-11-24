@@ -24,6 +24,7 @@ public sealed class IssueFormWindow : Window
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Classes.Add("form");
+        Appearance.Form(this);
 
         TitleBox = new TextBox { Text = draft.Title };
         BodyBox = new TextBox { Text = draft.Body, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 220, VerticalContentAlignment = VerticalAlignment.Top };

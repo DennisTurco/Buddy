@@ -25,6 +25,7 @@ public sealed class TrackerImportWindow : Window
         MaxHeight = 720;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Classes.Add("form");
+        Appearance.Form(this);
 
         var list = new StackPanel { Spacing = 6 };
         foreach (var issue in issues)

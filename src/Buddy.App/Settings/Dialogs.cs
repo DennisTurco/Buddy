@@ -323,6 +323,7 @@ public static class Dialogs
             Topmost = true,
         };
         window.Classes.Add("form");
+        Appearance.Form(window);
         window.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape)

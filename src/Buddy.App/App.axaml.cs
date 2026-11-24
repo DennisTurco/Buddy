@@ -128,6 +128,17 @@ public partial class App : Application
         Resources["MentorAvatar"] = pet.Sprites.Frames(PetState.Idle, ChatMode.Local)[0];
         var bubble = _host.Services.GetRequiredService<BubbleWindow>();
         var settings = _host.Services.GetRequiredService<IOptions<BuddySettings>>().Value;
+        Appearance.Current = settings.Appearance; // the form windows (settings, dialogs…) follow the chat's colours
+
+        // Every window carries buddy.ico (the logo, App.axaml); with the pixel-art choice they carry the character's face.
+        if (Logo.UsesPixelArt(settings.Appearance))
+        {
+            using var face = new MemoryStream(pet.Sprites.IconPng(64));
+            Styles.Add(new Avalonia.Styling.Style(x => Avalonia.Styling.Selectors.OfType<Avalonia.Controls.Window>(x))
+            {
+                Setters = { new Avalonia.Styling.Setter(Avalonia.Controls.Window.IconProperty, new Avalonia.Controls.WindowIcon(face)) },
+            });
+        }
 
         if (args is ["--export-icon", var iconFolder])
         {
@@ -234,7 +245,7 @@ public partial class App : Application
         var name = string.IsNullOrWhiteSpace(settings.Appearance.Name) ? "Buddy" : settings.Appearance.Name;
         try
         {
-            _tray = PlatformServices.CreateTrayIcon(name, pet.Sprites.IconPng(32),
+            _tray = PlatformServices.CreateTrayIcon(name, Logo.Png(settings.Appearance, pet.Sprites, 32),
                 new TrayActions(OpenChat, ToggleBuddy, OpenProject, () => _ = OpenSettingsAsync(), OpenLogs, Exit));
         }
         catch (Exception ex)
@@ -402,7 +413,7 @@ public partial class App : Application
             services.GetRequiredService<Buddy.Core.Vault.VaultIndex>(),
             services.GetRequiredService<IOptions<BuddySettings>>(),
             services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
-            services.GetRequiredService<PetWindow>().Sprites.Frames(PetState.Idle, ChatMode.Local)[0]);
+            Logo.Mascot(services.GetRequiredService<IOptions<BuddySettings>>().Value.Appearance, services.GetRequiredService<PetWindow>().Sprites));
         _project.Commands = services.GetRequiredService<Conversation>().Commands;
         _project.LocalAi = services.GetRequiredService<Buddy.Core.Llm.LocalAi>();
         _project.PresetRequested +=async name => await SwitchPresetAsync(name, _project);
@@ -426,6 +437,15 @@ public partial class App : Application
             }
 
             return (true, answer.ToString());
+        };
+        _project.TranscriptSource = async (prompt, cancellationToken) =>
+        {
+            // A call can be an hour long: cleaning it means writing it all again, so it gets more time than the usual 5 minutes.
+            var settings = services.GetRequiredService<IOptions<BuddySettings>>().Value;
+            var result = await services.GetRequiredService<Buddy.Core.Claude.ClaudeOneShot>().RunAsync(
+                prompt, settings.ProjectPath, string.IsNullOrWhiteSpace(settings.Claude.Model) ? null : settings.Claude.Model,
+                cancellationToken: cancellationToken, timeout: TimeSpan.FromMinutes(20));
+            return (result.Success, result.Text);
         };
         // The board's own chat: the same conversation as the bubble, in a panel next to the board.
         var project = _project;

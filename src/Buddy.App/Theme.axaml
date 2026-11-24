@@ -4,7 +4,8 @@
     Classes: TextBlock.label (form label), TextBlock.hint (grey help text), TextBlock.heading (section title).
 -->
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="clr-namespace:Buddy.App">
     <Styles.Resources>
         <SolidColorBrush x:Key="Ink" Color="#241F36" />
         <SolidColorBrush x:Key="Muted" Color="#6B6680" />
@@ -84,13 +85,33 @@
         <StreamGeometry x:Key="IconRepeat">M17 2l4 4l-4 4 M3 11v-1a4 4 0 0 1 4 -4h14 M7 22l-4 -4l4 -4 M21 13v1a4 4 0 0 1 -4 4h-14</StreamGeometry>
         <StreamGeometry x:Key="IconPlus">M12 5v14 M5 12h14</StreamGeometry>
         <StreamGeometry x:Key="IconExternal">M15 3h6v6 M10 14l11 -11 M18 13v6a2 2 0 0 1 -2 2h-11a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h6</StreamGeometry>
+        <!-- The pages of the project window (side bar, rail) and the headings of its panels. -->
+        <StreamGeometry x:Key="IconHome">M3 11l9 -8l9 8 M5 9.5v10.5h5v-6h4v6h5v-10.5</StreamGeometry>
+        <StreamGeometry x:Key="IconBoard">M5 4h3.5v12h-3.5z M10.25 4h3.5v8h-3.5z M15.5 4h3.5v16h-3.5z</StreamGeometry>
+        <StreamGeometry x:Key="IconArchive">M3 4h18v4h-18z M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1 -1v-11 M10 12h4</StreamGeometry>
+        <StreamGeometry x:Key="IconBook">M4 19.5a2.5 2.5 0 0 1 2.5 -2.5h13.5v-14h-13.5a2.5 2.5 0 0 0 -2.5 2.5z M4 19.5a2.5 2.5 0 0 0 2.5 2.5h13.5v-5</StreamGeometry>
+        <StreamGeometry x:Key="IconBookOpen">M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0 -3 -3h-7z M22 4h-6a4 4 0 0 0 -4 4v13a3 3 0 0 1 3 -3h7z</StreamGeometry>
+        <StreamGeometry x:Key="IconCalendar">M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z M3 10h18 M8 3v4 M16 3v4</StreamGeometry>
+        <StreamGeometry x:Key="IconCard">M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z M2 10h20 M6 15h4</StreamGeometry>
+        <StreamGeometry x:Key="IconScale">M12 3v18 M7 21h10 M4 7h16 M4 7l-3 7a3 3 0 0 0 6 0z M20 7l-3 7a3 3 0 0 0 6 0z</StreamGeometry>
+        <StreamGeometry x:Key="IconUsers">M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0z M2 21v-1a6 6 0 0 1 6 -6h2a6 6 0 0 1 6 6v1 M16 3.1a4 4 0 0 1 0 7.8 M22 21v-1a6 6 0 0 0 -4 -5.6</StreamGeometry>
+        <StreamGeometry x:Key="IconJournal">M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M9 3v18 M12.5 8h3.5 M12.5 12h3.5</StreamGeometry>
+        <StreamGeometry x:Key="IconPullRequest">M4 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M4 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M16 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M6 8v8 M18 16v-7a3 3 0 0 0 -3 -3h-4 M13 3.5l-2.5 2.5l2.5 2.5</StreamGeometry>
+        <StreamGeometry x:Key="IconFolder">M3 6a2 2 0 0 1 2 -2h4l2 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z</StreamGeometry>
+        <StreamGeometry x:Key="IconChart">M3 3v18h18 M7 15l4 -4l3 3l6 -6</StreamGeometry>
+        <StreamGeometry x:Key="IconBolt">M13 2l-9 12h7l-1 8l9 -12h-7z</StreamGeometry>
+        <StreamGeometry x:Key="IconPulse">M3 12h4l3 -8l4 16l3 -8h4</StreamGeometry>
+        <StreamGeometry x:Key="IconBot">M5 8h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2z M12 8v-4 M9 13v1.5 M15 13v1.5</StreamGeometry>
+        <StreamGeometry x:Key="IconCamera">M4 7h3l2 -3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-11a1 1 0 0 1 1 -1z M9 13a3 3 0 1 0 6 0a3 3 0 1 0 -6 0z</StreamGeometry>
+        <StreamGeometry x:Key="IconPause">M8 5v14 M16 5v14</StreamGeometry>
+        <StreamGeometry x:Key="IconSearch">M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0z M20 20l-4 -4</StreamGeometry>
         <StreamGeometry x:Key="IconUndo">M9 14l-5 -5l5 -5 M4 9h10.5a5.5 5.5 0 0 1 0 11h-3.5</StreamGeometry>
     </Styles.Resources>
 
     <!-- Form windows (settings, first run, prompts) -->
     <Style Selector="Window.form">
         <Setter Property="Background" Value="{DynamicResource WindowBack}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{x:Static app:TextSize.Body}" />
     </Style>
     <Style Selector="Window.form TextBlock.label">
         <Setter Property="VerticalAlignment" Value="Center" />
@@ -98,7 +119,7 @@
     </Style>
     <Style Selector="Window.form TextBlock.hint">
         <Setter Property="Foreground" Value="{DynamicResource Muted}" />
-        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontSize" Value="{x:Static app:TextSize.Small}" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
@@ -117,16 +138,67 @@
     <Style Selector="Window.form CheckBox">
         <Setter Property="Margin" Value="0,2" />
     </Style>
+    <Style Selector="Window.form TextBox, Window.form ComboBox">
+        <Setter Property="CornerRadius" Value="6" />
+    </Style>
     <Style Selector="Window.form Button">
-        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Padding" Value="12,5" />
         <Setter Property="Margin" Value="6,4,0,4" />
+        <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <!-- The button Enter presses (Salva, OK…): filled with the chat's accent, as the board's main actions. -->
+    <Style Selector="Window.form Button[IsDefault=True]">
+        <Setter Property="Background" Value="{DynamicResource ClaudeAccent}" />
+        <Setter Property="Foreground" Value="#1F1C2C" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Window.form Button[IsDefault=True]:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ClaudeAccent}" />
+        <Setter Property="Foreground" Value="#1F1C2C" />
+        <Setter Property="Opacity" Value="0.88" />
     </Style>
     <Style Selector="Window.form ComboBox">
         <Setter Property="Margin" Value="0,4" />
     </Style>
+    <!-- Lists: rounded rows, the selected one in the same soft colour as the board's side bar. -->
+    <Style Selector="Window.form ListBox">
+        <Setter Property="Background" Value="{DynamicResource InputBack}" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="4" />
+    </Style>
+    <Style Selector="Window.form ListBoxItem">
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="Margin" Value="0,1" />
+    </Style>
+    <Style Selector="Window.form ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, Window.form ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+    </Style>
     <Style Selector="Window.form TabItem">
-        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="FontSize" Value="{x:Static app:TextSize.Base}" />
         <Setter Property="MinHeight" Value="34" />
         <Setter Property="Padding" Value="8,0" />
+    </Style>
+    <!-- TabControl.side: the sections as a list on the left, the current one highlighted like a board page. -->
+    <Style Selector="Window.form TabControl.side TabItem">
+        <Setter Property="FontSize" Value="{x:Static app:TextSize.Body}" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="MinWidth" Value="150" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="Margin" Value="0,0,10,2" />
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+    </Style>
+    <Style Selector="Window.form TabControl.side TabItem:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{DynamicResource InputBack}" />
+    </Style>
+    <Style Selector="Window.form TabControl.side TabItem:selected">
+        <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Window.form TabControl.side TabItem:selected /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+    </Style>
+    <Style Selector="Window.form TabControl.side TabItem /template/ Border#PART_SelectedPipe">
+        <Setter Property="IsVisible" Value="False" />
     </Style>
 </Styles>

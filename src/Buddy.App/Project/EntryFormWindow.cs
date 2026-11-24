@@ -81,6 +81,7 @@ public sealed class EntryFormWindow : Window
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Classes.Add("form");
+        Appearance.Form(this);
 
         var form = new StackPanel { Spacing = 2 };
         if (kind != "appunti")
@@ -139,7 +140,7 @@ public sealed class EntryFormWindow : Window
                 Content = tag,
                 Margin = new Thickness(0, 0, 6, 6),
                 Padding = new Thickness(10, 3),
-                FontSize = 12,
+                FontSize = TextSize.Body,
                 CornerRadius = new CornerRadius(10),
                 BorderBrush = Tags.Brush(tag),
                 BorderThickness = new Thickness(2),

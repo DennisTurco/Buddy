@@ -67,6 +67,21 @@ public class ProjectBoardTests
     public void TearDown() => Directory.Delete(_root, recursive: true);
 
     [Test]
+    public void An_id_the_pattern_does_not_cover_is_still_the_id_when_a_date_follows_it()
+    {
+        using var vault = new VaultIndex(Options.Create(new BuddySettings { ProjectPath = _root }));
+
+        // The pattern wants two letters: "T-003" does not match it, yet "T-003 · 2026-10-15 · Titolo" says what it is.
+        var board = ProjectBoard.Load(vault, @"\b[A-Z]{2,10}-\d+\b");
+
+        var todo = board.Columns.Single(c => c.Key == "todo").Items.Single();
+        Assert.That(todo.Id, Is.EqualTo("T-003"));
+        Assert.That(todo.Date, Is.EqualTo(new DateOnly(2026, 10, 15)));
+        Assert.That(todo.Title, Is.EqualTo("Nascondere le categorie"));
+        Assert.That(todo.Tags, Is.Empty);
+    }
+
+    [Test]
     public void Load_splits_the_flow_notes_into_columns()
     {
         using var vault = new VaultIndex(Options.Create(new BuddySettings { ProjectPath = _root }));

@@ -97,6 +97,17 @@ internal static class Appearance
         }
 
         window.Resources["TextControlBorderBrushFocused"] = new SolidColorBrush(accent);
+
+        // Sliders keep brushes made from the system accent (red on many Windows setups): the chat's accent instead.
+        var accentBrush = new SolidColorBrush(accent);
+        foreach (var key in new[] { "SliderThumbBackground", "SliderThumbBackgroundPointerOver", "SliderThumbBackgroundPressed",
+                     "SliderTrackValueFill", "SliderTrackValueFillPointerOver", "SliderTrackValueFillPressed",
+                     "RadioButtonOuterEllipseCheckedFill", "RadioButtonOuterEllipseCheckedFillPointerOver", "RadioButtonOuterEllipseCheckedFillPressed",
+                     "RadioButtonOuterEllipseCheckedStroke", "RadioButtonOuterEllipseCheckedStrokePointerOver", "RadioButtonOuterEllipseCheckedStrokePressed",
+                     "ToggleSwitchFillOn", "ToggleSwitchFillOnPointerOver", "ToggleSwitchFillOnPressed" })
+        {
+            window.Resources[key] = accentBrush;
+        }
         var green = new SolidColorBrush(Color.Parse("#5FBF77"));
         foreach (var key in new[] { "CheckBoxCheckBackgroundFillChecked", "CheckBoxCheckBackgroundFillCheckedPointerOver",
                      "CheckBoxCheckBackgroundFillCheckedPressed", "CheckBoxCheckBackgroundStrokeChecked",
@@ -105,6 +116,22 @@ internal static class Appearance
         {
             window.Resources[key] = green;
         }
+    }
+
+    /// <summary>The Appearance every form window follows: set at startup, the built-in light one until then (first run, tests).</summary>
+    public static AppearanceSettings Current { get; set; } = new();
+
+    /// <summary>
+    /// A form window (settings, first run, dialogs, entry forms) in the same colours as the chat and the board: the
+    /// Appearance brushes, dark or light Fluent controls to match, the accent of the chat, and the paper as background.
+    /// </summary>
+    public static void Form(Window window, AppearanceSettings? appearance = null)
+    {
+        appearance ??= Current;
+        Apply(window, appearance, font: false);
+        window.RequestedThemeVariant = Variant(appearance);
+        ApplyControls(window, appearance);
+        window.Resources["WindowBack"] = window.Resources["Paper"];
     }
 
     /// <summary>Dark or light Fluent controls (text boxes, tabs, lists), following the chat's background.</summary>

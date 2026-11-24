@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="clr-namespace:Buddy.App"
         xmlns:chat="clr-namespace:Buddy.App.Chat"
         x:Class="Buddy.App.Chat.BubbleWindow"
         Title="Buddy chat"
@@ -11,7 +12,7 @@
         ShowInTaskbar="False"
         CanResize="True"
         MinWidth="300" MinHeight="320"
-        FontSize="13"
+        FontSize="{x:Static app:TextSize.Body}"
         UseLayoutRounding="True">
     <Window.Styles>
         <Style Selector="Button.frame">

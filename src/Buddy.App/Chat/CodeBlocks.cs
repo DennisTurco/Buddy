@@ -66,7 +66,7 @@ internal static partial class CodeBlocks
         var text = new SelectableTextBlock
         {
             FontFamily = block.TryFindResource("MonoFont", out var font) && font is FontFamily family ? family : FontFamily.Default,
-            FontSize = 12,
+            FontSize = TextSize.Body,
             TextWrapping = TextWrapping.NoWrap,
             Inlines = [],
         };
@@ -90,7 +90,7 @@ internal static partial class CodeBlocks
         var copy = new Button
         {
             Content = "⧉ Copia",
-            FontSize = 10.5,
+            FontSize = TextSize.Caption,
             Padding = new Thickness(6, 0),
             MinHeight = 0,
             Background = Brushes.Transparent,
@@ -115,7 +115,7 @@ internal static partial class CodeBlocks
         header.Children.Add(new TextBlock
         {
             Text = string.IsNullOrWhiteSpace(language) ? "codice" : language.Trim(),
-            FontSize = 10.5,
+            FontSize = TextSize.Caption,
             Opacity = 0.7,
             VerticalAlignment = VerticalAlignment.Center,
         });

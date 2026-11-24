@@ -647,7 +647,7 @@ public static partial class People
     }
 
     /// <summary>The fields an episode (or the user, from the chat) can change on a card.</summary>
-    public static readonly string[] ChangeableFields = ["rapporto", "come comunicare", "note"];
+    public static readonly string[] ChangeableFields = ["rapporto", "come comunicare", "note", "ruolo", "si occupa di"];
 
     /// <summary>
     /// One change to a person's card: <paramref name="mode"/> "imposta" replaces the field, "aggiungi" adds an item to
@@ -669,6 +669,8 @@ public static partial class People
             "rapporto" => fields.Relationship,
             "come comunicare" => fields.Communication,
             "note" => fields.Notes,
+            "ruolo" => fields.Role,
+            "si occupa di" => fields.Description,
             _ => null,
         };
         if (before is null || (field == "rapporto" && value.Length > 0 && !Relationships.Contains(value.ToLowerInvariant())))
@@ -681,6 +683,7 @@ public static partial class People
         var after = mode.Trim().ToLowerInvariant() switch
         {
             "imposta" => field == "rapporto" ? value.ToLowerInvariant() : value,
+            "aggiungi" when field == "ruolo" => value, // one role: adding means replacing
             "aggiungi" when field != "rapporto" && !items.Contains(item, StringComparer.CurrentCultureIgnoreCase) =>
                 items.Count == 0 && !IsList(value) ? value : string.Join("\n", items.Append(item)),
             "togli" when field != "rapporto" => string.Join("\n", items.Where(i => !i.Equals(item, StringComparison.CurrentCultureIgnoreCase))),
@@ -701,6 +704,8 @@ public static partial class People
         {
             "rapporto" => fields with { Relationship = after },
             "come comunicare" => fields with { Communication = after },
+            "ruolo" => fields with { Role = after },
+            "si occupa di" => fields with { Description = after },
             _ => fields with { Notes = after },
         });
         return (person, before);

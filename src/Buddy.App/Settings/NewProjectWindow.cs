@@ -46,6 +46,7 @@ public sealed class NewProjectWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Topmost = true;
         Classes.Add("form");
+        Appearance.Form(this);
 
         _template.Text = current.FlowTemplatePath;
         _create.Click += async (_, _) => await CreateAsync();

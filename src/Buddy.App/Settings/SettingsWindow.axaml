@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="clr-namespace:Buddy.App"
         xmlns:core="clr-namespace:Buddy.Core;assembly=Buddy.Core"
         x:Class="Buddy.App.Settings.SettingsWindow"
         Classes="form"
@@ -20,7 +21,8 @@
             <Button Content="Salva e riavvia" IsDefault="True" Click="OnSaveClick" FontWeight="SemiBold" />
         </StackPanel>
 
-        <TabControl Margin="12,12,12,0">
+        <!-- The sections as a side list, like the board's: twelve tabs on top wrapped on two rows. -->
+        <TabControl Classes="side" TabStripPlacement="Left" Margin="12,12,12,0">
             <!-- ============ Progetti ============ -->
             <TabItem Header="Progetti">
                 <DockPanel Margin="14,10">
@@ -60,7 +62,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Nome del buddy" Classes="label" />
                             <TextBox Grid.Column="1" Text="{Binding Appearance.Name}" />
@@ -72,6 +74,13 @@
                                 <Slider Width="200" Minimum="9" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True"
                                         Value="{Binding Appearance.FontSize}" VerticalAlignment="Center" />
                                 <TextBlock Text="{Binding Appearance.FontSize}" Margin="10,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Text="Logo" Classes="label" />
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="16" Margin="0,4">
+                                <RadioButton x:Name="LogoModern" GroupName="Logo" Content="Moderno (fumetto)" IsCheckedChanged="OnLogoChanged"
+                                             ToolTip.Tip="L'icona di finestre, area di notifica e bacheca: sobria, adatta al lavoro" />
+                                <RadioButton x:Name="LogoPixel" GroupName="Logo" Content="Pixel art (il personaggio)" IsCheckedChanged="OnLogoChanged"
+                                             ToolTip.Tip="Il viso del personaggio pixel-art, come nelle prime versioni" />
                             </StackPanel>
                         </Grid>
 
@@ -510,7 +519,7 @@
 
                         <TextBlock Text="Gruppi per /modifiche" FontWeight="SemiBold" Margin="0,12,0,2" />
                         <TextBlock Classes="hint" Text="Uno per riga: Nome=prefisso1;prefisso2 (percorsi relativi al repository)." />
-                        <TextBox Classes="multiline" x:Name="Groups"  Height="90" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                        <TextBox Classes="multiline" x:Name="Groups"  Height="90" FontFamily="{StaticResource MonoFont}" FontSize="{x:Static app:TextSize.Body}" />
 
                         <TextBlock Text="Istruzioni per /commit" FontWeight="SemiBold" Margin="0,12,0,2" />
                         <TextBox Classes="multiline" Text="{Binding Repo.CommitInstructions}"  TextWrapping="Wrap" Height="56" />

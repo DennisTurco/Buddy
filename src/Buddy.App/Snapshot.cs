@@ -194,9 +194,9 @@ internal static class Snapshot
             services.GetRequiredService<Buddy.Core.Vault.VaultIndex>(),
             services.GetRequiredService<IOptions<BuddySettings>>(),
             services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
-            services.GetRequiredService<PetWindow>().Sprites.Frames(PetState.Idle, ChatMode.Local)[0]);
+            Logo.Mascot(services.GetRequiredService<IOptions<BuddySettings>>().Value.Appearance, services.GetRequiredService<PetWindow>().Sprites));
         project.Show();
-        foreach (var view in new[] { "overview", "board", "archive", "manualtests", "webtests", "notes", "graph", "week", "costs", "decisions", "glossary", "people", "episodes", "prs" })
+        foreach (var view in new[] { "overview", "board", "archive", "manualtests", "webtests", "notes", "graph", "week", "costs", "decisions", "glossary", "people", "episodes", "calls", "prs" })
         {
             project.ShowView(view);
             if (view is "week" or "prs")
@@ -333,14 +333,14 @@ internal static class Snapshot
     }
 
     /// <summary>
-    /// `--export-icon &lt;folder&gt;`: writes the project icon from the idle sprite: icon.png (256 px, for the README)
-    /// and buddy.ico (16-256 px, PNG frames) for the Windows exe.
+    /// `--export-icon &lt;folder&gt;`: writes the project logo (<see cref="Logo"/>): icon.png (256 px, for the README)
+    /// and buddy.ico (16-256 px, PNG frames) for the Windows exe and the windows.
     /// </summary>
     public static void ExportIcon(PetSprites sprites, string folder)
     {
         Directory.CreateDirectory(folder);
         int[] sizes = [16, 24, 32, 48, 64, 128, 256];
-        var frames = sizes.ToDictionary(s => s, sprites.IconPng);
+        var frames = sizes.ToDictionary(s => s, Logo.Png); // the project logo, whatever the user chose for their own icon
         File.WriteAllBytes(Path.Combine(folder, "icon.png"), frames[256]);
 
         using var ico = new BinaryWriter(File.Create(Path.Combine(folder, "buddy.ico")));

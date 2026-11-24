@@ -4,6 +4,7 @@
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="clr-namespace:Buddy.App"
              xmlns:chat="clr-namespace:Buddy.App.Chat"
              xmlns:p="clr-namespace:Buddy.App.Project"
              xmlns:core="clr-namespace:Buddy.Core.Chat;assembly=Buddy.Core"
@@ -92,7 +93,7 @@
                     </StackPanel>
                     <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActionsTemplate}" IsVisible="{Binding HasActions}" />
                     <DockPanel Margin="0,4,0,0" IsVisible="{Binding !IsStreaming}">
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}" FontSize="10"
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}" FontSize="{x:Static app:TextSize.Caption}"
                                    Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="6,0,0,0" />
                         <Button DockPanel.Dock="Right" Classes="flat copy" Width="20" Height="18"
                                 Click="OnCopyEntryClick" ToolTip.Tip="Copia la risposta (markdown)">
@@ -108,18 +109,18 @@
                         </Button>
                         <WrapPanel>
                             <Button Content="Chiedi a Claude ↗" Click="OnEscalateClick" IsVisible="{Binding CanEscalate}"
-                                    Padding="6,1" FontSize="11" Margin="0,0,4,0"
+                                    Padding="6,1" FontSize="{x:Static app:TextSize.Small}" Margin="0,0,4,0"
                                     ToolTip.Tip="Manda la stessa domanda a Claude" />
                             <Button Content="🤔 Spiegamelo tu" Click="OnExplainItClick" IsVisible="{Binding AwaitsReply}"
-                                    Padding="6,1" FontSize="11" Margin="0,0,4,0"
+                                    Padding="6,1" FontSize="{x:Static app:TextSize.Small}" Margin="0,0,4,0"
                                     ToolTip.Tip="Non lo sai? Il mentore te lo spiega, con un esempio" />
                             <!-- Quick follow-ups, shown when the pointer is over the answer. -->
                             <StackPanel Orientation="Horizontal" Spacing="3" IsVisible="{Binding CanFollowUp}">
-                                <Button Classes="flat quick" Content="Più semplice" Tag="Più semplice" Click="OnFollowUpClick" Padding="5,0" FontSize="10.5"
+                                <Button Classes="flat quick" Content="Più semplice" Tag="Più semplice" Click="OnFollowUpClick" Padding="5,0" FontSize="{x:Static app:TextSize.Caption}"
                                         ToolTip.Tip="Rispiegamelo in modo più semplice" />
-                                <Button Classes="flat quick" Content="Un esempio" Tag="Un esempio" Click="OnFollowUpClick" Padding="5,0" FontSize="10.5"
+                                <Button Classes="flat quick" Content="Un esempio" Tag="Un esempio" Click="OnFollowUpClick" Padding="5,0" FontSize="{x:Static app:TextSize.Caption}"
                                         ToolTip.Tip="Fammi un esempio concreto" />
-                                <Button Classes="flat quick" Content="Riassumi" Tag="Riassumi" Click="OnFollowUpClick" Padding="5,0" FontSize="10.5"
+                                <Button Classes="flat quick" Content="Riassumi" Tag="Riassumi" Click="OnFollowUpClick" Padding="5,0" FontSize="{x:Static app:TextSize.Caption}"
                                         ToolTip.Tip="Riassumilo in 3 righe" />
                             </StackPanel>
                         </WrapPanel>
@@ -132,7 +133,7 @@
         <DataTemplate x:Key="SystemTemplate" x:DataType="core:ChatEntry">
             <StackPanel Margin="4,2">
                 <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes.hit="{Binding IsHighlighted}"
-                                     FontSize="11" Foreground="{DynamicResource Muted}" />
+                                     FontSize="{x:Static app:TextSize.Small}" Foreground="{DynamicResource Muted}" />
                 <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActionsTemplate}" IsVisible="{Binding HasActions}" />
             </StackPanel>
         </DataTemplate>
@@ -145,17 +146,17 @@
                                   ToolTip.Tip="{Binding HasMany, Converter={x:Static chat:ToolActivityTip.Instance}}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Left" Text="{Binding Chevron}" IsVisible="{Binding HasMany}" Width="12"
-                                       FontSize="10" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
-                            <TextBlock DockPanel.Dock="Left" Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                       FontSize="{x:Static app:TextSize.Caption}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Left" Text="{Binding Title}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold"
                                        Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding Latest}" FontSize="11" Margin="5,0,0,0" Foreground="{DynamicResource Muted}"
+                            <TextBlock Text="{Binding Latest}" FontSize="{x:Static app:TextSize.Small}" Margin="5,0,0,0" Foreground="{DynamicResource Muted}"
                                        Opacity="0.8" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </ToggleButton>
                     <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding IsExpanded}" Margin="14,1,4,4">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="sys:String">
-                                <SelectableTextBlock Text="{Binding}" FontSize="11" TextWrapping="Wrap" Margin="0,1"
+                                <SelectableTextBlock Text="{Binding}" FontSize="{x:Static app:TextSize.Small}" TextWrapping="Wrap" Margin="0,1"
                                                      Foreground="{DynamicResource Muted}" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -182,7 +183,7 @@
                     <StackPanel IsVisible="{Binding IsPermission}">
                         <TextBlock Text="Claude chiede il permesso:" FontWeight="SemiBold" Foreground="#241F36" />
                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,4"
-                                             Foreground="#241F36" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                                             Foreground="#241F36" FontFamily="{StaticResource MonoFont}" FontSize="{x:Static app:TextSize.Body}" />
                         <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPending}">
                             <Button Content="Sì" Width="64" HorizontalContentAlignment="Center" Click="OnAllowClick" />
                             <Button Content="No" Width="64" HorizontalContentAlignment="Center" Click="OnDenyClick" />
@@ -209,7 +210,7 @@
                                                         <StackPanel>
                                                             <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                                             <TextBlock Text="{Binding Description}" IsVisible="{Binding HasDescription}"
-                                                                       FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                                                                       FontSize="{x:Static app:TextSize.Small}" Opacity="0.75" TextWrapping="Wrap" />
                                                         </StackPanel>
                                                     </ToggleButton>
                                                 </DataTemplate>
@@ -352,7 +353,7 @@
         </Style>
         <Style Selector="Button.small">
             <Setter Property="Padding" Value="6,1" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{x:Static app:TextSize.Small}" />
         </Style>
         <!-- The copy button shows up when the pointer is over the message (it keeps its place: no jumps). -->
         <Style Selector="Border.reply Button.copy">
@@ -437,7 +438,7 @@
                     Click="OnLimitsClick" IsVisible="False">
                 <StackPanel Orientation="Horizontal" Spacing="5">
                     <ProgressBar x:Name="LimitsMiniBar" Classes="limit" Width="26" MinWidth="0" VerticalAlignment="Center" />
-                    <TextBlock x:Name="LimitsMiniText" FontSize="10.5" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="LimitsMiniText" FontSize="{x:Static app:TextSize.Caption}" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
             <!-- A dock, not a stack: the cost text is the one that gets shortened when the bubble is narrow. -->
@@ -457,15 +458,15 @@
         <Border x:Name="LimitsPanel" Margin="2,0,2,6" Padding="8,5,8,2" CornerRadius="8" Background="{DynamicResource ClaudeBubble}" IsVisible="False"
                 Cursor="Hand" PointerPressed="OnLimitsPressed" ToolTip.Tip="I tuoi limiti di utilizzo, come in Claude Code. Click: chiudi">
             <StackPanel>
-            <TextBlock x:Name="UsageText" FontSize="10.5" Margin="0,0,0,4" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" />
+            <TextBlock x:Name="UsageText" FontSize="{x:Static app:TextSize.Caption}" Margin="0,0,0,4" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" />
             <ItemsControl x:Name="LimitsList">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="p:LimitView">
                         <StackPanel Margin="0,0,0,4">
                             <DockPanel>
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="10.5" Margin="8,0,0,0" Foreground="{DynamicResource Ink}" />
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding Reset}" FontSize="10.5" Foreground="{DynamicResource Muted}" />
-                                <TextBlock Text="{Binding Label}" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="{x:Static app:TextSize.Caption}" Margin="8,0,0,0" Foreground="{DynamicResource Ink}" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Reset}" FontSize="{x:Static app:TextSize.Caption}" Foreground="{DynamicResource Muted}" />
+                                <TextBlock Text="{Binding Label}" FontSize="{x:Static app:TextSize.Caption}" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"
                                            TextTrimming="CharacterEllipsis" Margin="0,0,6,0" />
                             </DockPanel>
                             <ProgressBar Classes="limit" Classes.warning="{Binding IsWarning}" Value="{Binding Percent}"
@@ -477,7 +478,7 @@
             </StackPanel>
         </Border>
         <StackPanel x:Name="TaskStrip" Margin="2,0,0,6" IsVisible="False">
-            <TextBlock x:Name="TaskText" FontSize="11.5" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="TaskText" FontSize="{x:Static app:TextSize.Small}" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" />
             <ItemsControl x:Name="TaskActionsList" Margin="0,3,0,0">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -510,7 +511,7 @@
                                 <DockPanel>
                                     <chat:LineIcon DockPanel.Dock="Left" Data="{StaticResource IconPin}" Size="12" Margin="0,0,5,0"
                                                    Foreground="{DynamicResource MentorAccent}" />
-                                    <TextBlock Text="{Binding Headline}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                    <TextBlock Text="{Binding Headline}" FontSize="{x:Static app:TextSize.Small}" TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource Ink}" />
                                 </DockPanel>
                             </Button>
@@ -533,9 +534,9 @@
                     CornerRadius="8" Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource ClaudeAccent}"
                     BorderThickness="1" IsVisible="False" ZIndex="1">
                 <StackPanel Orientation="Horizontal" Spacing="4">
-                    <TextBox x:Name="SearchBox" Width="150" MinHeight="0" Padding="4,2" FontSize="12" PlaceholderText="Cerca nella chat…"
+                    <TextBox x:Name="SearchBox" Width="150" MinHeight="0" Padding="4,2" FontSize="{x:Static app:TextSize.Body}" PlaceholderText="Cerca nella chat…"
                              Foreground="{DynamicResource Ink}" />
-                    <TextBlock x:Name="SearchCount" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource Muted}" MinWidth="34" />
+                    <TextBlock x:Name="SearchCount" VerticalAlignment="Center" FontSize="{x:Static app:TextSize.Small}" Foreground="{DynamicResource Muted}" MinWidth="34" />
                     <Button Classes="flat" Content="↑" Width="20" Height="20" Click="OnSearchPreviousClick" ToolTip.Tip="Precedente (Shift+Invio)" />
                     <Button Classes="flat" Content="↓" Width="20" Height="20" Click="OnSearchNextClick" ToolTip.Tip="Successivo (Invio)" />
                     <Button Classes="flat" Content="✕" Width="20" Height="20" Click="OnSearchCloseClick" ToolTip.Tip="Chiudi (Esc)" />
@@ -555,7 +556,7 @@
             <DockPanel>
                 <Button DockPanel.Dock="Right" Classes="small" Content="■ Ferma" Click="OnStopClick" Cursor="Hand"
                         ToolTip.Tip="Interrompe la risposta (/stop); la conversazione resta" />
-                <TextBlock x:Name="WorkingText" VerticalAlignment="Center" FontSize="11.5" Foreground="{DynamicResource Muted}"
+                <TextBlock x:Name="WorkingText" VerticalAlignment="Center" FontSize="{x:Static app:TextSize.Small}" Foreground="{DynamicResource Muted}"
                            TextTrimming="CharacterEllipsis" />
             </DockPanel>
         </Border>
@@ -567,7 +568,7 @@
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Classes="flat" Content="✕" Padding="4,0"
                             Click="OnRemoveAttachmentClick" ToolTip.Tip="Togli l'allegato" />
-                    <TextBlock x:Name="AttachmentText" Foreground="{DynamicResource Ink}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="AttachmentText" Foreground="{DynamicResource Ink}" FontSize="{x:Static app:TextSize.Body}" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
                 <ItemsControl x:Name="AttachmentImages" ItemTemplate="{StaticResource ImageTemplate}" Margin="0,2,0,0">
                     <ItemsControl.Resources>
@@ -596,8 +597,8 @@
                         <Button Classes="suggestion" Classes.selected="{Binding IsSelected}" Click="OnSuggestionClick" Cursor="Hand">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="{Binding Command.Name}" FontWeight="SemiBold" Foreground="{DynamicResource Ink}"
-                                           FontFamily="{StaticResource MonoFont}" FontSize="12" />
-                                <TextBlock Text="{Binding Command.Description}" Foreground="{DynamicResource Muted}" FontSize="11.5"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="{x:Static app:TextSize.Body}" />
+                                <TextBlock Text="{Binding Command.Description}" Foreground="{DynamicResource Muted}" FontSize="{x:Static app:TextSize.Small}"
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Button>

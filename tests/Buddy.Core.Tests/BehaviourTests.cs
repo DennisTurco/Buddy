@@ -141,6 +141,50 @@ public class MentorBehaviourTests
     }
 
     [Test]
+    public async Task A_call_adds_its_people_marks_them_heard_and_asks_claude_for_their_cards()
+    {
+        var settings = Settings(quietMinutes: 0);
+        settings.Mentor.UserName = "Dennis";
+        settings.Claude.Executable = Path.Combine(_root, "nessun-claude.exe"); // fails at once: no changes from Claude
+        Directory.CreateDirectory(settings.ProjectPath);
+        var people = Path.Combine(settings.ProjectPath, "Persone.md");
+        File.WriteAllText(people, "# Persone\n\n## Chiara Bianchi\n\n- **Soprannome:** Chicca\n- **Sentita:** 2026-10-01\n");
+        var relative = CallTranscripts.Create(settings.ProjectPath, "Rilascio", new DateOnly(2026, 11, 2), ["Dennis", "Chicca", "Laura Rossi"], null, "testo");
+        var conversation = ModelCommandTests.Create(settings);
+        var mentor = Mentor(conversation, settings, new StoppedClock(LateMonday));
+
+        await conversation.SendAsync($"/trascrizione-persone {relative}");
+
+        var cards = People.Parse(File.ReadAllText(people));
+        Assert.That(cards.Select(p => p.Name), Is.EqualTo(new[] { "Chiara Bianchi", "Laura Rossi" }), "the user gets no card");
+        Assert.That(cards[0].LastContact, Is.EqualTo(new DateOnly(2026, 11, 2)), "heard on the call's day");
+        Assert.That(File.ReadAllText(people), Does.Contain("dalla call «Rilascio»"));
+        var said = conversation.Entries.Concat(conversation.SideEntries).Last(e => e.Speaker == Speaker.Mentor).Text;
+        Assert.That(said, Does.Contain("Persone dalla call").And.Contain("Aggiunta a Persone**: Laura Rossi").And.Contain("/trascrizione-persone"));
+        GC.KeepAlive(mentor);
+    }
+
+    [Test]
+    public void A_card_change_can_set_the_role_and_add_what_someone_takes_care_of()
+    {
+        var people = Path.Combine(_root, "Persone.md");
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(people, "# Persone\n\n## Domenico Nicoli\n\n- **Ruolo:** sviluppatore\n");
+        var all = People.Parse(File.ReadAllText(people));
+        var findings = EpisodeAnalysis.Parse("""
+            {"modifiche": [{"persona": "Domenico Nicoli", "campo": "ruolo", "modo": "aggiungi", "valore": "responsabile dei rilasci", "importante": true, "motivo": "detto nella call"},
+                           {"persona": "Domenico Nicoli", "campo": "si occupa di", "modo": "aggiungi", "valore": "test in PROD", "importante": false, "motivo": "x"}],
+             "nuove_persone": []}
+            """, all);
+
+        Assert.That(findings!.Changes.Select(c => c.Field), Is.EqualTo(new[] { "ruolo", "si occupa di" }));
+        Assert.That(People.ApplyChange(people, "Domenico Nicoli", "ruolo", "aggiungi", "responsabile dei rilasci")?.Before, Is.EqualTo("sviluppatore"));
+        People.ApplyChange(people, "Domenico Nicoli", "si occupa di", "aggiungi", "test in PROD");
+        var card = People.Parse(File.ReadAllText(people)).Single();
+        Assert.That((card.Role, card.Description), Is.EqualTo(("responsabile dei rilasci", "test in PROD")));
+    }
+
+    [Test]
     public async Task Sentita_brings_back_what_to_remember_and_prepara_falls_back_to_it_without_claude()
     {
         var settings = Settings(quietMinutes: 0);

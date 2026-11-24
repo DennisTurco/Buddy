@@ -191,6 +191,15 @@ public sealed partial record ProjectBoard(
             {
                 date = parsed;
             }
+            else if (id is null && date is null && rest.Count == 1 && LooseId().IsMatch(rest[0])
+                     && DateOnly.TryParseExact(part, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var afterId))
+            {
+                // "T-001 · 2026-10-15 · Titolo" with an id the project's pattern does not cover (e.g. one letter where
+                // the pattern wants two): the flow's format says the first part is the id all the same.
+                id = rest[0].ToUpperInvariant();
+                rest.Clear();
+                date = afterId;
+            }
             else
             {
                 rest.Add(part);
@@ -260,6 +269,10 @@ public sealed partial record ProjectBoard(
 
     [GeneratedRegex(@"🔁\s*(?<n>\d+)")]
     private static partial Regex ReworkRegex();
+
+    /// <summary>Any id-looking token ("T-001", "NUSR-12"): letters, a dash, digits.</summary>
+    [GeneratedRegex(@"^[A-Za-z]{1,10}-\d+$")]
+    private static partial Regex LooseId();
 
     [GeneratedRegex(@"^[-*] \*\*(?<label>[^*]+?):?\*\*:?\s*(?<value>.*)$")]
     private static partial Regex StatusLineRegex();

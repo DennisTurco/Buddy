@@ -9,6 +9,7 @@
 -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="clr-namespace:Buddy.App"
         xmlns:p="clr-namespace:Buddy.App.Project"
         xmlns:core="clr-namespace:Buddy.Core.Vault;assembly=Buddy.Core"
         xmlns:chat="clr-namespace:Buddy.App.Chat"
@@ -26,7 +27,7 @@
         <x:Double x:Key="PageCardWidth">380</x:Double>
         <DataTemplate x:Key="ChipTemplate" x:DataType="p:Chip">
             <Border Classes="chip" Classes.good="{Binding IsGood}" Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}">
-                <TextBlock Text="{Binding Text}" FontSize="11" />
+                <TextBlock Text="{Binding Text}" FontSize="{x:Static app:TextSize.Small}" />
             </Border>
         </DataTemplate>
 
@@ -37,33 +38,36 @@
                 <StackPanel>
                     <!-- A ⏸ task inside Da fare: a band says it is on hold. -->
                     <Border Classes="waitband" IsVisible="{Binding IsWaiting}" Background="{Binding Accent}">
-                        <TextBlock Text="{Binding WaitingBanner}" FontSize="11" FontWeight="SemiBold" Foreground="#1F2A44" />
+                        <TextBlock Text="{Binding WaitingBanner}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Foreground="#1F2A44" />
                     </Border>
+                    <!-- ID on the left, the date it was written on the right: the card's quiet first line. -->
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding Id}" Classes="id" Foreground="{Binding Accent}" IsVisible="{Binding HasId}" Margin="0,0,8,0" />
-                        <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding TagChips}" IsVisible="{Binding HasTag}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="4" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="p:TagOption">
-                                    <Border Classes="tag" Background="{Binding Brush}">
-                                        <TextBlock Text="{Binding Name}" />
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Text="{Binding DateText}" Classes="muted" FontSize="11" VerticalAlignment="Center"
-                                   HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding DateText}" Classes="muted" FontSize="{x:Static app:TextSize.Caption}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" />
+                        <TextBlock Text="{Binding Id}" Classes="id" Foreground="{Binding Accent}" IsVisible="{Binding HasId}"
+                                   TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <!-- Long titles and notes are cut: the whole text is in the tooltip. -->
                     <TextBlock Classes="title" Text="{Binding Title}" TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis"
-                               FontWeight="SemiBold" Margin="0,2,0,0" ToolTip.Tip="{Binding Title}" ToolTip.ShowDelay="600" />
+                               FontWeight="SemiBold" Margin="0,3,0,0" ToolTip.Tip="{Binding Title}" ToolTip.ShowDelay="600" />
                     <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" TextWrapping="Wrap" MaxLines="2"
-                               TextTrimming="CharacterEllipsis" Classes="muted" FontSize="12" Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis" Classes="muted" FontSize="{x:Static app:TextSize.Small}" Margin="0,3,0,0"
                                ToolTip.Tip="{Binding Note}" ToolTip.ShowDelay="600" />
+                    <!-- Tags under the text, going on a new line when the column is narrow (never cut in half). -->
+                    <ItemsControl ItemsSource="{Binding TagChips}" IsVisible="{Binding HasTag}" Margin="0,6,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="p:TagOption">
+                                <Border Classes="tag" Background="{Binding Brush}">
+                                    <TextBlock Text="{Binding Name}" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <ItemsControl ItemsSource="{Binding Chips}" IsVisible="{Binding HasChips}" ItemTemplate="{StaticResource ChipTemplate}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -83,12 +87,32 @@
         <Style Selector="TextBlock.id">
             <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontSize" Value="{x:Static app:TextSize.Small}" />
         </Style>
         <Style Selector="TextBlock.section">
-            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontSize" Value="{x:Static app:TextSize.Heading}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <!-- A panel's heading with its line icon (🧭 Il flusso…): the icon in the muted ink, the text as TextBlock.section. -->
+        <Style Selector="chat|IconLabel.section">
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Spacing" Value="8" />
+            <Setter Property="IconSize" Value="17" />
+        </Style>
+        <Style Selector="chat|IconLabel.section TextBlock">
+            <Setter Property="FontSize" Value="{x:Static app:TextSize.Heading}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="chat|IconLabel.section chat|LineIcon">
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        </Style>
+        <!-- The side bar's pages: the icon a step quieter than the name, lit up on the page shown. -->
+        <Style Selector="ListBox#Nav chat|LineIcon">
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        </Style>
+        <Style Selector="ListBox#Nav ListBoxItem:selected chat|LineIcon">
+            <Setter Property="Foreground" Value="{DynamicResource ClaudeAccent}" />
         </Style>
         <Style Selector="Border.panel">
             <Setter Property="Background" Value="{DynamicResource InputBack}" />
@@ -170,7 +194,7 @@
         </Style>
         <Style Selector="Button.small">
             <Setter Property="Padding" Value="9,3" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{x:Static app:TextSize.Body}" />
             <Setter Property="CornerRadius" Value="6" />
         </Style>
         <!-- Fold / unfold a panel (side bar, notes list): a quiet square icon that lights up under the mouse. -->
@@ -303,11 +327,11 @@
         <Style Selector="Border.tag">
             <Setter Property="CornerRadius" Value="5" />
             <Setter Property="Padding" Value="6,0" />
-            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Margin" Value="0,0,4,3" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="Border.tag TextBlock">
-            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontSize" Value="{x:Static app:TextSize.Caption}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="#1F1C2C" />
         </Style>
@@ -363,9 +387,9 @@
                         <StackPanel>
                             <DockPanel>
                                 <TextBlock DockPanel.Dock="Right" Text="▾" Classes="muted" VerticalAlignment="Center" Margin="4,0,0,0" />
-                                <TextBlock x:Name="ProjectName" FontSize="18" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock x:Name="ProjectName" FontSize="{x:Static app:TextSize.Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
                             </DockPanel>
-                            <TextBlock x:Name="ProjectPath" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                            <TextBlock x:Name="ProjectPath" Classes="muted" FontSize="{x:Static app:TextSize.Small}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
                         </StackPanel>
                     </Button>
                 </DockPanel>
@@ -376,30 +400,30 @@
                             <!-- Click the title to fold the card to this one line (remembered between runs). -->
                             <DockPanel Background="Transparent" Cursor="Hand" PointerPressed="OnUsageHeaderPressed"
                                        ToolTip.Tip="Click per comprimere o espandere">
-                                <TextBlock DockPanel.Dock="Right" x:Name="UsageChevron" Text="▾" Classes="muted" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center" />
-                                <TextBlock DockPanel.Dock="Right" x:Name="UsageTurns" Classes="muted" FontSize="11" VerticalAlignment="Bottom" />
-                                <TextBlock x:Name="UsageTitle" Text="💳 Claude oggi" FontSize="11" FontWeight="SemiBold" Classes="muted" TextTrimming="CharacterEllipsis" />
+                                <TextBlock DockPanel.Dock="Right" x:Name="UsageChevron" Text="▾" Classes="muted" FontSize="{x:Static app:TextSize.Small}" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                <TextBlock DockPanel.Dock="Right" x:Name="UsageTurns" Classes="muted" FontSize="{x:Static app:TextSize.Small}" VerticalAlignment="Bottom" />
+                                <TextBlock x:Name="UsageTitle" Text="💳 Claude oggi" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Classes="muted" TextTrimming="CharacterEllipsis" />
                             </DockPanel>
                             <StackPanel x:Name="UsageDetails" Spacing="6">
-                            <TextBlock x:Name="UsageCost" FontSize="22" FontWeight="Bold" />
-                            <TextBlock Text="I tuoi limiti di utilizzo" FontSize="11" FontWeight="SemiBold" Classes="muted" Margin="0,4,0,0" />
+                            <TextBlock x:Name="UsageCost" FontSize="{x:Static app:TextSize.Title}" FontWeight="Bold" />
+                            <TextBlock Text="I tuoi limiti di utilizzo" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Classes="muted" Margin="0,4,0,0" />
                             <ItemsControl x:Name="UsageLimits">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="p:LimitView">
                                         <StackPanel Margin="0,2,0,6">
                                             <!-- The side bar is narrow: the reset time goes under the bar instead of next to the label. -->
                                             <DockPanel>
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="11" Margin="8,0,0,0" />
-                                                <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="{x:Static app:TextSize.Small}" Margin="8,0,0,0" />
+                                                <TextBlock Text="{Binding Label}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                             </DockPanel>
                                             <ProgressBar Classes="limit" Classes.warning="{Binding IsWarning}" Value="{Binding Percent}"
                                                          IsVisible="{Binding HasPercent}" Margin="0,4,0,0" />
-                                            <TextBlock Text="{Binding Reset}" FontSize="10" Classes="muted" Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding Reset}" FontSize="{x:Static app:TextSize.Caption}" Classes="muted" Margin="0,2,0,0" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock x:Name="UsageNoLimits" Classes="muted" FontSize="10.5" TextWrapping="Wrap"
+                            <TextBlock x:Name="UsageNoLimits" Classes="muted" FontSize="{x:Static app:TextSize.Caption}" TextWrapping="Wrap"
                                        Text="Limiti non ancora letti." />
                             </StackPanel>
                         </StackPanel>
@@ -409,10 +433,10 @@
                             ToolTip.Tip="Descrivi cosa vorresti aggiungere: l'AI propone idee che finiscono negli appunti (Ctrl+I)">
                         <chat:IconLabel Label="💡 Nuove idee…" />
                     </Button>
-                    <TextBlock Text="Nuovo appunto" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0" />
+                    <TextBlock Text="Nuovo appunto" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Margin="4,0,0,0" />
                     <TextBox x:Name="QuickNote" PlaceholderText="✍ Scrivi e premi Invio (Ctrl+N)" TextWrapping="Wrap" MaxHeight="120"
                              KeyDown="OnQuickNoteKeyDown" />
-                    <TextBlock x:Name="QuickNoteDone" Classes="muted" FontSize="11" Margin="4,0,0,0" IsVisible="False" Text="✓ Aggiunto agli appunti" />
+                    <TextBlock x:Name="QuickNoteDone" Classes="muted" FontSize="{x:Static app:TextSize.Small}" Margin="4,0,0,0" IsVisible="False" Text="✓ Aggiunto agli appunti" />
                     <Grid ColumnDefinitions="*,6,*,6,Auto" Margin="0,6,0,0">
                         <Button Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                 Content="Obsidian" Click="OnOpenVaultClick" ToolTip.Tip="Apri il vault in Obsidian" />
@@ -450,20 +474,20 @@
                                 <DockPanel IsVisible="{Binding IsPage}">
                                     <Border DockPanel.Dock="Right" IsVisible="{Binding HasBadge}" CornerRadius="9" Padding="7,0"
                                             Background="{DynamicResource Paper}" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Badge}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" />
                                     </Border>
-                                    <TextBlock Text="{Binding Label}" FontSize="14" />
+                                    <chat:IconLabel Label="{Binding Label}" IconSize="16" Spacing="10" TextElement.FontSize="{x:Static app:TextSize.Base}" />
                                 </DockPanel>
                                 <!-- A group's heading: click to fold or unfold; folded, it shows its pages' numbers. -->
                                 <DockPanel IsVisible="{Binding IsHeader}" Margin="0,6,0,0" Cursor="Hand"
                                            ToolTip.Tip="Click per comprimere o espandere il gruppo">
                                     <Border DockPanel.Dock="Right" IsVisible="{Binding HasBadge}" CornerRadius="9" Padding="7,0"
                                             Background="{DynamicResource Paper}" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Badge}" FontSize="10.5" FontWeight="SemiBold" Classes="muted" />
+                                        <TextBlock Text="{Binding Badge}" FontSize="{x:Static app:TextSize.Caption}" FontWeight="SemiBold" Classes="muted" />
                                     </Border>
-                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Chevron}" Classes="muted" FontSize="11"
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Chevron}" Classes="muted" FontSize="{x:Static app:TextSize.Small}"
                                                Width="14" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Label}" Classes="muted" FontSize="11.5" FontWeight="SemiBold"
+                                    <TextBlock Text="{Binding Label}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold"
                                                VerticalAlignment="Center" />
                                 </DockPanel>
                             </Panel>
@@ -482,7 +506,7 @@
                             <Button Classes="rail" Classes.current="{Binding IsCurrent}" Margin="{Binding Margin}"
                                     Click="OnRailItemClick" ToolTip.Tip="{Binding Tip}" ToolTip.Placement="Right">
                                 <Panel>
-                                    <TextBlock Text="{Binding Icon}" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <chat:IconLabel Label="{Binding Icon}" IconSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     <!-- Something to look at in that page: a small dot (the number is in the tooltip). -->
                                     <Ellipse Width="7" Height="7" Fill="{DynamicResource ClaudeAccent}" IsVisible="{Binding HasBadge}"
                                              HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0" />
@@ -515,7 +539,7 @@
                     <DockPanel>
                         <Border DockPanel.Dock="Right" Padding="5,1" CornerRadius="4" BorderThickness="1"
                                 BorderBrush="{DynamicResource Frame}" VerticalAlignment="Center">
-                            <TextBlock Text="Ctrl+K" FontSize="11" Classes="muted" />
+                            <TextBlock Text="Ctrl+K" FontSize="{x:Static app:TextSize.Small}" Classes="muted" />
                         </Border>
                         <TextBlock Text="🔎 Cerca ovunque…" Classes="muted" VerticalAlignment="Center" />
                     </DockPanel>
@@ -524,8 +548,8 @@
                          PlaceholderText="🔍 Cerca ID, titolo, testo… (Ctrl+F)"
                          ToolTip.Tip="Filtra le liste. Con una nota o una checklist aperta Ctrl+F cerca nella pagina; Ctrl+Shift+F torna qui" />
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock x:Name="ViewTitle" FontSize="22" FontWeight="Bold" />
-                    <TextBlock x:Name="ViewSubtitle" Classes="muted" FontSize="12" Margin="0,2,16,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="ViewTitle" FontSize="{x:Static app:TextSize.Title}" FontWeight="Bold" />
+                    <TextBlock x:Name="ViewSubtitle" Classes="muted" FontSize="{x:Static app:TextSize.Body}" Margin="0,2,16,0" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </DockPanel>
 
@@ -544,9 +568,10 @@
                                     <Button Classes="tile" Click="OnTileClick">
                                         <StackPanel>
                                             <Border Height="3" CornerRadius="2" Background="{Binding Accent}" Margin="0,0,0,8" Width="28" HorizontalAlignment="Left" />
-                                            <TextBlock Text="{Binding Label}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding Value}" FontSize="30" FontWeight="Bold" Margin="0,2,0,0" />
-                                            <TextBlock Text="{Binding Sub}" IsVisible="{Binding HasSub}" FontSize="11.5" Foreground="{Binding Accent}"
+                                            <chat:IconLabel Label="{Binding Label}" IconSize="14" TextElement.Foreground="{DynamicResource Muted}"
+                                                            TextElement.FontSize="{x:Static app:TextSize.Body}" />
+                                            <TextBlock Text="{Binding Value}" FontSize="{x:Static app:TextSize.Display}" FontWeight="Bold" Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding Sub}" IsVisible="{Binding HasSub}" FontSize="{x:Static app:TextSize.Small}" Foreground="{Binding Accent}"
                                                        TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </Button>
@@ -558,8 +583,8 @@
                             <Border Classes="panel">
                                 <StackPanel>
                                     <DockPanel>
-                                        <TextBlock DockPanel.Dock="Right" x:Name="CompletionText" Classes="muted" FontSize="12" VerticalAlignment="Center" />
-                                        <TextBlock Classes="section" Text="🧭 Il flusso" />
+                                        <TextBlock DockPanel.Dock="Right" x:Name="CompletionText" Classes="muted" FontSize="{x:Static app:TextSize.Body}" VerticalAlignment="Center" />
+                                        <chat:IconLabel Classes="section" Label="🧭 Il flusso" />
                                     </DockPanel>
                                     <Border CornerRadius="7" ClipToBounds="True" Margin="0,2,0,10">
                                         <Grid x:Name="FlowBar" Height="14" />
@@ -574,7 +599,7 @@
                                             <DataTemplate x:DataType="p:SegmentView">
                                                 <StackPanel Orientation="Horizontal" Margin="0,0,14,4">
                                                     <Ellipse Width="9" Height="9" Fill="{Binding Accent}" VerticalAlignment="Center" Margin="0,0,5,0" />
-                                                    <TextBlock Text="{Binding Text}" FontSize="12" />
+                                                    <TextBlock Text="{Binding Text}" FontSize="{x:Static app:TextSize.Body}" />
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -587,14 +612,14 @@
                                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
                                                 <Border Width="9" Height="9" CornerRadius="2" Background="#B99BF5" VerticalAlignment="Center" />
-                                                <TextBlock Text="nuove" FontSize="11" Classes="muted" />
+                                                <TextBlock Text="nuove" FontSize="{x:Static app:TextSize.Small}" Classes="muted" />
                                             </StackPanel>
                                             <StackPanel Orientation="Horizontal" Spacing="4">
                                                 <Border Width="9" Height="9" CornerRadius="2" Background="#5FBF77" VerticalAlignment="Center" />
-                                                <TextBlock Text="chiusi" FontSize="11" Classes="muted" />
+                                                <TextBlock Text="chiusi" FontSize="{x:Static app:TextSize.Small}" Classes="muted" />
                                             </StackPanel>
                                         </StackPanel>
-                                        <TextBlock Classes="section" Text="📈 Ultime 8 settimane" />
+                                        <chat:IconLabel Classes="section" Label="📈 Ultime 8 settimane" />
                                     </DockPanel>
                                     <ItemsControl x:Name="WeeksChart" Height="118">
                                         <ItemsControl.ItemsPanel>
@@ -605,7 +630,7 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="p:WeekView">
                                                 <DockPanel Background="Transparent" ToolTip.Tip="{Binding Tip}">
-                                                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding Label}" FontSize="9.5" Classes="muted"
+                                                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding Label}" FontSize="{x:Static app:TextSize.Caption}" Classes="muted"
                                                                Classes.current="{Binding IsCurrent}" HorizontalAlignment="Center" Margin="0,4,0,0" />
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Spacing="2">
                                                         <Border Width="9" Height="{Binding AddedHeight}" CornerRadius="3,3,0,0" Background="#B99BF5" VerticalAlignment="Bottom" />
@@ -622,13 +647,13 @@
                         <Grid ColumnDefinitions="3*,16,2*">
                             <Border Classes="panel" VerticalAlignment="Top">
                                 <StackPanel>
-                                    <TextBlock Classes="section" Text="⚡ Richiede attenzione" />
+                                    <chat:IconLabel Classes="section" Label="⚡ Richiede attenzione" />
                                     <TextBlock x:Name="NothingUrgent" Classes="muted" FontStyle="Italic" Text="Niente di urgente: tutto sotto controllo 👌" />
                                     <ItemsControl x:Name="AttentionList">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="p:AttentionView">
                                                 <StackPanel>
-                                                    <TextBlock Text="{Binding Reason}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding Card.Accent}" Margin="2,0,0,3" />
+                                                    <TextBlock Text="{Binding Reason}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Foreground="{Binding Card.Accent}" Margin="2,0,0,3" />
                                                     <ContentControl Content="{Binding Card}" ContentTemplate="{StaticResource CardTemplate}" />
                                                 </StackPanel>
                                             </DataTemplate>
@@ -643,13 +668,13 @@
                                         BorderBrush="{DynamicResource MentorAccent}" BorderThickness="3,0,0,0">
                                     <StackPanel>
                                         <Button Classes="link" Click="OnStatusTitleClick" ToolTip.Tip="Apri la nota">
-                                            <TextBlock Classes="section" Text="📌 Stato attuale" />
+                                            <chat:IconLabel Classes="section" Label="📌 Stato attuale" />
                                         </Button>
                                         <ItemsControl x:Name="StatusList">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="p:StatusView">
                                                     <StackPanel Margin="0,0,0,8">
-                                                        <TextBlock Text="{Binding Label}" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding Label}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" />
                                                         <chat:MarkdownView Markdown="{Binding Markdown}" Loaded="OnMarkdownLoaded" />
                                                     </StackPanel>
                                                 </DataTemplate>
@@ -659,14 +684,14 @@
                                 </Border>
                                 <Border x:Name="RecentPanel" Classes="panel">
                                     <StackPanel>
-                                        <TextBlock Classes="section" Text="✅ Chiusi di recente" />
+                                        <chat:IconLabel Classes="section" Label="✅ Chiusi di recente" />
                                         <ItemsControl x:Name="RecentList" ItemTemplate="{StaticResource CardTemplate}" />
                                     </StackPanel>
                                 </Border>
                                 <!-- Small things to tidy: broken links, isolated notes, tasks without "Fatto quando", stale checklists. -->
                                 <Border x:Name="HealthPanel" Classes="panel">
                                     <StackPanel>
-                                        <TextBlock x:Name="HealthTitle" Classes="section" Text="🩺 Salute del vault" />
+                                        <chat:IconLabel x:Name="HealthTitle" Classes="section" Label="🩺 Salute del vault" />
                                         <TextBlock x:Name="HealthOk" Classes="muted" FontStyle="Italic" Text="Tutto in ordine ✨" />
                                         <ItemsControl x:Name="HealthList">
                                             <ItemsControl.ItemTemplate>
@@ -676,7 +701,7 @@
                                                             Margin="0,1" IsEnabled="{Binding Target, Converter={x:Static ObjectConverters.IsNotNull}}">
                                                         <DockPanel>
                                                             <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Margin="0,0,6,0" />
-                                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12.5" />
+                                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="{x:Static app:TextSize.Body}" />
                                                         </DockPanel>
                                                     </Button>
                                                     <!-- A broken link: create the note, or link to the one with a near-identical name. -->
@@ -699,7 +724,7 @@
                                 <Border x:Name="ChecksPanel" Classes="panel">
                                     <StackPanel>
                                         <Button Classes="link" Click="OnChecksTitleClick" ToolTip.Tip="Apri la nota «Controlli», con lo storico dei lanci">
-                                            <TextBlock x:Name="ChecksTitle" Classes="section" Text="🔁 Controlli periodici" />
+                                            <chat:IconLabel x:Name="ChecksTitle" Classes="section" Label="🔁 Controlli periodici" />
                                         </Button>
                                         <ItemsControl x:Name="ChecksList">
                                             <ItemsControl.ItemTemplate>
@@ -712,13 +737,13 @@
                                                         </Button>
                                                         <StackPanel>
                                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Body}" />
                                                                 <Border Classes="chip warm" IsVisible="{Binding IsDue}" VerticalAlignment="Center">
-                                                                    <TextBlock Text="{Binding Badge}" FontSize="10.5" />
+                                                                    <TextBlock Text="{Binding Badge}" FontSize="{x:Static app:TextSize.Caption}" />
                                                                 </Border>
                                                             </StackPanel>
-                                                            <TextBlock Text="{Binding Description}" Classes="muted" FontSize="11.5" TextWrapping="Wrap" Margin="0,1,0,0" />
-                                                            <TextBlock Text="{Binding Last}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                                            <TextBlock Text="{Binding Description}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" TextWrapping="Wrap" Margin="0,1,0,0" />
+                                                            <TextBlock Text="{Binding Last}" FontSize="{x:Static app:TextSize.Small}" TextWrapping="Wrap" Margin="0,2,0,0" />
                                                         </StackPanel>
                                                     </DockPanel>
                                                 </DataTemplate>
@@ -753,7 +778,7 @@
                                 <Button Classes="tagfilter" Classes.on="{Binding IsSelected}" Click="OnTagFilterClick">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <Ellipse Width="8" Height="8" Fill="{Binding Brush}" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding Label}" FontSize="12" />
+                                        <TextBlock Text="{Binding Label}" FontSize="{x:Static app:TextSize.Body}" />
                                     </StackPanel>
                                 </Button>
                             </DataTemplate>
@@ -764,14 +789,14 @@
                 <Grid x:Name="CloseZones" DockPanel.Dock="Bottom" ColumnDefinitions="*,*" Margin="0,10,10,0" IsVisible="False">
                     <Border x:Name="CloseZoneDone" Classes="closezone" Tag="fatti" DragDrop.AllowDrop="True" Margin="0,0,5,0">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="✅ Chiudi" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" />
-                            <TextBlock Text="Rilascia qui: Claude lo porta in Fatti con /chiudi" Classes="muted" FontSize="11.5" HorizontalAlignment="Center" />
+                            <TextBlock Text="✅ Chiudi" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Base}" HorizontalAlignment="Center" />
+                            <TextBlock Text="Rilascia qui: Claude lo porta in Fatti con /chiudi" Classes="muted" FontSize="{x:Static app:TextSize.Small}" HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
                     <Border x:Name="CloseZoneRejected" Grid.Column="1" Classes="closezone" Tag="rifiutati" DragDrop.AllowDrop="True" Margin="5,0,0,0">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="🚫 Rifiuta" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" />
-                            <TextBlock Text="Rilascia qui: ti chiede il motivo e usa /rifiuta" Classes="muted" FontSize="11.5" HorizontalAlignment="Center" />
+                            <TextBlock Text="🚫 Rifiuta" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Base}" HorizontalAlignment="Center" />
+                            <TextBlock Text="Rilascia qui: ti chiede il motivo e usa /rifiuta" Classes="muted" FontSize="{x:Static app:TextSize.Small}" HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -794,7 +819,7 @@
                                             ToolTip.Tip="{Binding EmptyText}">
                                     <Border Height="3" Width="22" CornerRadius="2" Margin="0,0,0,2" Background="{Binding Accent}" />
                                     <Border CornerRadius="9" Padding="7,0" Background="{DynamicResource Paper}" HorizontalAlignment="Center">
-                                        <TextBlock Text="{Binding Count}" FontSize="11.5" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Count}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" />
                                     </Border>
                                     <Button Classes="small" Content="＋" Padding="7,0" HorizontalAlignment="Center"
                                             IsVisible="{Binding CanAdd}" ToolTip.Tip="{Binding AddTip}" Click="OnColumnAddClick" />
@@ -803,7 +828,7 @@
                                             <RotateTransform Angle="90" />
                                         </LayoutTransformControl.LayoutTransform>
                                         <Button Classes="link" Click="OnColumnTitleClick" ToolTip.Tip="{Binding NoteTip}">
-                                            <TextBlock Text="{Binding Column.Title}" FontWeight="SemiBold" FontSize="13" Classes="muted" />
+                                            <TextBlock Text="{Binding Column.Title}" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Body}" Classes="muted" />
                                         </Button>
                                     </LayoutTransformControl>
                                 </StackPanel>
@@ -813,13 +838,13 @@
                                         <Button DockPanel.Dock="Right" Classes="small" Content="＋" Padding="7,0" Margin="6,0,0,0" VerticalAlignment="Center"
                                                 IsVisible="{Binding CanAdd}" ToolTip.Tip="{Binding AddTip}" Click="OnColumnAddClick" />
                                         <Border DockPanel.Dock="Right" CornerRadius="9" Padding="7,0" Background="{DynamicResource Paper}" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Count}" FontSize="11.5" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Count}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" />
                                         </Border>
                                         <Button Classes="link" Click="OnColumnTitleClick" ToolTip.Tip="{Binding NoteTip}">
                                             <!-- A dot of the column's colour, the same as the flow bar in Panoramica. -->
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <Ellipse Width="9" Height="9" Fill="{Binding Accent}" VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding Column.Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Column.Title}" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Base}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                         </Button>
                                     </DockPanel>
@@ -831,7 +856,7 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="p:FlowAction">
-                                                <Button Classes="action" ToolTip.Tip="{Binding Tip}" Click="OnColumnActionClick" FontSize="12">
+                                                <Button Classes="action" ToolTip.Tip="{Binding Tip}" Click="OnColumnActionClick" FontSize="{x:Static app:TextSize.Body}">
                                                     <chat:IconLabel Label="{Binding Label}" />
                                                 </Button>
                                             </DataTemplate>
@@ -853,7 +878,7 @@
                 <Border x:Name="UndoToast" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,14" Padding="14,8,8,8"
                         CornerRadius="10" Background="{DynamicResource Frame}" BoxShadow="0 4 16 0 #50000000" IsVisible="False">
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock x:Name="UndoText" VerticalAlignment="Center" Foreground="{DynamicResource Paper}" FontSize="13" />
+                        <TextBlock x:Name="UndoText" VerticalAlignment="Center" Foreground="{DynamicResource Paper}" FontSize="{x:Static app:TextSize.Body}" />
                         <Button Classes="small" Click="OnUndoMoveClick" ToolTip.Tip="Rimette la voce dov'era (Ctrl+Z)">
                             <chat:IconLabel Label="↶ Annulla" />
                         </Button>
@@ -867,8 +892,8 @@
                     <Border Classes="panel">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                <TextBlock Classes="section" Text="✅ Fatti" Margin="0" />
-                                <TextBlock x:Name="DoneSummary" Classes="muted" FontSize="12" />
+                                <chat:IconLabel Classes="section" Label="✅ Fatti" Margin="0" />
+                                <TextBlock x:Name="DoneSummary" Classes="muted" FontSize="{x:Static app:TextSize.Body}" />
                             </StackPanel>
                             <ScrollViewer HorizontalScrollBarVisibility="Disabled">
                                 <ItemsControl x:Name="DoneList" ItemTemplate="{StaticResource CardTemplate}" />
@@ -878,8 +903,8 @@
                     <Border Grid.Column="2" Classes="panel">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                <TextBlock Classes="section" Text="🚫 Rifiutati" Margin="0" />
-                                <TextBlock x:Name="RejectedSummary" Classes="muted" FontSize="12" />
+                                <chat:IconLabel Classes="section" Label="🚫 Rifiutati" Margin="0" />
+                                <TextBlock x:Name="RejectedSummary" Classes="muted" FontSize="{x:Static app:TextSize.Body}" />
                             </StackPanel>
                             <ScrollViewer HorizontalScrollBarVisibility="Disabled">
                                 <ItemsControl x:Name="RejectedList" ItemTemplate="{StaticResource CardTemplate}" />
@@ -898,15 +923,15 @@
                                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                         <ProgressBar Classes="limit" Classes.done="{Binding IsComplete}" Value="{Binding Percent}" Margin="0,6,0,4" />
                                         <DockPanel>
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Updated}" Classes="muted" FontSize="10.5" />
-                                            <TextBlock Text="{Binding Progress}" FontSize="11.5" Classes="muted" />
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Updated}" Classes="muted" FontSize="{x:Static app:TextSize.Caption}" />
+                                            <TextBlock Text="{Binding Progress}" FontSize="{x:Static app:TextSize.Small}" Classes="muted" />
                                         </DockPanel>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
                     </Border>
-                    <TextBlock x:Name="NoManualTests" Grid.ColumnSpan="3" Classes="muted" TextWrapping="Wrap" FontSize="14" Margin="8"
+                    <TextBlock x:Name="NoManualTests" Grid.ColumnSpan="3" Classes="muted" TextWrapping="Wrap" FontSize="{x:Static app:TextSize.Base}" Margin="8"
                                IsVisible="False"
                                Text="Ancora nessun documento di test manuali. Li scrivono /lavora e /guidami mentre lavorano, oppure crealo per un task con 🧪 Test manuali nel suo pannello (o /test-manuali ID in chat). Finiscono in «Test manuali/Test manuali ID.md» e qui puoi spuntare i casi." />
                     <Border x:Name="ManualDocPanel" Grid.Column="2" Classes="panel" Padding="22,14">
@@ -914,7 +939,7 @@
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                                 <!-- The title gets the whole width; the buttons go on their own row underneath. -->
                                 <StackPanel Spacing="10">
-                                    <TextBlock x:Name="ManualTitle" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="ManualTitle" FontSize="{x:Static app:TextSize.Title}" FontWeight="Bold" TextWrapping="Wrap" />
                                     <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
                                         <Button x:Name="ManualUpdateButton" Classes="action" Margin="0" Click="OnManualUpdateClick"
                                                 ToolTip.Tip="/test-manuali ID: Claude aggiunge i casi nuovi senza togliere le spunte">
@@ -931,7 +956,7 @@
                                     </WrapPanel>
                                 </StackPanel>
                                 <DockPanel Margin="0,10,0,0">
-                                    <TextBlock x:Name="ManualProgress" DockPanel.Dock="Right" Classes="muted" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="ManualProgress" DockPanel.Dock="Right" Classes="muted" FontSize="{x:Static app:TextSize.Body}" Margin="10,0,0,0" VerticalAlignment="Center" />
                                     <ProgressBar x:Name="ManualBar" Classes="limit big" />
                                 </DockPanel>
                             </StackPanel>
@@ -943,8 +968,8 @@
                                             <DataTemplate x:DataType="p:ManualSectionView">
                                                 <StackPanel Margin="0,8,0,6">
                                                     <DockPanel IsVisible="{Binding HasTitle}" Margin="0,0,0,4">
-                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Progress}" Classes="muted" FontSize="11.5" VerticalAlignment="Center" />
-                                                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
+                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Progress}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding Title}" FontSize="{x:Static app:TextSize.Heading}" FontWeight="SemiBold" />
                                                     </DockPanel>
                                                     <ItemsControl ItemsSource="{Binding Items}">
                                                         <ItemsControl.DataTemplates>
@@ -989,12 +1014,12 @@
                                         </Button>
                                     </StackPanel>
                                     <StackPanel>
-                                        <TextBlock x:Name="RunTitle" FontSize="15" FontWeight="SemiBold" />
-                                        <TextBlock x:Name="RunStatus" Classes="muted" FontSize="12" Margin="0,2,0,0" />
+                                        <TextBlock x:Name="RunTitle" FontSize="{x:Static app:TextSize.Heading}" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="RunStatus" Classes="muted" FontSize="{x:Static app:TextSize.Body}" Margin="0,2,0,0" />
                                     </StackPanel>
                                 </DockPanel>
                                 <TextBox x:Name="RunOutput" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" Height="240"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="{x:Static app:TextSize.Small}"
                                          ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
                             </StackPanel>
                         </Border>
@@ -1003,9 +1028,9 @@
                             <StackPanel>
                                 <DockPanel Margin="0,0,0,4">
                                     <Button DockPanel.Dock="Right" Classes="small" Content="Apri la nota" Click="OnWebNoteClick" />
-                                    <TextBlock Classes="section" Text="🤖 Script salvati" />
+                                    <chat:IconLabel Classes="section" Label="🤖 Script salvati" />
                                 </DockPanel>
-                                <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"
+                                <TextBlock Classes="muted" FontSize="{x:Static app:TextSize.Body}" TextWrapping="Wrap" Margin="0,0,0,10"
                                            Text="Con uno script il test web costa poco: lo rilancia /verifica-web invece di far guidare il browser a Claude." />
                                 <TextBlock x:Name="NoScripts" Classes="muted" FontStyle="Italic"
                                            Text="Nessuno script ancora: /verifica-web propone di salvarne uno dopo ogni esplorazione." />
@@ -1024,10 +1049,10 @@
                                                                 Click="OnRunScriptClick" ToolTip.Tip="{Binding RunTip}">
                                                             <chat:IconLabel Label="▶ Esegui" />
                                                         </Button>
-                                                        <TextBlock Text="{Binding Name}" Classes="id" FontSize="13.5" Foreground="#8AB4F8" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding Name}" Classes="id" FontSize="{x:Static app:TextSize.Base}" Foreground="#8AB4F8" VerticalAlignment="Center" />
                                                     </DockPanel>
                                                     <!-- Markdown: the descriptions use **bold** and `code` like the note. -->
-                                                    <chat:MarkdownView Markdown="{Binding CoversMarkdown}" IsVisible="{Binding HasCovers}" FontSize="12.5" Margin="0,4,0,0" />
+                                                    <chat:MarkdownView Markdown="{Binding CoversMarkdown}" IsVisible="{Binding HasCovers}" FontSize="{x:Static app:TextSize.Body}" Margin="0,4,0,0" />
                                                     <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
@@ -1045,7 +1070,7 @@
 
                         <Border Classes="panel">
                             <StackPanel>
-                                <TextBlock Classes="section" Text="📸 Screenshot delle verifiche" />
+                                <chat:IconLabel Classes="section" Label="📸 Screenshot delle verifiche" />
                                 <TextBlock x:Name="NoShots" Classes="muted" FontStyle="Italic"
                                            Text="Nessuno screenshot: li salva /verifica-web nella cartella «Test web» del vault." />
                                 <ItemsControl x:Name="ShotGroups">
@@ -1066,7 +1091,7 @@
                                                                     <Border CornerRadius="6" ClipToBounds="True" Width="230" Height="140" Background="{DynamicResource Paper}">
                                                                         <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
                                                                     </Border>
-                                                                    <TextBlock Text="{Binding Caption}" FontSize="11.5" Margin="2,6,0,0" TextTrimming="CharacterEllipsis" Width="226" />
+                                                                    <TextBlock Text="{Binding Caption}" FontSize="{x:Static app:TextSize.Small}" Margin="2,6,0,0" TextTrimming="CharacterEllipsis" Width="226" />
                                                                 </StackPanel>
                                                             </Button>
                                                         </DataTemplate>
@@ -1094,10 +1119,10 @@
                                 <DataTemplate x:DataType="p:NoteFolderHeader">
                                     <DockPanel Margin="0,4,0,0" Cursor="Hand" ToolTip.Tip="Click per comprimere o espandere la cartella">
                                         <Border DockPanel.Dock="Right" CornerRadius="9" Padding="6,0" Background="{DynamicResource Paper}" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Count}" FontSize="10.5" FontWeight="SemiBold" Classes="muted" />
+                                            <TextBlock Text="{Binding Count}" FontSize="{x:Static app:TextSize.Caption}" FontWeight="SemiBold" Classes="muted" />
                                         </Border>
-                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Chevron}" Classes="muted" FontSize="11" Width="14" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding Title}" Classes="muted" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Chevron}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" Width="14" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Title}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" />
                                     </DockPanel>
                                 </DataTemplate>
@@ -1129,7 +1154,7 @@
                                         VerticalAlignment="Center" Click="OnNotesListToggleClick">
                                     <chat:LineIcon x:Name="NotesListToggleIcon" Data="{StaticResource IconPanelHide}" Size="17" />
                                 </Button>
-                                <TextBlock x:Name="NoteTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <TextBlock x:Name="NoteTitle" FontSize="{x:Static app:TextSize.Title}" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </DockPanel>
                             <!-- A draft left by an edit that was not closed (Buddy closed, a crash): recover or discard it. -->
                             <Border x:Name="NoteDraftBar" DockPanel.Dock="Top" IsVisible="False" Margin="0,0,0,10" Padding="12,8" CornerRadius="8"
@@ -1140,7 +1165,7 @@
                                                 ToolTip.Tip="Apre l'editor con il testo della bozza: poi decidi se salvarlo" />
                                         <Button Classes="small" Content="Elimina" Click="OnDiscardDraftClick" />
                                     </StackPanel>
-                                    <TextBlock x:Name="NoteDraftText" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12.5" />
+                                    <TextBlock x:Name="NoteDraftText" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="{x:Static app:TextSize.Body}" />
                                 </DockPanel>
                             </Border>
                             <Panel>
@@ -1149,7 +1174,7 @@
                                         <chat:MarkdownView x:Name="NoteViewer" />
                                         <StackPanel x:Name="BacklinksPanel" Margin="0,22,0,0" IsVisible="False">
                                             <Border Height="1" Background="{DynamicResource UserBubble}" Margin="0,0,0,10" />
-                                            <TextBlock Text="🔗 Citata in" Classes="muted" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <TextBlock Text="🔗 Citata in" Classes="muted" FontSize="{x:Static app:TextSize.Body}" FontWeight="SemiBold" Margin="0,0,0,6" />
                                             <ItemsControl x:Name="Backlinks">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -1197,7 +1222,7 @@
                                     </WrapPanel>
                                     <Grid x:Name="NoteEditorGrid" ColumnDefinitions="*,12,*">
                                         <TextBox x:Name="NoteEditor" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
-                                                 FontFamily="{StaticResource MonoFont}" FontSize="13"
+                                                 FontFamily="{StaticResource MonoFont}" FontSize="{x:Static app:TextSize.Body}"
                                                  ScrollViewer.VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
                                         <Border x:Name="NotePreviewPanel" Grid.Column="2" Classes="panel" Padding="12,8"
                                                 BorderBrush="{DynamicResource UserBubble}" BorderThickness="1" CornerRadius="8">
@@ -1238,7 +1263,7 @@
                                     <DataTemplate x:DataType="p:GraphLegendItem">
                                         <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,2,12,2">
                                             <Ellipse Width="9" Height="9" Fill="{Binding Color}" VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding Folder}" Classes="muted" FontSize="11.5" />
+                                            <TextBlock Text="{Binding Folder}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -1275,8 +1300,8 @@
                                                 BorderThickness="3,0,0,0" Cursor="Hand" Tapped="OnPageCardTapped"
                                                 ToolTip.Tip="{Binding Target}">
                                             <StackPanel>
-                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14.5" TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" Classes="muted" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Base}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" Margin="0,2,0,0" TextWrapping="Wrap" />
                                                 <ItemsControl ItemsSource="{Binding Chips}" IsVisible="{Binding HasChips}" Margin="0,6,0,0" ItemTemplate="{StaticResource ChipTemplate}">
                                                     <ItemsControl.ItemsPanel>
                                                         <ItemsPanelTemplate>
@@ -1285,6 +1310,22 @@
                                                     </ItemsControl.ItemsPanel>
                                                 </ItemsControl>
                                                 <chat:MarkdownView Markdown="{Binding Markdown}" IsVisible="{Binding HasMarkdown}" Margin="0,6,0,0" Loaded="OnMarkdownLoaded" />
+                                                <!-- The card's own buttons (a call's actions and open points): Claude works on one. -->
+                                                <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}" Margin="0,8,0,0">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="p:PageCardAction">
+                                                            <Button Classes="small" Margin="0,0,6,6" Click="OnPageCardActionClick"
+                                                                    ToolTip.Tip="{Binding Tip}" ToolTip.ShowDelay="300">
+                                                                <chat:IconLabel Label="{Binding Label}" />
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>
@@ -1299,16 +1340,16 @@
                         CornerRadius="12" Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource ClaudeAccent}"
                         BorderThickness="1" IsVisible="False" ZIndex="10" BoxShadow="0 8 30 0 #50000000">
                     <StackPanel>
-                        <TextBox x:Name="PaletteBox" PlaceholderText="Cerca note, task, pagine, conversazioni, comandi…  (↑/↓, Invio, Esc)" FontSize="14" />
+                        <TextBox x:Name="PaletteBox" PlaceholderText="Cerca note, task, pagine, conversazioni, comandi…  (↑/↓, Invio, Esc)" FontSize="{x:Static app:TextSize.Base}" />
                         <ListBox x:Name="PaletteList" Margin="0,8,0,0" MaxHeight="420" Background="Transparent">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="p:PaletteItem">
                                     <DockPanel>
-                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Width="26" FontSize="14" VerticalAlignment="Center" />
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Width="26" FontSize="{x:Static app:TextSize.Base}" VerticalAlignment="Center" />
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" VerticalAlignment="Center" Margin="8,0,0,0" />
                                         <StackPanel>
-                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" FontSize="13.5" />
-                                            <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" FontSize="{x:Static app:TextSize.Base}" />
+                                            <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </DockPanel>
                                 </DataTemplate>
@@ -1323,7 +1364,7 @@
                         BorderThickness="1" IsVisible="False" ZIndex="5" BoxShadow="0 2 8 0 #30000000">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <TextBox x:Name="PageFindBox" Width="220" PlaceholderText="Cerca nella nota…" VerticalAlignment="Center" />
-                        <TextBlock x:Name="PageFindCount" MinWidth="40" VerticalAlignment="Center" Classes="muted" FontSize="12" />
+                        <TextBlock x:Name="PageFindCount" MinWidth="40" VerticalAlignment="Center" Classes="muted" FontSize="{x:Static app:TextSize.Body}" />
                         <Button Classes="small" Content="↑" Click="OnPageFindPreviousClick" ToolTip.Tip="Precedente (Shift+Invio)" />
                         <Button Classes="small" Content="↓" Click="OnPageFindNextClick" ToolTip.Tip="Successivo (Invio)" />
                         <Button Classes="small" Click="OnPageFindCloseClick" ToolTip.Tip="Chiudi (Esc)">
@@ -1339,33 +1380,33 @@
                 BorderBrush="{DynamicResource UserBubble}" BorderThickness="1,0,0,0">
             <DockPanel Margin="20,16,20,16" x:DataType="p:CardView">
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <Button DockPanel.Dock="Right" Classes="link" FontSize="15" Click="OnCloseDetailClick" ToolTip.Tip="Chiudi (Esc)">
+                    <Button DockPanel.Dock="Right" Classes="link" FontSize="{x:Static app:TextSize.Heading}" Click="OnCloseDetailClick" ToolTip.Tip="Chiudi (Esc)">
                         <chat:IconLabel Label="✕" />
                     </Button>
                     <Border CornerRadius="9" Padding="9,2" Background="{Binding Accent}" HorizontalAlignment="Left">
-                        <TextBlock Text="{Binding ColumnLabel}" FontSize="11.5" FontWeight="SemiBold" Foreground="#1F1C2C" />
+                        <TextBlock Text="{Binding ColumnLabel}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Foreground="#1F1C2C" />
                     </Border>
                 </DockPanel>
 
                 <!-- Edit mode -->
                 <DockPanel x:Name="DetailEdit" IsVisible="False">
-                    <TextBlock DockPanel.Dock="Top" Text="Testo della voce nella nota (markdown)" Classes="muted" FontSize="11.5" Margin="0,0,0,6" />
+                    <TextBlock DockPanel.Dock="Top" Text="Testo della voce nella nota (markdown)" Classes="muted" FontSize="{x:Static app:TextSize.Small}" Margin="0,0,0,6" />
                     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
                         <Button Classes="small" Content="Salva" Click="OnSaveCardClick" ToolTip.Tip="Ctrl+Invio" />
                         <Button Classes="small" Content="Annulla" Click="OnCancelCardClick" ToolTip.Tip="Esc" />
                     </StackPanel>
                     <TextBox x:Name="CardEditor" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top"
-                             FontFamily="{StaticResource MonoFont}" FontSize="12.5" KeyDown="OnCardEditorKeyDown" />
+                             FontFamily="{StaticResource MonoFont}" FontSize="{x:Static app:TextSize.Body}" KeyDown="OnCardEditorKeyDown" />
                 </DockPanel>
 
                 <!-- Read mode -->
                 <ScrollViewer x:Name="DetailRead" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel>
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding DateText}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding Id}" IsVisible="{Binding HasId}" Classes="id" FontSize="14" Foreground="{Binding Accent}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding DateText}" Classes="muted" FontSize="{x:Static app:TextSize.Body}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Id}" IsVisible="{Binding HasId}" Classes="id" FontSize="{x:Static app:TextSize.Base}" Foreground="{Binding Accent}" />
                         </DockPanel>
-                        <SelectableTextBlock Text="{Binding Title}" FontSize="19" FontWeight="Bold" TextWrapping="Wrap" Margin="0,4,0,0" />
+                        <SelectableTextBlock Text="{Binding Title}" FontSize="{x:Static app:TextSize.Title}" FontWeight="Bold" TextWrapping="Wrap" Margin="0,4,0,0" />
                         <Border IsVisible="{Binding HasNote}" Margin="0,10,0,0" Padding="10,8" CornerRadius="8" Background="{DynamicResource Paper}">
                             <chat:MarkdownView Markdown="{Binding NoteMarkdown}" Loaded="OnMarkdownLoaded" />
                         </Border>
@@ -1377,7 +1418,7 @@
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>
                         <StackPanel IsVisible="{Binding HasDetails}" Margin="0,14,0,0">
-                            <TextBlock Text="Dettagli" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,2" />
+                            <TextBlock Text="Dettagli" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Margin="0,0,0,2" />
                             <chat:MarkdownView Markdown="{Binding DetailsMarkdown}" Loaded="OnMarkdownLoaded" />
                         </StackPanel>
 
@@ -1385,21 +1426,21 @@
                         <StackPanel x:Name="SheetPanel" Margin="0,16,0,0" IsVisible="False">
                             <DockPanel Margin="0,0,0,6">
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10">
-                                    <Button x:Name="SheetClaudeButton" Classes="link" FontSize="11.5" Click="OnSheetClaudeClick" />
-                                    <Button x:Name="SheetEditButton" Classes="link" FontSize="11.5" Click="OnSheetEditClick"
+                                    <Button x:Name="SheetClaudeButton" Classes="link" FontSize="{x:Static app:TextSize.Small}" Click="OnSheetClaudeClick" />
+                                    <Button x:Name="SheetEditButton" Classes="link" FontSize="{x:Static app:TextSize.Small}" Click="OnSheetEditClick"
                                             ToolTip.Tip="Modifica il testo (markdown) in Task/ID.md">
                                         <chat:IconLabel Label="✏ Modifica" />
                                     </Button>
                                 </StackPanel>
-                                <TextBlock x:Name="SheetTitle" Classes="muted" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="SheetTitle" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </DockPanel>
                             <Border x:Name="SheetRead" Padding="10,8" CornerRadius="8" Background="{DynamicResource Paper}">
                                 <chat:MarkdownView x:Name="SheetView" Loaded="OnMarkdownLoaded" />
                             </Border>
-                            <TextBlock x:Name="SheetEmpty" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                            <TextBlock x:Name="SheetEmpty" Classes="muted" FontSize="{x:Static app:TextSize.Body}" TextWrapping="Wrap" />
                             <StackPanel x:Name="SheetEdit" IsVisible="False">
                                 <TextBox x:Name="SheetEditor" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top"
-                                         MinHeight="160" MaxHeight="460" FontFamily="{StaticResource MonoFont}" FontSize="12.5"
+                                         MinHeight="160" MaxHeight="460" FontFamily="{StaticResource MonoFont}" FontSize="{x:Static app:TextSize.Body}"
                                          KeyDown="OnSheetEditorKeyDown" />
                                 <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
                                     <Button Classes="small" Content="Salva" Click="OnSheetSaveClick" ToolTip.Tip="Ctrl+Invio" />
@@ -1410,16 +1451,16 @@
 
                         <!-- The life of the task: board, notes, journal and commits, in order. -->
                         <StackPanel x:Name="TimelinePanel" Margin="0,16,0,0" IsVisible="False">
-                            <TextBlock Text="🕒 Cronologia" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6" />
-                            <TextBlock x:Name="EstimateText" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,6" IsVisible="False"
+                            <TextBlock Text="🕒 Cronologia" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <TextBlock x:Name="EstimateText" TextWrapping="Wrap" FontSize="{x:Static app:TextSize.Body}" Margin="0,0,0,6" IsVisible="False"
                                        ToolTip.Tip="Quanto avevi stimato, quanto è durato davvero e quanto è costato" />
                             <ItemsControl x:Name="TimelineList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="core:TimelineEvent">
                                         <DockPanel Margin="0,1">
-                                            <TextBlock DockPanel.Dock="Left" Width="52" Text="{Binding Date, StringFormat='{}{0:d MMM}'}" Classes="muted" FontSize="11.5" />
-                                            <TextBlock DockPanel.Dock="Left" Width="22" Text="{Binding Icon}" FontSize="12" />
-                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12" />
+                                            <TextBlock DockPanel.Dock="Left" Width="52" Text="{Binding Date, StringFormat='{}{0:d MMM}'}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" />
+                                            <TextBlock DockPanel.Dock="Left" Width="22" Text="{Binding Icon}" FontSize="{x:Static app:TextSize.Body}" />
+                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="{x:Static app:TextSize.Body}" />
                                         </DockPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -1427,7 +1468,7 @@
                         </StackPanel>
 
                         <StackPanel x:Name="TagPanel" Margin="0,18,0,0">
-                            <TextBlock Text="Tag" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <TextBlock Text="Tag" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Margin="0,0,0,6" />
                             <WrapPanel>
                                 <ItemsControl x:Name="DetailTags">
                                     <ItemsControl.ItemsPanel>
@@ -1441,21 +1482,21 @@
                                                     ToolTip.Tip="Scrive [tag:: …] nella voce">
                                                 <StackPanel Orientation="Horizontal" Spacing="5">
                                                     <Ellipse Width="8" Height="8" Fill="{Binding Brush}" VerticalAlignment="Center" />
-                                                    <TextBlock Text="{Binding Name}" FontSize="11.5" />
+                                                    <TextBlock Text="{Binding Name}" FontSize="{x:Static app:TextSize.Small}" />
                                                 </StackPanel>
                                             </Button>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <Button Classes="tagpick" Content="＋ altro…" FontSize="11.5" Click="OnTagOtherClick" />
-                                <Button x:Name="TagRemoveButton" Classes="tagpick" FontSize="11.5" Click="OnTagRemoveClick">
+                                <Button Classes="tagpick" Content="＋ altro…" FontSize="{x:Static app:TextSize.Small}" Click="OnTagOtherClick" />
+                                <Button x:Name="TagRemoveButton" Classes="tagpick" FontSize="{x:Static app:TextSize.Small}" Click="OnTagRemoveClick">
                                     <chat:IconLabel Label="✕ togli" />
                                 </Button>
                             </WrapPanel>
                         </StackPanel>
 
                         <StackPanel x:Name="ClaudeActionsPanel" Margin="0,18,0,0">
-                            <TextBlock Text="Con Claude" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <TextBlock Text="Con Claude" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Margin="0,0,0,6" />
                             <ItemsControl x:Name="ClaudeActions">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -1472,7 +1513,7 @@
                             </ItemsControl>
                         </StackPanel>
 
-                        <TextBlock Text="Voce" Classes="muted" FontSize="11" FontWeight="SemiBold" Margin="0,14,0,6" />
+                        <TextBlock Text="Voce" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Margin="0,14,0,6" />
                         <WrapPanel>
                             <Button Classes="small" Click="OnEditCardClick" Margin="0,0,6,6">
                                 <chat:IconLabel Label="✏ Modifica" />

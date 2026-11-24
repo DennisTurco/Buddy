@@ -38,9 +38,10 @@ public sealed class FirstRunWindow : Window
         Height = 680;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Classes.Add("form");
+        Appearance.Form(this);
 
         var form = new StackPanel { Margin = new Thickness(20) };
-        form.Children.Add(new TextBlock { Text = "Ciao! Facciamo conoscenza 👋", FontSize = 20, FontWeight = FontWeight.SemiBold });
+        form.Children.Add(new TextBlock { Text = "Ciao! Facciamo conoscenza 👋", FontSize = TextSize.Title, FontWeight = FontWeight.SemiBold });
         form.Children.Add(Hint("Bastano due minuti. Tutto si può cambiare dopo da Impostazioni."));
 
         form.Children.Add(Heading("Come ti chiami?"));
@@ -188,7 +189,7 @@ public sealed class FirstRunWindow : Window
         new() { Text = text, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 16, 0, 4) };
 
     private static TextBlock Hint(string text) =>
-        new() { Text = text, Classes = { "hint" }, FontSize = 12, Margin = new Thickness(0, 2, 0, 4) };
+        new() { Text = text, Classes = { "hint" }, FontSize = TextSize.Body, Margin = new Thickness(0, 2, 0, 4) };
 
     private static TextBox Field(TextBox box)
     {

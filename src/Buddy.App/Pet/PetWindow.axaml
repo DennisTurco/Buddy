@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="clr-namespace:Buddy.App"
         x:Class="Buddy.App.Pet.PetWindow"
         Title="Buddy"
         SizeToContent="WidthAndHeight"
@@ -27,7 +28,7 @@
     <Grid Margin="8,0,8,0" RowDefinitions="28,Auto">
         <TextBlock x:Name="BadgeText"
                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                   FontFamily="{StaticResource MonoFont}" FontWeight="Bold" FontSize="20"
+                   FontFamily="{StaticResource MonoFont}" FontWeight="Bold" FontSize="{x:Static app:TextSize.Title}"
                    Foreground="#241F36">
             <TextBlock.Effect>
                 <DropShadowEffect Color="White" BlurRadius="4" OffsetX="0" OffsetY="0" Opacity="1" />
