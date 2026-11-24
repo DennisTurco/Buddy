@@ -95,6 +95,32 @@ public class SaidTests
     }
 
     [Test]
+    public void A_ticked_commitment_counts_on_the_day_it_was_done_in_the_week()
+    {
+        Said.Add(_project, new SaidEntry(Tuesday.AddDays(-7), "Antonio Bianchi", SaidKind.Impegno, "mandare i sinonimi", null, null, false, "", 0));
+        Said.Add(_project, new SaidEntry(Tuesday, "Domenico Nicoli", SaidKind.Accordo, "si testa in PROD", null, null, false, "", 0));
+        var commitment = Said.ParseRegistry(File.ReadAllText(Said.PathFor(_project)), Said.FileName).Single(e => e.Kind == SaidKind.Impegno);
+
+        Said.SetDone(_project, commitment, done: true, today: Tuesday);
+        var entries = Said.ParseRegistry(File.ReadAllText(Said.PathFor(_project)), Said.FileName);
+        Assert.That(File.ReadAllText(Said.PathFor(_project)), Does.Contain("mandare i sinonimi [fatto:: 2026-11-24]"));
+        Assert.That(entries.Single(e => e.Kind == SaidKind.Impegno).DoneOn, Is.EqualTo(Tuesday));
+
+        var monday = new DateOnly(2026, 11, 23);
+        var week = WeekActivity.Collect(entries, [], [], monday, monday.AddDays(6));
+        Assert.That(week[Tuesday].Done.Select(e => e.Text), Is.EqualTo(new[] { "mandare i sinonimi" }), "done this week, taken the week before");
+        Assert.That(week[Tuesday].Said.Select(e => e.Text), Is.EqualTo(new[] { "si testa in PROD" }));
+        Assert.That(week[Tuesday].Taken, Is.Empty);
+
+        var recap = WeekActivity.RecapPrompt(monday, monday.AddDays(6), "### martedì\n✅ 1 impegno chiuso", [], Tuesday, "Dennis");
+        Assert.That(recap, Does.Contain("Portato a termine").And.Contain("✅ 1 impegno chiuso").And.Contain("di Dennis"));
+
+        // Unticked: the day goes away with the tick.
+        Said.SetDone(_project, entries.Single(e => e.Kind == SaidKind.Impegno), done: false);
+        Assert.That(File.ReadAllText(Said.PathFor(_project)), Does.Not.Contain("[fatto::"));
+    }
+
+    [Test]
     public void The_chat_commands_write_the_registry_with_full_names_and_list_commitments()
     {
         var settings = new BuddySettings { ProjectPath = _project, Mentor = { UserName = "Dennis" } };

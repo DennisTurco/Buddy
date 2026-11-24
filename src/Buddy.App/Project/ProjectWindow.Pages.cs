@@ -215,6 +215,9 @@ public partial class ProjectWindow
                 _weekOffset++;
                 await RenderPageAsync(_view);
                 break;
+            case "week:recap" when _weekRecap is { } recap:
+                ClaudeRequested?.Invoke(recap);
+                break;
             case "week:next":
                 _weekOffset = Math.Max(0, _weekOffset - 1);
                 await RenderPageAsync(_view);
@@ -997,6 +1000,11 @@ public partial class ProjectWindow
         // Who you last heard on each day (only the latest contact per person is kept, in the Persone note).
         var people = NoteTitled(People.Note) is { } peopleNote ? People.Parse(peopleNote.Content) : [];
 
+        // Not only the code: commitments done and taken, calls, agreements and decisions, episodes with colleagues.
+        var said = Said.All(_vault, _settings.ProjectPath);
+        var activity = WeekActivity.Collect(said, CallTranscripts.List(_vault), Episodes.Read(Episodes.PathFor(_settings)), monday, sunday);
+        var week = new StringBuilder(); // the week as shown, for the recap
+
         var cards = new List<PageCard>();
         for (var day = monday; day <= sunday; day = day.AddDays(1))
         {
@@ -1031,6 +1039,11 @@ public partial class ProjectWindow
                 chips.Add(new Chip(column.Key == "fatti" ? $"✅ {item.Id} chiuso" : $"🔍 {item.Id} in revisione", ChipKind.Good));
             }
 
+            if (activity.TryGetValue(day, out var did))
+            {
+                AddActivity(did, chips, body, today);
+            }
+
             var mood = diary is null ? null : Mood(Path.Combine(diary, $"{day:yyyy-MM-dd}.md"));
             if (mood is { } m)
             {
@@ -1044,23 +1057,93 @@ public partial class ProjectWindow
             }
 
             cards.Add(new PageCard(day.ToString("dddd d MMMM", Italian), day == today ? "oggi" : null, chips,
-                body.Length > 0 ? body.ToString() : (chips.Count == 0 ? "*niente di registrato*" : null), null,
+                body.Length > 0 ? NoteLinks.ToMarkdown(body.ToString()) : (chips.Count == 0 ? "*niente di registrato*" : null), null,
                 day == today ? "#7FD1AE" : "#A0A4B8"));
+            if (chips.Count > 0 || body.Length > 0)
+            {
+                week.AppendLine($"### {day.ToString("dddd d MMMM", Italian)}")
+                    .AppendLine(string.Join(" · ", chips.Select(c => c.Text)))
+                    .AppendLine(body.ToString().TrimEnd()).AppendLine();
+            }
         }
 
         var weekCost = spending.Where(d => d.Key >= monday && d.Key <= sunday).Sum(d => d.Value.Cost);
+        var done = activity.Values.Sum(a => a.Done.Count);
+        var calls = activity.Values.Sum(a => a.Calls.Count);
+        var agreed = activity.Values.Sum(a => a.Said.Count(e => e.Kind is SaidKind.Accordo or SaidKind.Decisione));
+        _weekRecap = WeekActivity.RecapPrompt(monday, sunday, week.ToString(), said.Where(e => e.IsOpenCommitment).ToList(), today, _settings.Mentor.UserName);
         var content = new PageContent(
             $"Settimana dal {monday.ToString("d MMMM", Italian)} al {sunday.ToString("d MMMM", Italian)} · {commits.Values.Sum(c => c.Count)} commit · "
-            + $"{closed.Count} task chiusi o in revisione · {weekCost.ToString("0.00", Italian)} $ con Claude",
+            + $"{closed.Count} task chiusi o in revisione · {done} impegni chiusi · {calls} call · {agreed} accordi e decisioni · "
+            + $"{weekCost.ToString("0.00", Italian)} $ con Claude",
             null, cards,
             [
                 new PageButton("‹ Settimana prima", "week:prev"),
                 new PageButton("Settimana dopo ›", "week:next"),
+                new PageButton("🧠 Recap della settimana", "week:recap",
+                    "Claude scrive il recap da tutto quello che vedi qui: commit, task, impegni, call, accordi e decisioni, e cosa resta aperto"),
                 new PageButton("↻ Aggiorna", "refresh"),
             ],
             "Niente in questa settimana.");
         _weekCache = (_weekOffset, DateTime.Now, content);
         return content;
+    }
+
+    /// <summary>The request behind "🧠 Recap della settimana", for the week on screen.</summary>
+    private string? _weekRecap;
+
+    /// <summary>A day's activity besides the commits, as chips and short lists on its card (at most 4 per list).</summary>
+    private static void AddActivity(DayActivity did, List<Chip> chips, StringBuilder body, DateOnly today)
+    {
+        string Source(SaidEntry e) => e.SourceTitle is { } title && title != Said.Note ? $" *(call «{title}»)*" : "";
+        void List(string heading, IReadOnlyList<string> lines)
+        {
+            if (lines.Count == 0)
+            {
+                return;
+            }
+
+            body.AppendLine().AppendLine($"**{heading}**").AppendLine();
+            foreach (var line in lines.Take(4))
+            {
+                body.AppendLine($"- {line}");
+            }
+
+            if (lines.Count > 4)
+            {
+                body.AppendLine($"- …e altri {lines.Count - 4}");
+            }
+        }
+
+        if (did.Done.Count > 0)
+        {
+            chips.Add(new Chip($"✅ {did.Done.Count} impegn{(did.Done.Count == 1 ? "o chiuso" : "i chiusi")}", ChipKind.Good));
+        }
+
+        if (did.Calls.Count > 0)
+        {
+            chips.Add(new Chip($"🎙 {did.Calls.Count} call", ChipKind.Plain));
+        }
+
+        var agreed = did.Said.Where(e => e.Kind is SaidKind.Accordo or SaidKind.Decisione).ToList();
+        if (agreed.Count > 0)
+        {
+            chips.Add(new Chip($"🤝 {agreed.Count} accord{(agreed.Count == 1 ? "o o decisione" : "i e decisioni")}", ChipKind.Plain));
+        }
+
+        if (did.Episodes.Count > 0)
+        {
+            chips.Add(new Chip($"📓 {did.Episodes.Count} episod{(did.Episodes.Count == 1 ? "io" : "i")}", ChipKind.Plain));
+        }
+
+        List("Impegni chiusi", did.Done.Select(e => $"✔ {(e.Who.Length > 0 ? $"**{e.Who}** · " : "")}{e.Text}{Source(e)}").ToList());
+        List("Call", did.Calls.Select(c => $"🎙 [[{Path.GetFileNameWithoutExtension(c.RelativePath)}|{c.Title}]]"
+                                            + (c.People.Count > 0 ? $" con {string.Join(", ", c.People)}" : "")).ToList());
+        List("Accordi e decisioni", agreed.Select(e => $"{(e.Kind == SaidKind.Decisione ? "⚖" : "🤝")} {(e.Who.Length > 0 ? $"**{e.Who}** · " : "")}{e.Text}{Source(e)}").ToList());
+        List("Impegni presi", did.Taken.Where(e => !e.Done).Select(e => $"☐ {(e.Who.Length > 0 ? $"**{e.Who}** · " : "")}{e.Text}"
+                                                                    + (e.Due is { } due ? $" · entro {due.ToString("d MMM", Italian)}{(due < today ? " ⚠" : "")}" : "")).ToList());
+        List("Cose dette", did.Said.Where(e => e.Kind == SaidKind.Info).Select(e => $"💬 {(e.Who.Length > 0 ? $"**{e.Who}** · " : "")}{e.Text}").ToList());
+        List("Episodi", did.Episodes.Select(e => $"📓 {e.Title}").ToList());
     }
 
     /// <summary>The mood of a day from its journal note ("umore 4", "4/5" in the check-out), or null.</summary>

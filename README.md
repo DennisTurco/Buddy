@@ -152,7 +152,7 @@ the settings window), which overrides them. Window position is kept in `<data>/s
     notes not yet created; *Colori per task* groups the notes of each task). *🕸 Grafo* in a note shows it there.
   - **Your pages**: every sub-folder of `Pagine/` in the project folder is a page in the side bar (*＋ Nuova pagina…* creates
     one); its notes are cards, *＋ Nuova nota* writes one by hand (title and markdown), and chat answers can be saved there.
-  - More pages: **Settimana** (day by day: commits, tasks closed, Claude spending, mood from the journal; ‹ ›),
+  - More pages: **Settimana** (day by day: commits, tasks closed, commitments done — the day they were ticked — and taken, calls, agreements and decisions, episodes, people heard, Claude spending, mood from the journal; ‹ ›; *🧠 Recap della settimana* has Claude write the recap from all of it, with what is still open),
     **Costi** (spending per week and per model, tasks by cost), **Decisioni** and **Glossario** (the notes as searchable
     cards, with *Registra decisione* / *Nuovo termine*; for a term, the notes that use it), **PR** (your open pull requests
     on GitHub via `gh`, with CI, review and task).

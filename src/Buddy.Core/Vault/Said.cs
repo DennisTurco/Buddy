@@ -22,6 +22,9 @@ public sealed record SaidEntry(
     DateOnly Date, string Who, SaidKind Kind, string Text, string? Topic, DateOnly? Due, bool Done, string Source, int Line,
     string? SourceTitle = null)
 {
+    /// <summary>The day a commitment was ticked ("[fatto:: 2026-11-24]", written by the Buddy), when known.</summary>
+    public DateOnly? DoneOn { get; init; }
+
     public bool IsOpenCommitment => Kind == SaidKind.Impegno && !Done;
 
     public bool IsLate(DateOnly today) => IsOpenCommitment && Due is { } due && due < today;
@@ -135,7 +138,10 @@ public static partial class Said
             entries.Add(new SaidEntry(date, match.Groups["who"].Value.Trim(), kind, text,
                 fields.TryGetValue("tema", out var topic) && topic.Length > 0 ? topic : null,
                 fields.TryGetValue("entro", out var due) ? ParseDate(due) : null,
-                match.Groups["mark"].Value is "x" or "X", relativePath, i + 1, Note));
+                match.Groups["mark"].Value is "x" or "X", relativePath, i + 1, Note)
+            {
+                DoneOn = fields.TryGetValue("fatto", out var doneOn) ? ParseDate(doneOn) : null,
+            });
         }
 
         return entries;
@@ -171,6 +177,12 @@ public static partial class Said
             }
 
             var text = item.Groups["text"].Value.Trim();
+            DateOnly? doneOn = null;
+            text = DoneField().Replace(text, m =>
+            {
+                doneOn = ParseDate(m.Groups["d"].Value);
+                return "";
+            }).Trim();
             var who = "";
             if (Regex.Match(text, @"^\*\*(?<who>[^*]+?):?\*\*:?\s*") is { Success: true } bold)
             {
@@ -196,7 +208,7 @@ public static partial class Said
             }
 
             entries.Add(new SaidEntry(call.Date, who == "?" ? "" : who, kind, Regex.Replace(text, @"\*\*|__", ""), call.Task, due,
-                item.Groups["mark"].Value is "x" or "X", call.RelativePath, i + 1, call.Title));
+                item.Groups["mark"].Value is "x" or "X", call.RelativePath, i + 1, call.Title) { DoneOn = doneOn });
         }
 
         return entries;
@@ -268,7 +280,7 @@ public static partial class Said
     /// Ticks (or unticks) a commitment where it is written: the registry or the call's note. Refused (IOException) when the
     /// line is not the same any more (the note changed meanwhile).
     /// </summary>
-    public static void SetDone(string projectPath, SaidEntry entry, bool done)
+    public static void SetDone(string projectPath, SaidEntry entry, bool done, DateOnly? today = null)
     {
         var path = Path.Combine(projectPath, entry.Source);
         if (!File.Exists(path))
@@ -288,6 +300,13 @@ public static partial class Said
         }
 
         lines[index] = Regex.Replace(lines[index], @"^(\s*[-*] )\[[ xX]\]", m => m.Groups[1].Value + (done ? "[x]" : "[ ]"));
+
+        // The day it was done, for the week's recap: written when ticked, taken away when unticked.
+        lines[index] = DoneField().Replace(lines[index], "").TrimEnd();
+        if (done)
+        {
+            lines[index] += $" [fatto:: {today ?? DateOnly.FromDateTime(DateTime.Today):yyyy-MM-dd}]";
+        }
         File.WriteAllText(path, string.Join(newline, lines));
     }
 
@@ -358,4 +377,7 @@ public static partial class Said
 
     [GeneratedRegex(@"\[(?<key>[^\[\]:]+)::(?<value>[^\]]*)\]")]
     private static partial Regex Field();
+
+    [GeneratedRegex(@"\s*\[fatto::\s*(?<d>\d{4}-\d{2}-\d{2})\s*\]")]
+    private static partial Regex DoneField();
 }
