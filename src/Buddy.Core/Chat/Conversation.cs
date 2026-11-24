@@ -827,6 +827,17 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
             call => Done(() => Instant(call.Input, _commands.AddQuickNote(call.Rest))));
         Commands.Add(new("/sentita", "segna che oggi hai sentito una persona (pagina Persone)", "nome"),
             call => Done(() => Instant(call.Input, _commands.MarkContacted(call.Rest, DateOnly.FromDateTime(DateTime.Today)))));
+        // The registry of what is said between colleagues (Registro.md and the calls): write, list, ask.
+        Commands.Add(new("/detto", "segna nel registro un'informazione detta da qualcuno", "nome: cosa [#tema]"),
+            call => Done(() => Instant(call.Input, _commands.AddSaid(Vault.SaidKind.Info, call.Rest, DateOnly.FromDateTime(DateTime.Today)))));
+        Commands.Add(new("/accordo", "segna nel registro un accordo preso con qualcuno", "nome: cosa [#tema]"),
+            call => Done(() => Instant(call.Input, _commands.AddSaid(Vault.SaidKind.Accordo, call.Rest, DateOnly.FromDateTime(DateTime.Today)))));
+        Commands.Add(new("/impegno", "segna chi deve fare cosa, ed entro quando (io: se tocca a te)", "nome: cosa [entro giorno] [#tema]"),
+            call => Done(() => Instant(call.Input, _commands.AddSaid(Vault.SaidKind.Impegno, call.Rest, DateOnly.FromDateTime(DateTime.Today)))));
+        Commands.Add(new("/impegni", "gli impegni aperti: tuoi e degli altri (anche di una persona)", "[nome]"),
+            call => Done(() => Instant(call.Input, _commands.Commitments(call.Rest, DateOnly.FromDateTime(DateTime.Today)))));
+        Commands.Add(new("/chiedi", "domanda su cosa ci si è detti: risponde Claude dal registro e dalle call, con le fonti", "domanda"),
+            AskSaidAsync);
         Commands.Add(new("/modelli", "i tuoi modelli di richiesta", "[nome = testo]"),
             call => Done(() => TemplatesCommand(call.Input, call.Rest)));
         Commands.Add(new("/log", "ultimi avvisi ed errori del Buddy (tutto: ultime righe)", "[tutto]"),
@@ -888,6 +899,23 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
         var mentor = Commands.All.Where(c => c.Group == CommandGroup.Mentor && c.Name != "/mentore").Select(c => c.Name).ToList();
         var mentorLine = mentor.Count == 0 ? "" : $"\nMentore: {string.Join(" · ", mentor)} (/mentore per i dettagli)";
         return $"Comandi:\n{Commands.Help(CommandGroup.Chat)}{mentorLine}\n{HelpFooter}";
+    }
+
+    /// <summary>
+    /// "/chiedi cosa ci siamo detti con Domenico sui test in PROD?": Claude answers from the registry, the calls and the
+    /// people's cards picked for the question, with its sources (it can open the notes for the details).
+    /// </summary>
+    private async Task AskSaidAsync(CommandCall call)
+    {
+        if (call.Rest.Trim().Length == 0)
+        {
+            Instant(call.Input, "Scrivi la domanda: `/chiedi cosa ci siamo detti con Domenico sui test in PROD?`, "
+                                + "`/chiedi cosa è ancora aperto su CleanEnergy?`, `/chiedi chi decide i rilasci?`.");
+            return;
+        }
+
+        Mode = ChatMode.Claude;
+        await AskClaudeAsync(call.Input, attachment: null, promptOverride: _commands.AskPrompt(call.Rest, DateOnly.FromDateTime(DateTime.Today)));
     }
 
     /// <summary>"/commit" and "/pr": Claude drafts the message from the diff, warned about the files to leave out.</summary>

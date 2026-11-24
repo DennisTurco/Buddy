@@ -196,7 +196,7 @@ internal static class Snapshot
             services.GetRequiredService<Buddy.Core.Claude.ClaudeUsage>(),
             Logo.Mascot(services.GetRequiredService<IOptions<BuddySettings>>().Value.Appearance, services.GetRequiredService<PetWindow>().Sprites));
         project.Show();
-        foreach (var view in new[] { "overview", "board", "archive", "manualtests", "webtests", "notes", "graph", "week", "costs", "decisions", "glossary", "people", "episodes", "calls", "prs" })
+        foreach (var view in new[] { "overview", "board", "archive", "manualtests", "webtests", "notes", "graph", "week", "costs", "decisions", "glossary", "people", "episodes", "calls", "registry", "commitments", "prs" })
         {
             project.ShowView(view);
             if (view is "week" or "prs")

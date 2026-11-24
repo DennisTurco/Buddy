@@ -17,7 +17,7 @@ namespace Buddy.App.Project;
 public partial class ProjectWindow
 {
     /// <summary>The built-in generic pages (also in <see cref="Views"/>).</summary>
-    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "people", "episodes", "calls", "prs"];
+    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "people", "episodes", "calls", "registry", "commitments", "prs"];
 
     private const string PagePrefix = "page:";
     private const string NewPageKey = "page:+";
@@ -114,6 +114,8 @@ public partial class ProjectWindow
                 "people" => PeoplePage(filter),
                 "episodes" => EpisodesPage(filter),
                 "calls" => CallsPage(filter),
+                "registry" => RegistryPage(filter),
+                "commitments" => CommitmentsPage(filter),
                 "costs" => CostsPage(filter),
                 "week" => await WeekPageAsync(refresh),
                 "prs" => await PullRequestsPageAsync(filter, refresh),
@@ -241,6 +243,30 @@ public partial class ProjectWindow
             case "episode:file":
                 var episodesFile = Episodes.PathFor(_settings);
                 Shell.Open(File.Exists(episodesFile) ? episodesFile : Path.GetDirectoryName(episodesFile)!);
+                break;
+            case "said:new:info":
+                await NewSaidAsync(SaidKind.Info);
+                break;
+            case "said:new:accordo":
+                await NewSaidAsync(SaidKind.Accordo);
+                break;
+            case "said:new:impegno":
+                await NewSaidAsync(SaidKind.Impegno);
+                break;
+            case "said:ask":
+                await AskSaidAsync();
+                break;
+            case "said:file" when NoteTitled(Said.Note) is { } registry:
+                OpenInNotesView(registry.RelativePath);
+                break;
+            case "said:file":
+                if (await WriteAsync(() => File.WriteAllText(Said.PathFor(_settings.ProjectPath), Said.Header)))
+                {
+                    _vault.Refresh();
+                    Reload();
+                    OpenInNotesView(Said.FileName);
+                }
+
                 break;
             case "call:new":
                 await NewCallAsync();
@@ -448,6 +474,7 @@ public partial class ProjectWindow
         var others = _vault.Notes.Where(n => note is null || n.RelativePath != note.RelativePath).ToList();
         var onCards = _board is null ? [] : People.OnCards(_board, people);
         var episodes = Episodes.Read(Episodes.PathFor(_settings));
+        var said = Said.All(_vault, _settings.ProjectPath); // the registry and the calls: what each one said or owes
         var cards = people
             .Where(p => filter.Length == 0 || p.Raw.Contains(filter, StringComparison.CurrentCultureIgnoreCase))
             .Select(p =>
@@ -476,6 +503,13 @@ public partial class ProjectWindow
                 }
 
                 var lived = Episodes.Involving(episodes, p);
+                var theirSaid = SaidBy(said, p);
+                var owes = theirSaid.Where(e => e.IsOpenCommitment).ToList();
+                if (owes.Count > 0)
+                {
+                    chips.Add(new Chip($"✅ ti deve {owes.Count} cos{(owes.Count == 1 ? "a" : "e")}", owes.Any(e => e.IsLate(today)) ? ChipKind.Hot : ChipKind.Warm));
+                }
+
                 if (lived.Count > 0)
                 {
                     chips.Add(new Chip($"📓 {lived.Count} episod{(lived.Count == 1 ? "io" : "i")}", ChipKind.Plain));
@@ -517,6 +551,17 @@ public partial class ProjectWindow
                     body.AppendLine(lesson).AppendLine();
                 }
 
+                if (owes.Count > 0)
+                {
+                    Section("Ti deve", string.Join("\n", owes.Take(4).Select(e => $"- {(e.IsLate(today) ? "⚠ " : "")}{(e.Due is { } due ? $"entro {due.ToString("d MMM", Italian)} · " : "")}{e.Text}")));
+                }
+
+                var recent = theirSaid.Where(e => !e.IsOpenCommitment).Take(3).ToList();
+                if (recent.Count > 0)
+                {
+                    Section("Ultime cose dette", string.Join("\n", recent.Select(e => $"- {e.Date.ToString("d MMM", Italian)} · *{e.KindWord}* · {e.Text}")));
+                }
+
                 if (lived.Count > 0)
                 {
                     Section("Ultimi episodi", string.Join("\n", lived.Take(3).Select(e => $"- {e.Date.ToString("d MMM", Italian)} · {e.Title}")));
@@ -534,7 +579,12 @@ public partial class ProjectWindow
                 }
 
                 return new PageCard(p.Display, p.Role.Length > 0 ? p.Role : null, chips, NoteLinks.ToMarkdown(body.ToString().TrimEnd()),
-                    PersonTarget + p.Name, "#E39BC4");
+                    PersonTarget + p.Name, "#E39BC4")
+                {
+                    Actions = [new PageCardAction("🧠 Cosa ci siamo detti", $"Claude riassume cosa ti sei detto con {p.Name}: accordi, impegni aperti, decisioni, con le fonti",
+                        Buddy.Core.Vault.SaidQuery.Prompt($"Cosa ci siamo detti con {p.Name}? Accordi, impegni aperti (suoi e miei), decisioni e cose utili da ricordare, dalla più recente.",
+                            said, CallTranscripts.List(_vault), people, _settings.Mentor.UserName, _settings.ProjectPath, today))],
+                };
             }).ToList();
         return new PageContent(
             note is null ? "Nel vault non c'è ancora la nota «Persone»: la crea la prima «Nuova persona»."

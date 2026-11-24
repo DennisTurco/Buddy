@@ -684,6 +684,48 @@ public class PagesAndPaletteTests
     }
 
     [AvaloniaTest]
+    public async Task The_registry_and_the_commitments_pages_write_and_tick_what_was_said()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-said-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var settings = new BuddySettings { ProjectPath = project, Mentor = { UserName = "Dennis" } };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            // "＋ Impegno…" on the Registro page: one line in Registro.md.
+            window.ShowSaidForm = _ => Task.FromResult<string[]?>(["Tony", "mandare i sinonimi", "CleanEnergy", "2026-11-27"]);
+            window.ShowView("registry");
+            await window.NewSaidAsync(Buddy.Core.Vault.SaidKind.Impegno);
+            await Settle();
+            var registry = File.ReadAllText(Path.Combine(project, "Registro.md"));
+            Assert.That(registry, Does.Contain("- [ ] ").And.Contain(" · Tony · impegno · mandare i sinonimi [entro:: 2026-11-27] [tema:: CleanEnergy]"));
+            var cards = (window.PageCards.ItemsSource as IEnumerable<PageCard>)!.ToList();
+            Assert.That(cards.Single().Markdown, Does.Contain("**Tony**").And.Contain("mandare i sinonimi"));
+
+            // ✅ Impegni: a card for Tony with a button that ticks it in the registry.
+            window.ShowView("commitments");
+            await Settle();
+            cards = (window.PageCards.ItemsSource as IEnumerable<PageCard>)!.ToList();
+            Assert.That(cards.Select(c => c.Title), Is.EqualTo(new[] { "Tony" }));
+            var tick = window.GetVisualDescendants().OfType<Button>().First(b => b.DataContext is PageCardAction { Local: not null });
+            tick.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await Settle();
+            Assert.That(File.ReadAllText(Path.Combine(project, "Registro.md")), Does.Contain("- [x] "));
+            cards = (window.PageCards.ItemsSource as IEnumerable<PageCard>)!.ToList();
+            Assert.That(cards.Select(c => c.Title), Is.EqualTo(new[] { "Fatti di recente" }));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
     public async Task A_new_episode_is_saved_in_the_journal_and_sent_to_the_chat_for_the_analysis()
     {
         var root = Directory.CreateTempSubdirectory("buddy-episode-").FullName;

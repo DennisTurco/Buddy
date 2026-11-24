@@ -22,7 +22,11 @@ public sealed record CallTask(bool IsAction, string Text);
 /// <summary>What Claude made of a transcript: the note's sections, plus the title and people it recognised.</summary>
 public sealed record CallSummary(
     string Title, IReadOnlyList<string> People, string? Task, string Summary, string Decisions, string Actions, string Open,
-    string Transcript);
+    string Transcript)
+{
+    /// <summary>What is worth remembering ("- **Chi:** informazione"): who decides what, where things are, numbers, limits.</summary>
+    public string Remember { get; init; } = "";
+}
 
 /// <summary>
 /// The transcripts of the user's calls: one note per call in the project's "Trascrizioni/" folder, named
@@ -205,6 +209,7 @@ public static partial class CallTranscripts
             Section("Decisioni", summary.Decisions, "_Nessuna decisione presa._");
             Section("Azioni", summary.Actions, "_Nessuna azione._");
             Section("Punti aperti", summary.Open, "_Nessuno._");
+            Section("Da ricordare", summary.Remember, "_Niente di particolare._");
             Section("Trascrizione", Paragraphs(summary.Transcript), "_Non sistemata._");
         }
         else
@@ -278,9 +283,11 @@ public static partial class CallTranscripts
             .AppendLine("## Decisioni")
             .AppendLine("<elenco «- …» delle decisioni prese, o «- Nessuna»>")
             .AppendLine("## Azioni")
-            .AppendLine("<elenco «- [ ] **Chi:** cosa (entro quando, se detto)», o «- Nessuna»>")
+            .AppendLine("<elenco «- [ ] **Chi:** cosa (entro AAAA-MM-GG, solo se una scadenza è stata detta: calcolala dalla data della call)», o «- Nessuna»>")
             .AppendLine("## Punti aperti")
             .AppendLine("<elenco «- …» di domande e dubbi rimasti aperti, o «- Nessuno»>")
+            .AppendLine("## Da ricordare")
+            .AppendLine("<elenco «- **Chi:** cosa» delle informazioni utili dette, da ritrovare tra mesi: chi decide o si occupa di cosa, dove sta una cosa, vincoli, numeri, nomi di ambienti; o «- Nessuno»>")
             .AppendLine("## Trascrizione sistemata")
             .AppendLine("<la trascrizione sistemata, tutta>")
             .AppendLine()
@@ -310,7 +317,7 @@ public static partial class CallTranscripts
         var task = Line("task");
         return new CallSummary(Line("titolo"), SplitPeople(Line("partecipanti")), task is "" or "-" or "—" ? null : task,
             summary, Get("decisioni"), Get("azioni"), Get("punti aperti"),
-            sections.TryGetValue("trascrizione sistemata", out var t) ? t : sections.GetValueOrDefault("trascrizione", ""));
+            sections.TryGetValue("trascrizione sistemata", out var t) ? t : sections.GetValueOrDefault("trascrizione", "")) { Remember = Get("da ricordare") };
     }
 
     private static bool IsNone(string value) =>

@@ -104,10 +104,19 @@ public partial class ProjectWindow
     private static string Short(string text, int max) => PlainTitle(text, max);
 
     /// <summary>A card's button: its request goes to Claude in the chat (the board's own, or the bubble).</summary>
-    private void OnPageCardActionClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void OnPageCardActionClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         e.Handled = true; // the card under it must not open its note too
-        if ((sender as Avalonia.Controls.Control)?.DataContext is PageCardAction action)
+        if ((sender as Avalonia.Controls.Control)?.DataContext is not PageCardAction action)
+        {
+            return;
+        }
+
+        if (action.Local is { } local)
+        {
+            await RunLocalCardActionAsync(local); // e.g. tick a commitment
+        }
+        else
         {
             ClaudeRequested?.Invoke(action.Request);
         }

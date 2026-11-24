@@ -41,6 +41,8 @@ public partial class ProjectWindow : Window
         ("people", "👥  Persone", "Persone"),
         ("episodes", "📓  Episodi", "Episodi"),
         ("calls", "🎙  Trascrizioni", "Trascrizioni delle call"),
+        ("registry", "📒  Registro", "Registro: cosa ci si è detti"),
+        ("commitments", "✅  Impegni", "Impegni"),
         ("prs", "🔀  PR", "Pull request aperte"),
     ];
 

@@ -13,7 +13,8 @@ public partial class ProjectWindow
     [
         ("", "", ["overview", "board", "archive"]),
         ("test", "Test", ["manualtests", "webtests"]),
-        ("knowledge", "Conoscenza", ["notes", "graph", "glossary", "decisions", "people", "episodes", "calls"]),
+        ("team", "Persone e accordi", ["people", "commitments", "registry", "calls", "decisions", "episodes"]),
+        ("knowledge", "Conoscenza", ["notes", "graph", "glossary"]),
         ("trend", "Andamento", ["week", "costs", "prs"]),
         (PagesGroup, "Le tue pagine", []),
     ];

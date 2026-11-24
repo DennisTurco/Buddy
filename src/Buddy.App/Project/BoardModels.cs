@@ -788,7 +788,11 @@ public sealed record PageCard(string Title, string? Subtitle, IReadOnlyList<Chip
 }
 
 /// <summary>A button on a page's card: its label (with an emoji drawn as icon), the full text as tooltip, the request to Claude.</summary>
-public sealed record PageCardAction(string Label, string Tip, string Request);
+public sealed record PageCardAction(string Label, string Tip, string Request)
+{
+    /// <summary>An action the board runs itself instead of asking Claude (e.g. "said:done:Registro.md#12").</summary>
+    public string? Local { get; init; }
+}
 
 /// <summary>A button in a page's tool bar: what it says and the action it runs.</summary>
 public sealed record PageButton(string Label, string Action, string? Tip = null);

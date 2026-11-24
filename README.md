@@ -181,6 +181,15 @@ the settings window), which overrides them. Window position is kept in `<data>/s
     *Trascrizione*; the original stays at the bottom. Cards show the summary, people, task and actions done; an empty
     title becomes Claude's (the file is renamed). Then the people of the call get a card when missing and «Sentita» on its day, and Claude reads the call for their cards like for an episode (role, what they take care of, notes, how to communicate: important things written at once with ↩ Annulla, the rest proposed in the chat; `/trascrizione-persone Trascrizioni/…md` does it again). Each card has a button per action still to do (🛠) and per open point (🤔): Claude works on it in the chat with the call, the code and the vault, and answers with what it found, the steps and, when someone must be asked, a draft of the message (an analysis: nothing changed or committed). A note edited while Claude works is not overwritten; *🧹 Sistema in
     sospeso* tries again.
+  - **Registro** and **Impegni** (group *Persone e accordi*): what is said between colleagues, for the organisational side.
+    `Registro.md` in the project folder holds one line per entry: information (`/detto Domenico: i test in PROD li decide lui #CleanEnergy`),
+    agreements (`/accordo`), commitments (`/impegno Tony: mandarmi i sinonimi entro venerdì`, `io:` when it is yours) and decisions;
+    the calls in `Trascrizioni/` add theirs (Decisioni, Azioni, Da ricordare) without copying them. *📒 Registro* shows them day by
+    day; *✅ Impegni* groups who has to do what (yours first, late ones marked) and ✅ ticks one where it is written (the registry or
+    the call's note). Each person's card shows what they owe you and what they said last, with *🧠 Cosa ci siamo detti*.
+    **`/chiedi`** (or *🧠 Chiedi…*): «cosa ci siamo detti con Domenico sui test in PROD?», «cosa è ancora aperto su CleanEnergy?» —
+    Claude answers from the entries, the calls and the cards picked for the question, citing the source of each thing; `/impegni [nome]`
+    lists the open commitments in the chat.
   - **Persone** (the `Persone` note, one `## Nome` section each): nickname, role, what they take care of and notes on
     when and how to reach them, as cards with the notes citing them and the cards that depend on them; *＋ Nuova persona*
     adds one, and a click on a person (or choosing them in Ctrl+K) opens the same form filled in to edit them

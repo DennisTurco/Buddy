@@ -9,7 +9,7 @@ namespace Buddy.Core.Chat;
 /// Instant, deterministic answers (no model involved): task status, today's notes, vault search, changed files,
 /// and the prompts for the commit/PR drafts that are then sent to Claude.
 /// </summary>
-public sealed class AssistantCommands(VaultIndex vault, GitRepo repo, IOptions<BuddySettings> options)
+public sealed partial class AssistantCommands(VaultIndex vault, GitRepo repo, IOptions<BuddySettings> options)
 {
     private const int MaxSearchResults = 20;
 
