@@ -138,6 +138,51 @@ public class CallTranscriptsTests
     }
 
     [Test]
+    public void New_project_terms_go_to_the_Glossario_once_with_a_link_to_the_call()
+    {
+        var answer = Answer + "\n## Termini nuovi\n- **DemoEnergia** — il DB locale di prova del cliente Energia\n- **PDC** — punto di consegna\n";
+        var summary = CallTranscripts.Parse(answer)!;
+        Assert.That(summary.NewTerms.Select(t => t.Term), Is.EqualTo(new[] { "DemoEnergia", "PDC" }));
+        Assert.That(CallTranscripts.Parse(Answer)!.NewTerms, Is.Empty, "no section, no terms");
+        Assert.That(CallTranscripts.Prompt(ReadCall(CallTranscripts.Create(_project, "x", new DateOnly(2026, 11, 24), [], null, "t")), "t", [], []),
+            Does.Contain("## Termini nuovi"));
+
+        var glossary = Path.Combine(_project, "Glossario.md");
+        File.WriteAllText(glossary, Glossary.Template + Glossary.Format("PDC", "punto di consegna") + "\n");
+
+        var added = Glossary.AddMissing(glossary, summary.NewTerms, "2026-11-24 Sync");
+
+        Assert.That(added, Is.EqualTo(new[] { "DemoEnergia" }), "PDC was there already");
+        var terms = Glossary.Parse(File.ReadAllText(glossary));
+        Assert.That(terms.Select(t => t.Term), Is.EquivalentTo(new[] { "PDC", "DemoEnergia" }));
+        var demo = terms.Single(t => t.Term == "DemoEnergia");
+        Assert.That(demo.Meaning, Is.EqualTo("il DB locale di prova del cliente Energia"));
+        Assert.That(demo.Links, Is.EqualTo(new[] { "2026-11-24 Sync" }));
+        Assert.That(Glossary.AddMissing(glossary, summary.NewTerms), Is.Empty, "a second time adds nothing");
+    }
+
+    [Test]
+    public void The_notes_for_Claude_go_into_the_prompt_and_stay_in_the_note()
+    {
+        var relative = CallTranscripts.Create(_project, "Sync", new DateOnly(2026, 11, 24), [], null, "testo grezzo",
+            "Ignora la parte sul calcetto.\nIl cliente è Acme.");
+        var call = ReadCall(relative);
+
+        Assert.That(call.Notes, Is.EqualTo("Ignora la parte sul calcetto.\nIl cliente è Acme."));
+        Assert.That(CallTranscripts.Original(call.Content), Is.EqualTo("testo grezzo"), "the notes are not part of the transcript");
+        var prompt = CallTranscripts.Prompt(call, CallTranscripts.Original(call.Content), [], []);
+        Assert.That(prompt, Does.Contain("Note dell'utente su questa call"));
+        Assert.That(prompt, Does.Contain("Il cliente è Acme."));
+
+        var saved = CallTranscripts.Apply(_project, relative, call.Content, CallTranscripts.Parse(Answer)!);
+        Assert.That(ReadCall(saved).Notes, Is.EqualTo(call.Notes), "kept once Claude has cleaned the call");
+
+        var plain = ReadCall(CallTranscripts.Create(_project, "Altra", new DateOnly(2026, 11, 24), [], null, "testo"));
+        Assert.That(plain.Notes, Is.Empty);
+        Assert.That(CallTranscripts.Prompt(plain, "testo", [], []), Does.Not.Contain("Note dell'utente"));
+    }
+
+    [Test]
     public void An_answer_without_a_summary_is_not_accepted() =>
         Assert.That(CallTranscripts.Parse("Non riesco a leggere la trascrizione."), Is.Null);
 

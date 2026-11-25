@@ -13,7 +13,7 @@ public partial class ProjectWindow
     /// <summary>Runs Claude once on a prompt (set by the app); null when Claude is not available.</summary>
     public Func<string, CancellationToken, Task<(bool Ok, string Text)>>? TranscriptSource { get; set; }
 
-    /// <summary>The form of a new call (tests set it): title, date, people, task, text; null when cancelled.</summary>
+    /// <summary>The form of a new call (tests set it): title, date, people, task, notes for Claude, text; null when cancelled.</summary>
     internal Func<Task<string[]?>>? ShowCallForm { get; set; }
 
     /// <summary>The calls Claude is working on now (relative paths), shown as ⏳ on their cards.</summary>
@@ -50,6 +50,11 @@ public partial class ProjectWindow
             if (c.Actions > 0)
             {
                 chips.Add(new Chip($"☑ {c.Actions - c.OpenActions}/{c.Actions} azioni", c.OpenActions == 0 ? ChipKind.Good : ChipKind.Plain));
+            }
+
+            if (_callTerms.TryGetValue(c.RelativePath, out var terms))
+            {
+                chips.Add(new Chip($"📖 Glossario: +{Short(string.Join(", ", terms), 40)}", ChipKind.Good));
             }
 
             chips.AddRange(c.People.Select(p => new Chip($"👤 {p}", ChipKind.Plain)));
@@ -136,6 +141,7 @@ public partial class ProjectWindow
             new Settings.Dialogs.Field("Quando (AAAA-MM-GG, «oggi», «ieri», «lunedì»…)", "oggi"),
             new Settings.Dialogs.Field("Partecipanti (separati da virgola; vuoto: li ricava Claude)" + names),
             new Settings.Dialogs.Field("Task collegato (ID, facoltativo)", _selected?.Item.Id ?? ""),
+            new Settings.Dialogs.Field("Note per Claude (facoltative: contesto, cosa cercare, come sistemarla)", Multiline: true, Height: 80),
             new Settings.Dialogs.Field("Trascrizione (incolla il testo o l'export .vtt; Ctrl+Invio per salvare)", Multiline: true, Required: true, Height: 320));
     }
 
@@ -163,7 +169,7 @@ public partial class ProjectWindow
         var task = values[3].Trim();
 
         string? saved = null;
-        if (!await WriteAsync(() => saved = CallTranscripts.Create(_settings.ProjectPath, values[0], when, people, task.Length > 0 ? task : null, values[4]))
+        if (!await WriteAsync(() => saved = CallTranscripts.Create(_settings.ProjectPath, values[0], when, people, task.Length > 0 ? task : null, values[5], values[4]))
             || saved is null)
         {
             return;
@@ -222,6 +228,7 @@ public partial class ProjectWindow
             }
 
             var saved = CallTranscripts.Apply(_settings.ProjectPath, relativePath, content, summary);
+            AddCallTerms(saved, summary.NewTerms);
 
             // Then the people: a card for who was missing, "Sentita" on the call's day, and the changes to their cards
             // (made at once when they matter, proposed in the chat otherwise), as for an episode.
@@ -238,6 +245,35 @@ public partial class ProjectWindow
             Reload();
         }
     }
+
+    /// <summary>
+    /// The project terms Claude found in a call and the Glossario did not have: added to it, each linking to the call,
+    /// and shown on the call's card ("📖 Glossario: +…") until the app is closed. A failure only costs the terms.
+    /// </summary>
+    private void AddCallTerms(string relativePath, IReadOnlyList<GlossaryTerm> terms)
+    {
+        if (terms.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var path = NoteTitled(Glossary.Note) is { } note ? FullPath(note.RelativePath) : FullPath(Glossary.Note + ".md");
+            var added = Glossary.AddMissing(path, terms, Path.GetFileNameWithoutExtension(relativePath));
+            if (added.Count > 0)
+            {
+                _callTerms[relativePath] = added;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The call is saved all the same: the terms can be added by hand from the Glossario page.
+        }
+    }
+
+    /// <summary>The terms each call added to the Glossario in this run (relative path → terms), shown on its card.</summary>
+    private readonly Dictionary<string, IReadOnlyList<string>> _callTerms = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Shows the ⏳ chips at once when the Trascrizioni page is on screen.</summary>
     private void RefreshCallsPage()

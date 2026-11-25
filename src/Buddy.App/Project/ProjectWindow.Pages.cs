@@ -138,11 +138,12 @@ public partial class ProjectWindow
         PageHeaderPanel.IsVisible = !string.IsNullOrWhiteSpace(content.Header);
         PageCards.ItemsSource = content.Cards;
         PageEmpty.Text = content.Empty;
-        PageEmpty.IsVisible = content.Cards.Count == 0 && content.Empty.Length > 0;
+        PageEmptyPanel.IsVisible = content.Cards.Count == 0 && content.Empty.Length > 0;
         PageButtons.Children.Clear();
+        var primary = content.Buttons.FirstOrDefault(b => b.Label.StartsWith('＋') || b.Label.StartsWith('+'));
         foreach (var button in content.Buttons)
         {
-            var control = new Button { Content = button.Label, Tag = button.Action, Classes = { "small" } };
+            var control = new Button { Content = button.Label, Tag = button.Action, Classes = { "small", ButtonRole(button, primary) } };
             if (button.Tip is not null)
             {
                 ToolTip.SetTip(control, button.Tip);
@@ -198,6 +199,15 @@ public partial class ProjectWindow
             OpenInNotesView(target);
         }
     }
+
+    /// <summary>
+    /// How a tool bar button looks: the page's main action ("＋ Nuova …") filled, deleting quiet until hovered, the rest
+    /// secondary, so the eye goes first to what the page is for.
+    /// </summary>
+    private static string ButtonRole(PageButton button, PageButton? primary) =>
+        button == primary ? "primary"
+        : button.Label.StartsWith("🗑", StringComparison.Ordinal) || button.Action.EndsWith(":delete", StringComparison.Ordinal) ? "danger"
+        : "secondary";
 
     private async void OnPageButtonClick(object? sender, RoutedEventArgs e)
     {
@@ -458,7 +468,7 @@ public partial class ProjectWindow
             {
                 if (!File.Exists(path))
                 {
-                    File.WriteAllText(path, $"# Glossario\n\nTermini del progetto con un significato preciso.\n\n## {Glossary.Section}\n\n");
+                    File.WriteAllText(path, Glossary.Template);
                 }
 
                 VaultWriter.AppendItem(path, Glossary.Section, Glossary.Format(values[0], values[1]));

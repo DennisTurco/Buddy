@@ -496,7 +496,8 @@ public partial class ProjectWindow : Window
             : $"{Total("fatti") * 100 / (Total("fatti") + openItems)}% dei task chiusi";
         WeeksChart.ItemsSource = _board is null ? [] : Activity.Weeks(_board, today);
 
-        StatusList.ItemsSource = (_board?.Status ?? []).Select(s => new StatusView(s.Label, s.Value)).ToList();
+        var taskIds = _cards.Select(c => c.Item.Id).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        StatusList.ItemsSource = (_board?.Status ?? []).Select(s => new StatusView(s.Label, s.Value, taskIds)).ToList();
         StatusPanel.IsVisible = _board?.Status.Count > 0;
         RecentList.ItemsSource = done.Take(3).ToList();
         RecentPanel.IsVisible = done.Count > 0;
@@ -2373,8 +2374,47 @@ public partial class ProjectWindow : Window
     {
         if (sender is MarkdownView view)
         {
-            view.LinkHandler = link => NoteLinks.Target(link) is { } target && OpenInNotesView(target);
+            view.LinkHandler = link => NoteLinks.TaskTarget(link) is { } id ? OpenTask(id)
+                : NoteLinks.Target(link) is { } target && OpenInNotesView(target);
         }
+    }
+
+    /// <summary>Below this width the Panoramica's pairs of panels go one under the other instead of side by side.</summary>
+    private const double OverviewNarrow = 880;
+
+    private void OnOverviewSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        var narrow = e.NewSize.Width < OverviewNarrow;
+        StackPanels(OverviewTop, narrow);
+        StackPanels(OverviewBottom, narrow);
+    }
+
+    /// <summary>A "3*,16,2*" grid of two panels: side by side, or (narrow) the second under the first.</summary>
+    private static void StackPanels(Grid grid, bool narrow)
+    {
+        if (grid.Children.Count < 2 || (grid.RowDefinitions.Count > 1) == narrow)
+        {
+            return;
+        }
+
+        grid.ColumnDefinitions = narrow ? new ColumnDefinitions("*") : new ColumnDefinitions("3*,16,2*");
+        grid.RowDefinitions = narrow ? new RowDefinitions("Auto,16,Auto") : new RowDefinitions("Auto");
+        var second = grid.Children[1];
+        Grid.SetColumn(second, narrow ? 0 : 2);
+        Grid.SetRow(second, narrow ? 2 : 0);
+    }
+
+    /// <summary>A task's link (an ID in a text): its page (board, or archive when closed) with the task selected.</summary>
+    private bool OpenTask(string id)
+    {
+        if (_cards.FirstOrDefault(c => string.Equals(c.Item.Id, id, StringComparison.OrdinalIgnoreCase)) is not { } card)
+        {
+            return false;
+        }
+
+        ShowView(card.Column.Key is "fatti" or "rifiutati" ? "archive" : "board");
+        Select(card);
+        return true;
     }
 
     private void OnOpenCardNoteClick(object? sender, RoutedEventArgs e)

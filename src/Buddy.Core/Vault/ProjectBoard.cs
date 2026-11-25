@@ -84,6 +84,93 @@ public sealed partial record ProjectBoard(
             .Select(m => new StatusLine(m.Groups["label"].Value.Trim(), m.Groups["value"].Value.Trim()))
             .ToList();
 
+    /// <summary>
+    /// A status value laid out to be read at a glance. The note keeps each entry on one line ("— · da controllare:
+    /// NUSR-1 (…), NUSR-2 (…) · chiusi: …"): every " · " piece becomes a point, "etichetta: ID (…), ID (…)" a bold label with
+    /// one sub-point per task, and the empty placeholders ("—") are left out. A value of a single piece stays as it is.
+    /// </summary>
+    public static string StatusMarkdown(string value)
+    {
+        var pieces = SplitTopLevel(value, " · ")
+            .Select(p => p.Trim())
+            .Where(p => !IsPlaceholder(p))
+            .Select(p => StatusLabel().Match(p) is { Success: true } m && !TaskId().IsMatch(m.Groups["label"].Value)
+                ? (Label: m.Groups["label"].Value.Trim(), Text: m.Groups["rest"].Value.Trim())
+                : (Label: (string?)null, Text: p))
+            .Where(p => !IsPlaceholder(p.Text))
+            .ToList();
+        if (pieces.Count == 0)
+        {
+            return "—";
+        }
+
+        var lines = new List<string>();
+        foreach (var (label, text) in pieces)
+        {
+            var tasks = SplitTopLevel(text, ", ").Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+            if (label is not null && tasks.Count > 1 && tasks.All(t => TaskId().IsMatch(OutsideBrackets(t))))
+            {
+                lines.Add($"- **{label}:**");
+                lines.AddRange(tasks.Select(t => "  - " + t));
+            }
+            else
+            {
+                lines.Add(label is null ? $"- {text}" : $"- **{label}:** {text}");
+            }
+        }
+
+        return pieces.Count == 1 && lines.Count == 1
+            ? pieces[0].Label is { } only ? $"{only}: {pieces[0].Text}" : pieces[0].Text
+            : string.Join("\n", lines);
+    }
+
+    private static bool IsPlaceholder(string text) => text.Trim() is "" or "—" or "–" or "-";
+
+    /// <summary>The pieces of <paramref name="text"/> between <paramref name="separator"/>s outside (), [] and `code`.</summary>
+    private static List<string> SplitTopLevel(string text, string separator)
+    {
+        var pieces = new List<string>();
+        var depth = 0;
+        var code = false;
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            switch (text[i])
+            {
+                case '`':
+                    code = !code;
+                    break;
+                case '(' or '[' when !code:
+                    depth++;
+                    break;
+                case ')' or ']' when !code && depth > 0:
+                    depth--;
+                    break;
+                default:
+                    if (depth == 0 && !code && string.CompareOrdinal(text, i, separator, 0, separator.Length) == 0)
+                    {
+                        pieces.Add(text[start..i]);
+                        start = i + separator.Length;
+                        i = start - 1;
+                    }
+
+                    break;
+            }
+        }
+
+        pieces.Add(text[start..]);
+        return pieces;
+    }
+
+    /// <summary>The text with what is in brackets left out: "NUSR-2 (PR #4)" → "NUSR-2 ".</summary>
+    private static string OutsideBrackets(string text) => Regex.Replace(text, @"\([^()]*\)|\[[^\[\]]*\]", " ");
+
+    [GeneratedRegex(@"^(?<label>[^():\[\]`*]{1,30}?):\s+(?<rest>\S[\s\S]*)$")]
+    private static partial Regex StatusLabel();
+
+    [GeneratedRegex(@"\b[A-Z][A-Z0-9]{0,9}-\d+\b")]
+    private static partial Regex TaskId();
+
     /// <summary>The note without front matter, callouts and fenced code.</summary>
     public static string Body(string content)
     {

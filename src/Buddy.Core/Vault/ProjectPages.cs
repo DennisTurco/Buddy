@@ -333,6 +333,38 @@ public static partial class Glossary
 
     public static string Format(string term, string meaning) => $"- **{term.Trim()}** — {meaning.ReplaceLineEndings(" ").Trim()}";
 
+    /// <summary>The text of a new Glossario note, with its empty "## Termini" section.</summary>
+    public const string Template = "# Glossario\n\nTermini del progetto con un significato preciso.\n\n## " + Section + "\n\n";
+
+    /// <summary>
+    /// Adds to the Glossario note at <paramref name="path"/> (created when missing) the terms it does not have yet,
+    /// each with a link to <paramref name="source"/> (the note where it came from, e.g. a call). Returns the terms added.
+    /// </summary>
+    public static IReadOnlyList<string> AddMissing(string path, IEnumerable<GlossaryTerm> terms, string? source = null)
+    {
+        if (!File.Exists(path))
+        {
+            File.WriteAllText(path, Template.Replace("\n", Environment.NewLine));
+        }
+
+        var known = Parse(File.ReadAllText(path)).Select(t => t.Term).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        var added = new List<string>();
+        foreach (var term in terms)
+        {
+            var name = term.Term.Trim().Trim('*').Trim();
+            if (name.Length == 0 || !known.Add(name))
+            {
+                continue;
+            }
+
+            var meaning = term.Meaning.ReplaceLineEndings(" ").Trim();
+            VaultWriter.AppendItem(path, Section, Format(name, source is null ? meaning : $"{meaning} · [[{source}]]"));
+            added.Add(name);
+        }
+
+        return added;
+    }
+
     [GeneratedRegex(@"^- \*\*(?<term>[^*\n]+)\*\*[^—\n]*—\s*(?<meaning>[^\n]+)$", RegexOptions.Multiline)]
     private static partial Regex Term();
 

@@ -11,6 +11,17 @@
     <Style Selector="ctxt|CTextBlock:not(.x)">
         <Setter Property="Foreground" Value="{DynamicResource Ink}" />
     </Style>
+    <!-- Body text: a little air between the lines of a paragraph (long notes and status lines read easier). -->
+    <Style Selector="ctxt|CTextBlock.Paragraph">
+        <Setter Property="LineSpacing" Value="3" />
+    </Style>
+    <!-- Headings inside a note: more space above than below, so each belongs to the text it introduces. -->
+    <Style Selector="ctxt|CTextBlock.Heading1, ctxt|CTextBlock.Heading2, ctxt|CTextBlock.Heading3">
+        <Setter Property="Margin" Value="0,14,0,4" />
+    </Style>
+    <Style Selector="ctxt|CTextBlock.Heading4, ctxt|CTextBlock.Heading5, ctxt|CTextBlock.Heading6">
+        <Setter Property="Margin" Value="0,10,0,2" />
+    </Style>
     <Style Selector="ctxt|CCode:not(.x)">
         <Setter Property="Foreground" Value="{DynamicResource Ink}" />
         <!-- See-through: the viewer paints inline code over the selection, an opaque background would hide it. -->
@@ -26,6 +37,7 @@
     </Style>
     <Style Selector="ctxt|CHyperlink:not(.x)">
         <Setter Property="Foreground" Value="{DynamicResource LinkInk}" />
+        <Setter Property="FontWeight" Value="Medium" />
     </Style>
     <Style Selector="ctxt|CHyperlink:not(.x):pointerover">
         <Setter Property="Foreground" Value="{DynamicResource Ink}" />

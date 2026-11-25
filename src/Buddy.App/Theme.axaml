@@ -24,8 +24,10 @@
         <SolidColorBrush x:Key="PermissionBorder" Color="#E8B931" />
         <!-- Markdown: code background and links (replaced per window from the Appearance colours). -->
         <SolidColorBrush x:Key="CodeBack" Color="#EDEAF3" />
-        <SolidColorBrush x:Key="InlineCodeBack" Color="#241F36" Opacity="0.12" />
+        <SolidColorBrush x:Key="InlineCodeBack" Color="#241F36" Opacity="0.16" />
         <SolidColorBrush x:Key="LinkInk" Color="#6B4FC4" />
+        <!-- Thin lines between the parts of a panel, edges of quiet buttons (the ink, see-through: any theme). -->
+        <SolidColorBrush x:Key="Divider" Color="#241F36" Opacity="0.12" />
         <!-- Syntax colours of code blocks (light paper; Appearance switches to a dark set on a dark paper). -->
         <SolidColorBrush x:Key="SynKeyword" Color="#A626A4" />
         <SolidColorBrush x:Key="SynString" Color="#3E8E3C" />

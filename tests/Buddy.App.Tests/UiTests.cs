@@ -653,7 +653,7 @@ public class PagesAndPaletteTests
                 return Task.FromResult((true, "TITOLO: Rilascio 3.2\nPARTECIPANTI: Marco\nTASK: -\n## Riassunto\nRimandato a lunedì.\n"
                                               + "## Azioni\n- [ ] **Marco:** changelog\n## Trascrizione sistemata\n**Marco:** Rimandiamo."));
             };
-            window.ShowCallForm = () => Task.FromResult<string[]?>(["", "2026-11-24", "", "", "marco: ehm rimandiamo"]);
+            window.ShowCallForm = () => Task.FromResult<string[]?>(["", "2026-11-24", "", "", "", "marco: ehm rimandiamo"]);
             window.ShowView("calls");
             await window.NewCallAsync();
             for (var i = 0; i < 40 && !File.Exists(Path.Combine(project, "Trascrizioni", "2026-11-24 Rilascio 3.2.md")); i++)

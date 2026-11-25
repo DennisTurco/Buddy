@@ -14,6 +14,9 @@ public sealed record CallTranscript(
 
     /// <summary>What is left to do: the actions not ticked yet, then the open points (each a button to work on it).</summary>
     public IReadOnlyList<CallTask> Tasks { get; init; } = [];
+
+    /// <summary>The user's notes for Claude about this call ("## Note per Claude"), empty when none.</summary>
+    public string Notes { get; init; } = "";
 }
 
 /// <summary>An action not done yet ("- [ ] **Chi:** cosa") or an open point of a call, as plain text.</summary>
@@ -26,6 +29,9 @@ public sealed record CallSummary(
 {
     /// <summary>What is worth remembering ("- **Chi:** informazione"): who decides what, where things are, numbers, limits.</summary>
     public string Remember { get; init; } = "";
+
+    /// <summary>Project terms used in the call and missing from the Glossario ("- **Termine** — significato"), for it.</summary>
+    public IReadOnlyList<GlossaryTerm> NewTerms { get; init; } = [];
 }
 
 /// <summary>
@@ -38,6 +44,7 @@ public static partial class CallTranscripts
 {
     public const string Folder = "Trascrizioni";
     public const string OriginalHeading = "## Trascrizione originale";
+    public const string NotesHeading = "## Note per Claude";
     private const string PendingState = "da sistemare";
     private const string DoneState = "sistemata";
 
@@ -78,7 +85,11 @@ public static partial class CallTranscripts
             .ToList();
         return new CallTranscript(note.RelativePath, title, date, SplitPeople(Field("partecipanti")), task.Length > 0 ? task : null,
             !Field("stato").Equals(PendingState, StringComparison.OrdinalIgnoreCase),
-            sections.TryGetValue("riassunto", out var s) ? s : "", open + done, open, note.Content) { Tasks = tasks };
+            sections.TryGetValue("riassunto", out var s) ? s : "", open + done, open, note.Content)
+        {
+            Tasks = tasks,
+            Notes = sections.TryGetValue("note per claude", out var notes) ? notes : "",
+        };
     }
 
     /// <summary>The list items of a section matching <paramref name="pattern"/> (group "t"), as plain text; "Nessuno" left out.</summary>
@@ -114,7 +125,9 @@ public static partial class CallTranscripts
     /// Saves a new call with the text as given (see <see cref="Normalize"/>): "Trascrizioni/2026-11-24 Titolo.md", never
     /// overwriting another. Returns its path relative to the project.
     /// </summary>
-    public static string Create(string projectPath, string title, DateOnly date, IEnumerable<string> people, string? task, string transcript)
+    /// <param name="notes">Optional notes for Claude about the call (context, what to look for), kept in "## Note per Claude".</param>
+    public static string Create(string projectPath, string title, DateOnly date, IEnumerable<string> people, string? task, string transcript,
+        string? notes = null)
     {
         title = OneLine(title);
         if (title.Length == 0)
@@ -123,7 +136,7 @@ public static partial class CallTranscripts
         }
 
         var file = FreeFile(Path.Combine(projectPath, Folder), date, title, null);
-        var text = Format(date, people, task, PendingState, title, null, Normalize(transcript));
+        var text = Format(date, people, task, PendingState, title, null, Normalize(transcript), notes);
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllText(file, text.Replace("\n", Environment.NewLine));
         return Path.GetRelativePath(projectPath, file);
@@ -164,7 +177,7 @@ public static partial class CallTranscripts
             .DistinctBy(p => p.ToLowerInvariant()).ToList();
         var task = call.Task ?? summary.Task;
         var date = call.Date == DateOnly.MinValue ? DateOnly.FromDateTime(DateTime.Today) : call.Date;
-        var text = Format(date, people, task, DoneState, title, summary, Original(current));
+        var text = Format(date, people, task, DoneState, title, summary, Original(current), call.Notes);
 
         var target = file;
         if (title != call.Title)
@@ -181,7 +194,8 @@ public static partial class CallTranscripts
         return Path.GetRelativePath(projectPath, target);
     }
 
-    private static string Format(DateOnly date, IEnumerable<string> people, string? task, string state, string title, CallSummary? summary, string original)
+    private static string Format(DateOnly date, IEnumerable<string> people, string? task, string state, string title, CallSummary? summary, string original,
+        string? notes)
     {
         var text = new StringBuilder("---\n")
             .Append(CultureInfo.InvariantCulture, $"created: {date:yyyy-MM-dd}\n")
@@ -215,6 +229,11 @@ public static partial class CallTranscripts
         else
         {
             text.Append("_Da sistemare: Claude ne farà riassunto, decisioni e azioni._\n\n");
+        }
+
+        if (notes?.Trim() is { Length: > 0 } kept)
+        {
+            text.Append(NotesHeading).Append("\n\n").Append(kept.ReplaceLineEndings("\n")).Append("\n\n");
         }
 
         return text.Append(OriginalHeading).Append("\n\n").Append(Paragraphs(original)).Append('\n').ToString();
@@ -257,6 +276,14 @@ public static partial class CallTranscripts
             .AppendLine(me is null ? "" : $"Chi ha fatto la call e te la manda è {me} (anche «io» tra i partecipanti): è sempre uno di quelli che parlano.")
             .AppendLine(call.People.Count > 0 ? $"Partecipanti indicati: {string.Join(", ", call.People)}." : "Partecipanti: da ricavare dal testo.")
             .AppendLine(call.Task is { } task ? $"Task collegato: {task}." : "");
+        if (call.Notes.Trim().Length > 0)
+        {
+            prompt.AppendLine("Note dell'utente su questa call, da tenere presenti (contesto, cosa cercare, come sistemarla):")
+                .AppendLine("<<<")
+                .AppendLine(call.Notes.Trim())
+                .AppendLine(">>>");
+        }
+
         if (people.Count > 0)
         {
             prompt.AppendLine("Persone del progetto (nome, soprannomi, ruolo), per riconoscere i nomi storpiati:");
@@ -288,6 +315,11 @@ public static partial class CallTranscripts
             .AppendLine("<elenco «- …» di domande e dubbi rimasti aperti, o «- Nessuno»>")
             .AppendLine("## Da ricordare")
             .AppendLine("<elenco «- **Chi:** cosa» delle informazioni utili dette, da ritrovare tra mesi: chi decide o si occupa di cosa, dove sta una cosa, vincoli, numeri, nomi di ambienti; o «- Nessuno»>")
+            .AppendLine("## Termini nuovi")
+            .AppendLine("<elenco «- **Termine** — significato in una frase» dei termini specifici del progetto usati nella call e che NON sono "
+                        + "già tra i termini del progetto qui sopra: sigle, nomi di sistemi, moduli, ambienti, clienti, gergo interno. "
+                        + "Solo quelli rilevanti e il cui significato si capisce con sicurezza dalla call (mai inventato); "
+                        + "niente persone e niente parole tecniche comuni; al massimo 5; o «- Nessuno»>")
             .AppendLine("## Trascrizione sistemata")
             .AppendLine("<la trascrizione sistemata, tutta>")
             .AppendLine()
@@ -317,7 +349,14 @@ public static partial class CallTranscripts
         var task = Line("task");
         return new CallSummary(Line("titolo"), SplitPeople(Line("partecipanti")), task is "" or "-" or "—" ? null : task,
             summary, Get("decisioni"), Get("azioni"), Get("punti aperti"),
-            sections.TryGetValue("trascrizione sistemata", out var t) ? t : sections.GetValueOrDefault("trascrizione", "")) { Remember = Get("da ricordare") };
+            sections.TryGetValue("trascrizione sistemata", out var t) ? t : sections.GetValueOrDefault("trascrizione", ""))
+        {
+            Remember = Get("da ricordare"),
+            NewTerms = Regex.Matches(Get("termini nuovi"), @"^\s*[-*]\s+\*\*(?<term>[^*\n]+)\*\*\s*[—–:-]+\s*(?<meaning>[^\n]+)$", RegexOptions.Multiline)
+                .Select(m => new GlossaryTerm(m.Groups["term"].Value.Trim(), m.Groups["meaning"].Value.Trim(), []))
+                .Where(t => t.Term.Length > 0 && t.Meaning.Length > 0)
+                .Take(10).ToList(),
+        };
     }
 
     private static bool IsNone(string value) =>

@@ -243,6 +243,59 @@
             <Setter Property="BorderBrush" Value="{DynamicResource ClaudeAccent}" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
+        <!-- A page's main action (＋ Nuova …): filled with the accent, the one button the eye finds first. -->
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource ClaudeAccent}" />
+            <Setter Property="Foreground" Value="#1F1C2C" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource ClaudeAccent}" />
+            <Setter Property="Foreground" Value="#1F1C2C" />
+            <Setter Property="Opacity" Value="0.88" />
+        </Style>
+        <!-- Secondary actions of a tool bar: no fill, only a thin edge, so they step back behind the primary one. -->
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+        <!-- Deleting: quiet until the mouse is on it, then red. -->
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        </Style>
+        <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#33E57373" />
+            <Setter Property="Foreground" Value="#D64545" />
+        </Style>
+
+        <!-- Empty states: a soft box with an icon and a line that says what to do, instead of an italic grey line. -->
+        <Style Selector="Border.empty">
+            <Setter Property="Background" Value="{DynamicResource InputBack}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="20,22" />
+            <Setter Property="Margin" Value="0,4,0,10" />
+        </Style>
+        <Style Selector="TextBlock.empty">
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+            <Setter Property="FontSize" Value="{x:Static app:TextSize.Body}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="19" />
+        </Style>
+        <!-- A thin line between the parts of a panel (the entries of Stato attuale). -->
+        <Style Selector="Border.divider">
+            <Setter Property="BorderBrush" Value="{DynamicResource Divider}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="Padding" Value="0,8,0,8" />
+        </Style>
+
         <Style Selector="Button.tile">
             <Setter Property="Background" Value="{DynamicResource InputBack}" />
             <Setter Property="CornerRadius" Value="12" />
@@ -555,7 +608,7 @@
 
             <Panel>
                 <!-- ====== Panoramica ====== -->
-                <ScrollViewer x:Name="OverviewView" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer x:Name="OverviewView" HorizontalScrollBarVisibility="Disabled" SizeChanged="OnOverviewSizeChanged">
                     <StackPanel Spacing="16">
                         <ItemsControl x:Name="Tiles">
                             <ItemsControl.ItemsPanel>
@@ -579,7 +632,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <Grid ColumnDefinitions="3*,16,2*">
+                        <Grid x:Name="OverviewTop" ColumnDefinitions="3*,16,2*">
                             <Border Classes="panel">
                                 <StackPanel>
                                     <DockPanel>
@@ -644,11 +697,11 @@
                             </Border>
                         </Grid>
 
-                        <Grid ColumnDefinitions="3*,16,2*">
+                        <Grid x:Name="OverviewBottom" ColumnDefinitions="3*,16,2*">
                             <Border Classes="panel" VerticalAlignment="Top">
                                 <StackPanel>
                                     <chat:IconLabel Classes="section" Label="⚡ Richiede attenzione" />
-                                    <TextBlock x:Name="NothingUrgent" Classes="muted" FontStyle="Italic" Text="Niente di urgente: tutto sotto controllo 👌" />
+                                    <TextBlock x:Name="NothingUrgent" Classes="empty" Text="Niente di urgente: tutto sotto controllo 👌" />
                                     <ItemsControl x:Name="AttentionList">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="p:AttentionView">
@@ -673,10 +726,12 @@
                                         <ItemsControl x:Name="StatusList">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="p:StatusView">
-                                                    <StackPanel Margin="0,0,0,8">
-                                                        <TextBlock Text="{Binding Label}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" />
-                                                        <chat:MarkdownView Markdown="{Binding Markdown}" Loaded="OnMarkdownLoaded" />
-                                                    </StackPanel>
+                                                    <Border Classes="divider">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Label}" Classes="muted" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Margin="0,0,0,3" />
+                                                            <chat:MarkdownView Markdown="{Binding Markdown}" Loaded="OnMarkdownLoaded" />
+                                                        </StackPanel>
+                                                    </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -692,7 +747,7 @@
                                 <Border x:Name="HealthPanel" Classes="panel">
                                     <StackPanel>
                                         <chat:IconLabel x:Name="HealthTitle" Classes="section" Label="🩺 Salute del vault" />
-                                        <TextBlock x:Name="HealthOk" Classes="muted" FontStyle="Italic" Text="Tutto in ordine ✨" />
+                                        <TextBlock x:Name="HealthOk" Classes="empty" Text="Tutto in ordine ✨" />
                                         <ItemsControl x:Name="HealthList">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="core:HealthIssue">
@@ -1171,7 +1226,8 @@
                             <Panel>
                                 <ScrollViewer x:Name="NoteScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                     <StackPanel>
-                                        <chat:MarkdownView x:Name="NoteViewer" />
+                                        <!-- Lines no wider than a comfortable read, however wide the window. -->
+                                        <chat:MarkdownView x:Name="NoteViewer" MaxWidth="900" HorizontalAlignment="Left" />
                                         <StackPanel x:Name="BacklinksPanel" Margin="0,22,0,0" IsVisible="False">
                                             <Border Height="1" Background="{DynamicResource UserBubble}" Margin="0,0,0,10" />
                                             <TextBlock Text="🔗 Citata in" Classes="muted" FontSize="{x:Static app:TextSize.Body}" FontWeight="SemiBold" Margin="0,0,0,6" />
@@ -1287,7 +1343,13 @@
                             <Border x:Name="PageHeaderPanel" Classes="panel" Margin="0,0,0,14" IsVisible="False">
                                 <chat:MarkdownView x:Name="PageHeader" />
                             </Border>
-                            <TextBlock x:Name="PageEmpty" Classes="muted" FontStyle="Italic" Margin="4,8" TextWrapping="Wrap" IsVisible="False" />
+                            <Border x:Name="PageEmptyPanel" Classes="empty" IsVisible="False" MaxWidth="560" HorizontalAlignment="Left">
+                                <DockPanel>
+                                    <chat:LineIcon DockPanel.Dock="Left" Data="{StaticResource IconInbox}" Size="22"
+                                                   Foreground="{DynamicResource Muted}" VerticalAlignment="Top" Margin="0,0,12,0" />
+                                    <TextBlock x:Name="PageEmpty" Classes="empty" VerticalAlignment="Center" />
+                                </DockPanel>
+                            </Border>
                             <ItemsControl x:Name="PageCards">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>

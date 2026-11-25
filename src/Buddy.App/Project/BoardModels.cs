@@ -364,9 +364,9 @@ public sealed record NoteFolderHeader(string Folder, int Count, bool IsOpen)
 }
 
 /// <summary>A "Stato attuale" line: label and markdown value.</summary>
-public sealed record StatusView(string Label, string Value)
+public sealed record StatusView(string Label, string Value, IReadOnlySet<string>? TaskIds = null)
 {
-    public string Markdown => NoteLinks.ToMarkdown(Value);
+    public string Markdown => NoteLinks.LinkTasks(NoteLinks.ToMarkdown(ProjectBoard.StatusMarkdown(Value)), TaskIds ?? new HashSet<string>());
 }
 
 /// <summary>A periodic check in the Panoramica: when it last ran, what came out, whether it is time to run it again.</summary>
@@ -428,6 +428,33 @@ public sealed record NoteView(VaultNote Note, string? Root = null)
 public static partial class NoteLinks
 {
     public const string Scheme = "note:";
+
+    /// <summary>A task of the board: "task:NUSR-12" opens it (see <see cref="LinkTasks"/>).</summary>
+    public const string TaskScheme = "task:";
+
+    /// <summary>
+    /// The board's task IDs written in the text (NUSR-2368, T-020) become links that open the task, so an ID stands out
+    /// from the words around it and leads somewhere. Only <paramref name="ids"/> (the tasks on the board) are linked,
+    /// and never inside `code`, an existing link or a heading.
+    /// </summary>
+    public static string LinkTasks(string markdown, IReadOnlySet<string> ids)
+    {
+        if (ids.Count == 0)
+        {
+            return markdown;
+        }
+
+        return string.Join('\n', markdown.Split('\n').Select(line => line.TrimStart().StartsWith('#') ? line
+            : Protected().Replace(line, m => m.Groups["id"].Success && ids.Contains(m.Value) ? $"[{m.Value}]({TaskScheme}{m.Value})" : m.Value)));
+    }
+
+    /// <summary>The ID of a "task:" link; null for any other.</summary>
+    public static string? TaskTarget(string link) =>
+        link.StartsWith(TaskScheme, StringComparison.OrdinalIgnoreCase) && link[TaskScheme.Length..] is { Length: > 0 } id ? Uri.UnescapeDataString(id) : null;
+
+    /// <summary>Code spans and links (kept as they are) or a task ID (group "id").</summary>
+    [GeneratedRegex(@"`[^`\n]*`|!?\[[^\]\n]*\]\([^)\n]*\)|\[\[[^\]\n]*\]\]|<[^>\n]+>|(?<id>\b[A-Z][A-Z0-9]{0,9}-\d+\b)")]
+    private static partial Regex Protected();
 
     private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"];
 

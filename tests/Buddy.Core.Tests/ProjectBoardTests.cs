@@ -67,6 +67,53 @@ public class ProjectBoardTests
     public void TearDown() => Directory.Delete(_root, recursive: true);
 
     [Test]
+    public void A_status_value_becomes_points_with_one_sub_point_per_task()
+    {
+        var markdown = ProjectBoard.StatusMarkdown(
+            "— · da controllare: NUSR-2368 (working tree di `main`, branch da creare a mano) · chiusi: NUSR-2700 🔁 1 (PR #452 2026-11-20 · correzioni), "
+            + "NUSR-2367 (PR #425, 2026-11-13), T-020 (dashboard Grafana, JSON in `Grafana/`) · da controllare: NUSR-2660 (spike, stima pronta), "
+            + "card [AccDataRet] NUSR-2533 (NUSR-2584, NUSR-2566 chiuse)");
+
+        Assert.That(markdown, Is.EqualTo("""
+            - **da controllare:** NUSR-2368 (working tree di `main`, branch da creare a mano)
+            - **chiusi:**
+              - NUSR-2700 🔁 1 (PR #452 2026-11-20 · correzioni)
+              - NUSR-2367 (PR #425, 2026-11-13)
+              - T-020 (dashboard Grafana, JSON in `Grafana/`)
+            - **da controllare:**
+              - NUSR-2660 (spike, stima pronta)
+              - card [AccDataRet] NUSR-2533 (NUSR-2584, NUSR-2566 chiuse)
+            """.ReplaceLineEndings("\n")));
+    }
+
+    [Test]
+    public void A_status_text_with_commas_is_not_cut_into_tasks()
+    {
+        var markdown = ProjectBoard.StatusMarkdown(
+            "NUSR-2670, NUSR-2672 (CLEAN ENERGY) · NUSR-2367: verificare i messaggi con l'app vera; dire al team chi configura ruoli del report, "
+            + "retention e mittente del template 138 sui portali");
+
+        Assert.That(markdown, Is.EqualTo("""
+            - NUSR-2670, NUSR-2672 (CLEAN ENERGY)
+            - NUSR-2367: verificare i messaggi con l'app vera; dire al team chi configura ruoli del report, retention e mittente del template 138 sui portali
+            """.ReplaceLineEndings("\n")));
+    }
+
+    [Test]
+    public void A_status_value_drops_the_empty_placeholders_and_keeps_a_single_piece_as_it_is()
+    {
+        Assert.That(ProjectBoard.StatusMarkdown("2.0.2642.0 (ultima `<NEW VERSION>` su main)"), Is.EqualTo("2.0.2642.0 (ultima `<NEW VERSION>` su main)"));
+        Assert.That(ProjectBoard.StatusMarkdown("—"), Is.EqualTo("—"));
+        Assert.That(ProjectBoard.StatusMarkdown("— · da controllare: NUSR-1 (x)"), Is.EqualTo("da controllare: NUSR-1 (x)"));
+        Assert.That(ProjectBoard.StatusMarkdown("⏸ sbloccati: T-006 (chiuso NUSR-2458) · ⏸ in attesa: T-010 · valutazioni scadute: — · prossima valutazione: 2026-10-29 (T-001…T-005)"),
+            Is.EqualTo("""
+                - **⏸ sbloccati:** T-006 (chiuso NUSR-2458)
+                - **⏸ in attesa:** T-010
+                - **prossima valutazione:** 2026-10-29 (T-001…T-005)
+                """.ReplaceLineEndings("\n")));
+    }
+
+    [Test]
     public void An_id_the_pattern_does_not_cover_is_still_the_id_when_a_date_follows_it()
     {
         using var vault = new VaultIndex(Options.Create(new BuddySettings { ProjectPath = _root }));
