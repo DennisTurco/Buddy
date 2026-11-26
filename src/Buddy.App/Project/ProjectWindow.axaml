@@ -1142,7 +1142,7 @@
                                                         <TextBlock Text="{Binding Name}" Classes="id" FontSize="{x:Static app:TextSize.Base}" Foreground="#8AB4F8" VerticalAlignment="Center" />
                                                     </DockPanel>
                                                     <!-- Markdown: the descriptions use **bold** and `code` like the note. -->
-                                                    <chat:MarkdownView Markdown="{Binding CoversMarkdown}" IsVisible="{Binding HasCovers}" FontSize="{x:Static app:TextSize.Body}" Margin="0,4,0,0" />
+                                                    <chat:MarkdownView Markdown="{Binding CoversMarkdown}" IsVisible="{Binding HasCovers}" Loaded="OnMarkdownLoaded" FontSize="{x:Static app:TextSize.Body}" Margin="0,4,0,0" />
                                                     <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
@@ -1262,7 +1262,7 @@
                                 <ScrollViewer x:Name="NoteScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                     <StackPanel>
                                         <!-- Lines no wider than a comfortable read, however wide the window. -->
-                                        <chat:MarkdownView x:Name="NoteViewer" MaxWidth="900" HorizontalAlignment="Left" />
+                                        <chat:MarkdownView x:Name="NoteViewer" MaxWidth="900" HorizontalAlignment="Left" Loaded="OnMarkdownLoaded" />
                                         <StackPanel x:Name="BacklinksPanel" Margin="0,22,0,0" IsVisible="False">
                                             <Border Height="1" Background="{DynamicResource UserBubble}" Margin="0,0,0,10" />
                                             <TextBlock Text="🔗 Citata in" Classes="muted" FontSize="{x:Static app:TextSize.Body}" FontWeight="SemiBold" Margin="0,0,0,6" />
@@ -1318,7 +1318,7 @@
                                         <Border x:Name="NotePreviewPanel" Grid.Column="2" Classes="panel" Padding="12,8"
                                                 BorderBrush="{DynamicResource UserBubble}" BorderThickness="1" CornerRadius="8">
                                             <ScrollViewer x:Name="NotePreviewScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                                <chat:MarkdownView x:Name="NotePreview" />
+                                                <chat:MarkdownView x:Name="NotePreview" Loaded="OnMarkdownLoaded" />
                                             </ScrollViewer>
                                         </Border>
                                     </Grid>
@@ -1376,7 +1376,7 @@
                     <ScrollViewer x:Name="PageScroller" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
                             <Border x:Name="PageHeaderPanel" Classes="panel" Margin="0,0,0,14" IsVisible="False">
-                                <chat:MarkdownView x:Name="PageHeader" />
+                                <chat:MarkdownView x:Name="PageHeader" Loaded="OnMarkdownLoaded" />
                             </Border>
                             <Border x:Name="PageEmptyPanel" Classes="empty" IsVisible="False" MaxWidth="560" HorizontalAlignment="Left">
                                 <DockPanel>

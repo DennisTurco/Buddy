@@ -268,6 +268,7 @@ public class UiTests
             {
                 var name = Buddy.App.Pet.PetSprites.FileName(state, mode);
                 Assert.That(Avalonia.Platform.AssetLoader.Exists(new Uri($"avares://Buddy.App/Pet/Bruce/{name}")), Is.True, name);
+                Assert.That(Avalonia.Platform.AssetLoader.Exists(new Uri($"avares://Buddy.App/Pet/Bruce/32/{name}")), Is.True, "classic " + name);
             }
         }
 
@@ -276,6 +277,12 @@ public class UiTests
         Assert.That(bruce.WalkFrames(ChatMode.Claude)[0], Is.InstanceOf<Avalonia.Media.Imaging.CroppedBitmap>());
 
         Assert.That(bruce.RestFrames(ChatMode.Local), Is.Not.Null.And.Not.Empty, "Bruce curls up now and then");
+        Assert.That(bruce.IsClassicBruce, Is.False, "48 px by default");
+
+        var classic = new Buddy.App.Pet.PetSprites(new PetSettings { Character = "bruce32" });
+        Assert.That(classic.IsBruce && classic.IsClassicBruce, Is.True);
+        Assert.That(classic.Frames(PetState.Idle, ChatMode.Local)[0], Is.InstanceOf<Avalonia.Media.Imaging.CroppedBitmap>(), "the classic Bruce: his 32 px strips");
+        Assert.That(classic.RestFrames(ChatMode.Claude), Is.Not.Null.And.Not.Empty);
 
         var slime = new Buddy.App.Pet.PetSprites(new PetSettings { Character = "slime" });
         Assert.That(slime.Frames(PetState.Idle, ChatMode.Local)[0], Is.InstanceOf<Avalonia.Media.Imaging.WriteableBitmap>(), "the slime: drawn from its grids");

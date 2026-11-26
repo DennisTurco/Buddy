@@ -321,7 +321,11 @@ public sealed class MarkdownView : UserControl
 
         public void Execute(object? parameter)
         {
-            if (parameter is string target && owner.LinkHandler?.Invoke(target) != true)
+            // Buddy's own links ("note:", "task:") are never handed to the system: it has no app for them and Windows
+            // would ask to find one in the Store. Where nothing handles them (a view without a handler) they do nothing.
+            if (parameter is string target && owner.LinkHandler?.Invoke(target) != true
+                && !target.StartsWith("note:", StringComparison.OrdinalIgnoreCase)
+                && !target.StartsWith("task:", StringComparison.OrdinalIgnoreCase))
             {
                 Shell.Open(target);
             }

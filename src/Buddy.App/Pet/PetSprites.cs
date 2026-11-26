@@ -106,7 +106,10 @@ public sealed class PetSprites
     /// <summary>Bruce is the character (the default), not the slime.</summary>
     public bool IsBruce => !string.Equals(_settings.Character, "slime", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Bruce's strip <paramref name="name"/> from the app's resources (Pet/Bruce), or null with the slime chosen.</summary>
+    /// <summary>The classic 32 px Bruce ("bruce32") instead of the 48 px one with finer details.</summary>
+    public bool IsClassicBruce => string.Equals(_settings.Character, "bruce32", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Bruce's strip <paramref name="name"/> from the app's resources (Pet/Bruce, or Pet/Bruce/32), or null with the slime chosen.</summary>
     private IReadOnlyList<IImage>? LoadBruce(string name)
     {
         if (!IsBruce)
@@ -114,7 +117,7 @@ public sealed class PetSprites
             return null;
         }
 
-        var uri = new Uri($"avares://Buddy.App/Pet/Bruce/{name}");
+        var uri = new Uri(IsClassicBruce ? $"avares://Buddy.App/Pet/Bruce/32/{name}" : $"avares://Buddy.App/Pet/Bruce/{name}");
         if (!AssetLoader.Exists(uri))
         {
             return null;

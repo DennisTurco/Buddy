@@ -55,7 +55,9 @@ public partial class SettingsWindow : Window
         DataContext = _settings;
 
         FontCombo.ItemsSource = FontManager.Current.SystemFonts.Select(f => f.Name).Distinct().Order().ToList();
-        (string.Equals(_settings.Pet.Character, "slime", StringComparison.OrdinalIgnoreCase) ? CharacterSlime : CharacterBruce).IsChecked = true;
+        (string.Equals(_settings.Pet.Character, "slime", StringComparison.OrdinalIgnoreCase) ? CharacterSlime
+            : string.Equals(_settings.Pet.Character, "bruce32", StringComparison.OrdinalIgnoreCase) ? CharacterBruceClassic
+            : CharacterBruce).IsChecked = true;
         (Logo.UsesPixelArt(_settings.Appearance) ? LogoPixel
             : string.Equals(_settings.Appearance.Logo, Logo.Greyhound, StringComparison.OrdinalIgnoreCase) ? LogoGreyhound
             : LogoModern).IsChecked = true;
@@ -390,12 +392,12 @@ public partial class SettingsWindow : Window
     /// <summary>Logo: the vector speech bubble or the pixel-art face (applied when Buddy restarts, like the rest).</summary>
     private void OnCharacterChanged(object? sender, RoutedEventArgs e)
     {
-        if (CharacterBruce is null || CharacterSlime is null)
+        if (CharacterBruce is null || CharacterBruceClassic is null || CharacterSlime is null)
         {
             return; // still loading
         }
 
-        _settings.Pet.Character = CharacterSlime.IsChecked == true ? "slime" : "bruce";
+        _settings.Pet.Character = CharacterSlime.IsChecked == true ? "slime" : CharacterBruceClassic.IsChecked == true ? "bruce32" : "bruce";
     }
 
     private void OnLogoChanged(object? sender, RoutedEventArgs e)

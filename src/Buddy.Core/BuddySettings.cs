@@ -786,8 +786,9 @@ public sealed class PetSettings
     public int WalkPauseSeconds { get; set; } = 20;
 
     /// <summary>
-    /// The built-in character: "bruce", a fawn greyhound in pixel art (his collar takes the chat mode's colour), or
-    /// "slime", the round character of the first versions (coloured with <see cref="LocalColor"/> / <see cref="ClaudeColor"/>).
+    /// The built-in character: "bruce", a fawn greyhound in pixel art, 48 px with fine details (his collar takes the chat
+    /// mode's colour); "bruce32", the same in classic 32 px; or "slime", the round character of the first versions
+    /// (coloured with <see cref="LocalColor"/> / <see cref="ClaudeColor"/>).
     /// A <see cref="SpriteFolder"/> overrides either.
     /// </summary>
     public string Character { get; set; } = "bruce";

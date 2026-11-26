@@ -41,8 +41,9 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="buddy.ico" />
-    <!-- Bruce, the built-in pet: one PNG strip per state (made by Pet/Bruce/bruce.ps1). -->
+    <!-- Bruce, the built-in pet: one PNG strip per state, 48 px and the classic 32 px (made by Pet/Bruce/bruce.ps1). -->
     <AvaloniaResource Include="Pet\Bruce\*.png" />
+    <AvaloniaResource Include="Pet\Bruce\32\*.png" />
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

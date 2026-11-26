@@ -1884,6 +1884,17 @@ public partial class ProjectWindow : Window
         return true;
     }
 
+    /// <summary>
+    /// A link to a note or task that is not in the project (renamed, deleted, or elsewhere in the vault): said here,
+    /// instead of handing the "note:"/"task:" link to the system, which has no app for it. Always handled (true).
+    /// </summary>
+    private bool NoteNotFound(string titleOrId)
+    {
+        _ = Settings.Dialogs.ShowMessageAsync(this,
+            $"«{titleOrId}» non è tra le note e i task del progetto: forse è stato rinominato o spostato. Cercalo in Obsidian o con Ctrl+K.");
+        return true;
+    }
+
     private void OnBacklinkClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: NoteView note })
@@ -2384,8 +2395,9 @@ public partial class ProjectWindow : Window
     {
         if (sender is MarkdownView view)
         {
-            view.LinkHandler = link => NoteLinks.TaskTarget(link) is { } id ? OpenTask(id)
-                : NoteLinks.Target(link) is { } target && OpenInNotesView(target);
+            // Buddy's own links ("task:", "note:") are always handled here: the system has no app for them.
+            view.LinkHandler = link => NoteLinks.TaskTarget(link) is { } id ? OpenTask(id) || NoteNotFound(id)
+                : NoteLinks.Target(link) is { } target && (OpenInNotesView(target) || NoteNotFound(target));
         }
     }
 

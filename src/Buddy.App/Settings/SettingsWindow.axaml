@@ -118,7 +118,9 @@
                             <TextBlock Text="Personaggio" Classes="label" />
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" Margin="0,4">
                                 <RadioButton x:Name="CharacterBruce" GroupName="Character" Content="Bruce (levriero)" IsCheckedChanged="OnCharacterChanged"
-                                             ToolTip.Tip="Un levriero fulvo in pixel art; il collare prende il colore della modalità (verde locale, viola Claude)" />
+                                             ToolTip.Tip="Un levriero fulvo in pixel art a 48 px, con i dettagli; il collare prende il colore della modalità (verde locale, viola Claude)" />
+                                <RadioButton x:Name="CharacterBruceClassic" GroupName="Character" Content="Bruce classico" IsCheckedChanged="OnCharacterChanged"
+                                             ToolTip.Tip="Lo stesso Bruce in pixel art a 32 px, più semplice" />
                                 <RadioButton x:Name="CharacterSlime" GroupName="Character" Content="Slime" IsCheckedChanged="OnCharacterChanged"
                                              ToolTip.Tip="Il personaggio tondo delle prime versioni, con i colori qui sotto" />
                             </StackPanel>

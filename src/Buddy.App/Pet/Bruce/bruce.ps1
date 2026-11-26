@@ -1,10 +1,18 @@
-# Bruce, the built-in pet: a fawn greyhound in pixel art. One PNG strip of 32x32 frames per state (idle, think, work,
-# alert, error, happy, speak, walk) and the claude- variants (violet collar instead of green). Side view, facing right.
-# Regenerate after a change: pwsh src/Buddy.App/Pet/Bruce/bruce.ps1 (add -Preview sheet.png for every pose at 4x).
-param([string]$Out = $PSScriptRoot, [string]$Preview = "")
+# Bruce, the built-in pet: a fawn greyhound in pixel art. One PNG strip of square frames per state (idle, think, work,
+# alert, error, happy, speak, rest, walk) and the claude- variants (violet collar instead of green). Side view, facing right.
+# Two versions ship with the app: 48 px (the default, here) and the classic 32 px (in 32/). After a change regenerate both:
+#   pwsh src/Buddy.App/Pet/Bruce/bruce.ps1
+#   pwsh src/Buddy.App/Pet/Bruce/bruce.ps1 -Size 32 -Out src/Buddy.App/Pet/Bruce/32
+# (-Preview sheet.png draws every pose.) Above 32 the same Bruce gets more pixels (smoother shapes, a thinner outline)
+# and the details that do not fit in 32 (amber iris and its light, belly and thigh shading, the collar's tag).
+param([string]$Out = $PSScriptRoot, [string]$Preview = "", [int]$Size = 48)
 
 Add-Type -AssemblyName System.Drawing
-$S = 32
+$S = $Size
+# (PowerShell names ignore case: these must not clash with the loops' $k and $p.)
+$Zoom = $Size / 32.0       # the drawing is described on a 32 grid; $Zoom scales it
+$HD = $Zoom -ge 1.5        # room for the fine details
+$OnePx = 1 / $Zoom         # one pixel of the output, in grid units
 function C($hex) { [Drawing.ColorTranslator]::FromHtml($hex) }
 $Ink = C '#2A1A12'; $Body = C '#A9693A'; $Light = C '#C4844C'; $Far = C '#86502A'; $Dark = C '#3E2416'
 $Grey = C '#8A7B72'; $White = C '#EDE3D6'; $Nose = C '#120C0A'; $Eye = C '#1E120C'; $Tongue = C '#E07A8A'; $Shine = C '#FFFFFF'
@@ -25,16 +33,43 @@ function Line($g, $color, $w, $pts) {
     $pen = New-Object Drawing.Pen $color, $w; $pen.StartCap = 'Round'; $pen.EndCap = 'Round'; $pen.LineJoin = 'Round'
     $g.DrawLines($pen, (PF $pts))
 }
-function Px($bmp, $color, $x, $y) {
-    $ix = [int][Math]::Floor($x); $iy = [int][Math]::Floor($y)
-    if ($ix -ge 0 -and $iy -ge 0 -and $ix -lt $S -and $iy -lt $S) { $bmp.SetPixel($ix, $iy, $color) }
+# A dot of detail (eye, nose, paw, tail tip): one pixel at 32; above, a square of whole output pixels (2x2 at 48 and
+# 64) snapped to the output grid, so every dot has the same size (a cell of the 32 grid would be 1.5 pixels at 48).
+$Cell = [Math]::Max(1, [Math]::Round($Zoom))
+function Px($g, $color, $x, $y) {
+    $brush = New-Object Drawing.SolidBrush $color
+    if (-not $HD) { $g.FillRectangle($brush, [float][Math]::Floor($x), [float][Math]::Floor($y), 1, 1); return }
+    $px = [Math]::Floor($x * $Zoom); $py = [Math]::Floor($y * $Zoom)
+    $g.FillRectangle($brush, [float]($px / $Zoom), [float]($py / $Zoom), [float]($Cell / $Zoom), [float]($Cell / $Zoom))
 }
+# One pixel of the output at any size (HD details), snapped to the output grid.
+function Fine($g, $color, $x, $y, $w = 1, $h = 1) {
+    $g.FillRectangle((New-Object Drawing.SolidBrush $color), [float]([Math]::Floor($x * $Zoom) / $Zoom), [float]([Math]::Floor($y * $Zoom) / $Zoom), [float]($w * $OnePx), [float]($h * $OnePx))
+}
+function NewFrame() {
+    $bmp = New-Object Drawing.Bitmap $S, $S
+    $g = [Drawing.Graphics]::FromImage($bmp); $g.SmoothingMode = 'None'; $g.PixelOffsetMode = 'Half'; $g.ScaleTransform($Zoom, $Zoom)
+    return $bmp, $g
+}
+# Outline: every empty pixel touching the dog becomes ink (one output pixel thick, at any size).
+function Outline($bmp) {
+    $mask = New-Object 'bool[,]' $S, $S
+    for ($y = 0; $y -lt $S; $y++) { for ($x = 0; $x -lt $S; $x++) { $mask[$x, $y] = $bmp.GetPixel($x, $y).A -gt 0 } }
+    for ($y = 0; $y -lt $S; $y++) { for ($x = 0; $x -lt $S; $x++) {
+        if ($mask[$x, $y]) { continue }
+        foreach ($d in @(@(1,0),@(-1,0),@(0,1),@(0,-1))) {
+            $nx = $x + $d[0]; $ny = $y + $d[1]
+            if ($nx -ge 0 -and $ny -ge 0 -and $nx -lt $S -and $ny -lt $S -and $mask[$nx, $ny]) { $bmp.SetPixel($x, $y, $Ink); break }
+        }
+    } }
+}
+$Amber = C '#9A6430'; $NoseLight = C '#4A3A34'; $Tag = C '#E8C35A'
+$Shade = C '#955B31'       # HD shading: a step darker than the coat, never the outline's ink
 
 # One frame. Head: angle (deg, + = down) around the neck base; eye: open|blink|up|focus|wide|sad|joy; mouth: shut|open|tongue;
 # ear: fold|up|back; tail: low|wagA|wagB|up|tuck; legs: stand|walk1..walk4; collar colour; bob: dy of the whole dog.
 function Frame($o) {
-    $bmp = New-Object Drawing.Bitmap $S, $S
-    $g = [Drawing.Graphics]::FromImage($bmp); $g.SmoothingMode = 'None'; $g.PixelOffsetMode = 'Half'
+    $bmp, $g = NewFrame
     $dy = $o.bob
 
     # Legs (far ones first, darker), each: shoulder/hip -> knee -> paw.
@@ -85,48 +120,58 @@ function Frame($o) {
 
     # Near legs on top.
     foreach ($k in 'fn','rn') { Line $g $Body 1.6 (Rot $l[$k] 0 0 0 0 $dy) }
-    $g.Dispose()
 
-    # Pixel details that move with the head.
+    # HD: shading that needs more than one pixel to read (belly line, thigh muscle, a hint of ribs), the inside of the
+    # ear, the mouth line along the muzzle and a small tag on the collar.
     function HP($x, $y) { $p = Rot (Rot @(,@($x, $y)) 0 0 0 0 $dy) $pv $pvy $a; return ,$p[0] }
+    if ($HD) {
+        # Soft shading, a step darker than the coat: the underside of chest and belly, the thigh's curve.
+        Poly $g $Shade (Rot @(@(23.4,17.6),@(22,19.6),@(19,19.6),@(16,17.2),@(13,15.9),@(10,16.4),@(13,15.3),@(16.5,16.4),@(19.5,18.6),@(22,18.6)) 0 0 0 0 $dy)
+        Line $g $Shade 0.6 (Rot @(@(5.8,15.4),@(8.6,15.6),@(10.2,17.4)) 0 0 0 0 $dy)
+        if ($o.ear -eq 'fold') { Line $g $Far 0.6 (Rot (Rot @(@(22.2,5.5),@(20.4,5.4)) 0 0 0 0 $dy) $pv $pvy $a) }
+        $tagAt = Rot (Rot @(,@(23.2, 11)) 0 0 0 0 $dy) $pv $pvy ($a * 0.5)
+        $g.FillEllipse((New-Object Drawing.SolidBrush $Tag), [float]($tagAt[0][0] - 0.55), [float]($tagAt[0][1] - 0.3), [float]1.1, [float]1.1)
+    }
+
+    # Details that move with the head: eye (by mood), nose, tongue; white paws.
     $e = HP 25 6.3
     switch ($o.eye) {
-        'blink' { Px $bmp $Dark $e[0] $e[1]; Px $bmp $Dark ($e[0]-1) $e[1] }
-        'up'    { Px $bmp $Eye $e[0] ($e[1]-0.6); Px $bmp $Dark ($e[0]-1) $e[1] }
-        'focus' { Px $bmp $Eye $e[0] $e[1]; Px $bmp $Dark ($e[0]-1) ($e[1]-0.6) }
-        'wide'  { Px $bmp $Eye $e[0] $e[1]; Px $bmp $Shine $e[0] ($e[1]-1); Px $bmp $Dark ($e[0]-1) $e[1] }
-        'sad'   { Px $bmp $Eye $e[0] $e[1]; Px $bmp $Dark ($e[0]-1) ($e[1]+0.6) }
-        'joy'   { Px $bmp $Dark $e[0] $e[1]; Px $bmp $Dark ($e[0]-1) ($e[1]+0.6); Px $bmp $Dark ($e[0]+1) ($e[1]+0.6) }
-        default { Px $bmp $Eye $e[0] $e[1]; Px $bmp $Dark ($e[0]-1) $e[1]; Px $bmp $Dark ($e[0]+1) ($e[1]-0.7) }
+        'blink' { Px $g $Dark $e[0] $e[1]; Px $g $Dark ($e[0]-1) $e[1] }
+        'up'    { Px $g $Eye $e[0] ($e[1]-0.6); Px $g $Dark ($e[0]-1) $e[1] }
+        'focus' { Px $g $Eye $e[0] $e[1]; Px $g $Dark ($e[0]-1) ($e[1]-0.6) }
+        'wide'  { Px $g $Eye $e[0] $e[1]; if (-not $HD) { Px $g $Shine $e[0] ($e[1]-1) }; Px $g $Dark ($e[0]-1) $e[1] }
+        'sad'   { Px $g $Eye $e[0] $e[1]; Px $g $Dark ($e[0]-1) ($e[1]+0.6) }
+        'joy'   { Px $g $Dark $e[0] $e[1]; Px $g $Dark ($e[0]-1) ($e[1]+0.6); Px $g $Dark ($e[0]+1) ($e[1]+0.6) }
+        default { Px $g $Eye $e[0] $e[1]; Px $g $Dark ($e[0]-1) $e[1]; Px $g $Dark ($e[0]+1) ($e[1]-0.7) }
     }
-    $n = HP 31 8.2; Px $bmp $Nose $n[0] $n[1]
-    if ($o.mouth -eq 'tongue') { $t = HP 27.5 10.6; Px $bmp $Tongue $t[0] $t[1]; Px $bmp $Tongue ($t[0]-1) $t[1] }
-    foreach ($k in 'fn','ff','rn','rf') { $p = $l[$k][-1]; Px $bmp $White $p[0] ($p[1] + $dy) }
+    # HD eye: an amber iris and the light in it, when the eye is open.
+    if ($HD -and $o.eye -in 'open','wide','focus','sad','up') {
+        # The eye's dot is Cell x Cell output pixels: the light in its top-left pixel, amber in the bottom-right one.
+        $ey = if ($o.eye -eq 'up') { $e[1] - 0.6 } else { $e[1] }
+        $bx = [Math]::Floor($e[0] * $Zoom); $by = [Math]::Floor($ey * $Zoom)
+        Fine $g $Amber (($bx + $Cell - 1) / $Zoom) (($by + $Cell - 1) / $Zoom)
+        Fine $g $Shine ($bx / $Zoom) ($by / $Zoom)
+    }
+    $n = HP 31 8.2; Px $g $Nose $n[0] $n[1]
+    if ($HD) { Fine $g $NoseLight ([Math]::Floor($n[0] * $Zoom) / $Zoom) ([Math]::Floor($n[1] * $Zoom) / $Zoom) }
+    if ($o.mouth -eq 'tongue') { $t = HP 27.5 10.6; Px $g $Tongue $t[0] $t[1]; Px $g $Tongue ($t[0]-1) $t[1] }
+    foreach ($k in 'fn','ff','rn','rf') { $p = $l[$k][-1]; Px $g $White $p[0] ($p[1] + $dy) }
 
     # His tail ends white: the last points of the tail and the pixel between them, 2-3 pixels whatever the pose.
     $t1 = $tail[-1]; $t2 = $tail[-2]; $t3 = $tail[-3]
     foreach ($p in @($t1, $t2, @((($t1[0] + $t2[0]) / 2), (($t1[1] + $t2[1]) / 2)), @((($t2[0] * 2 + $t3[0]) / 3), (($t2[1] * 2 + $t3[1]) / 3)))) {
-        Px $bmp $White $p[0] ($p[1] + $dy)
+        Px $g $White $p[0] ($p[1] + $dy)
     }
+    $g.Dispose()
 
-    # Outline: every empty pixel touching the dog becomes ink.
-    $mask = New-Object 'bool[,]' $S, $S
-    for ($y = 0; $y -lt $S; $y++) { for ($x = 0; $x -lt $S; $x++) { $mask[$x, $y] = $bmp.GetPixel($x, $y).A -gt 0 } }
-    for ($y = 0; $y -lt $S; $y++) { for ($x = 0; $x -lt $S; $x++) {
-        if ($mask[$x, $y]) { continue }
-        foreach ($d in @(@(1,0),@(-1,0),@(0,1),@(0,-1))) {
-            $nx = $x + $d[0]; $ny = $y + $d[1]
-            if ($nx -ge 0 -and $ny -ge 0 -and $nx -lt $S -and $ny -lt $S -and $mask[$nx, $ny]) { $bmp.SetPixel($x, $y, $Ink); break }
-        }
-    } }
+    Outline $bmp
     return $bmp
 }
 
 # Lying down, curled up: the body an oval on the ground, the haunch round at the back, the head resting on the front
 # paws stretched forward, eyes closed, the tail wrapped along the bottom with its white tip. $breath lifts the back.
 function RestFrame($collar, $breath) {
-    $bmp = New-Object Drawing.Bitmap $S, $S
-    $g = [Drawing.Graphics]::FromImage($bmp); $g.SmoothingMode = 'None'; $g.PixelOffsetMode = 'Half'
+    $bmp, $g = NewFrame
     $b = New-Object Drawing.SolidBrush $Body
 
     # Front paws stretched forward under the chin (far one first, darker).
@@ -145,23 +190,24 @@ function RestFrame($collar, $breath) {
     # Near front paw, then the tail wrapped along the bottom towards the front.
     Line $g $Body 1.6 @(@(20,28.3),@(28,28.3))
     Line $g $Body 1.2 @(@(4,24),@(4,27),@(7,29.3),@(12,29.6),@(17,29.3))
-    $g.Dispose()
+
+    # HD: the line between belly and paws, the haunch's curve, the inside of the ear, the mouth, the collar's tag.
+    if ($HD) {
+        Line $g $Shade 0.7 @(@(8,(27.8)),@(14,28.3),@(19,27.9))
+        Line $g $Shade 0.6 @(@(5.5,(21.5 - $breath)),@(9,(21 - $breath)),@(12,(23 - $breath)),@(12.5,26))
+        Line $g $Far 0.6 @(@(21.8,17.8),@(20.3,17.7))
+        $g.FillEllipse((New-Object Drawing.SolidBrush $Tag), [float]21.8, [float]21.6, [float]1.1, [float]1.1)
+    }
 
     # Eye closed (a dark dash), nose, white paws and tail tip.
-    Px $bmp $Dark 24.5 19.2; Px $bmp $Dark 25.5 19.2
-    Px $bmp $Nose 31 20.6
-    Px $bmp $White 28.2 28.3; Px $bmp $White 27.2 27.5
-    foreach ($p in @(@(17,29.3),@(16,29.4),@(15,29.5))) { Px $bmp $White $p[0] $p[1] }
+    Px $g $Dark 24.5 19.2; Px $g $Dark 25.5 19.2
+    Px $g $Nose 31 20.6
+    if ($HD) { Fine $g $NoseLight 31 20 }
+    Px $g $White 28.2 28.3; Px $g $White 27.2 27.5
+    foreach ($p in @(@(17,29.3),@(16,29.4),@(15,29.5))) { Px $g $White $p[0] $p[1] }
+    $g.Dispose()
 
-    $mask = New-Object 'bool[,]' $S, $S
-    for ($y = 0; $y -lt $S; $y++) { for ($x = 0; $x -lt $S; $x++) { $mask[$x, $y] = $bmp.GetPixel($x, $y).A -gt 0 } }
-    for ($y = 0; $y -lt $S; $y++) { for ($x = 0; $x -lt $S; $x++) {
-        if ($mask[$x, $y]) { continue }
-        foreach ($d in @(@(1,0),@(-1,0),@(0,1),@(0,-1))) {
-            $nx = $x + $d[0]; $ny = $y + $d[1]
-            if ($nx -ge 0 -and $ny -ge 0 -and $nx -lt $S -and $ny -lt $S -and $mask[$nx, $ny]) { $bmp.SetPixel($x, $y, $Ink); break }
-        }
-    } }
+    Outline $bmp
     return $bmp
 }
 
@@ -193,8 +239,8 @@ foreach ($mode in @(@{ prefix = ''; collar = (C '#7FD1AE') }, @{ prefix = 'claud
 }
 
 if ($Preview) {
-    # Every strip at 4x on a light and a dark band, one row per strip.
-    $z = 4; $rows = $strips.Count; $w = 12 * $S * $z + 160
+    # Every strip on a light and a dark band, one row per strip, at the same size whatever -Size (128 px a frame).
+    $z = 128 / $S; $rows = $strips.Count; $w = 12 * 128 + 160
     $sheet = New-Object Drawing.Bitmap $w, ($rows * ($S * $z + 8))
     $g = [Drawing.Graphics]::FromImage($sheet); $g.InterpolationMode = 'NearestNeighbor'; $g.PixelOffsetMode = 'Half'
     $g.Clear((C '#F4F2EE')); $font = New-Object Drawing.Font 'Segoe UI', 11
