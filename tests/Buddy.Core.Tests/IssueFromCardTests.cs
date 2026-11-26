@@ -39,6 +39,22 @@ public class IssueFromCardTests
     }
 
     [Test]
+    public void Cards_imported_from_jira_and_azure_keep_a_link_to_their_card()
+    {
+        var jira = IssueFromCard.LinkOf(Item("- [ ] ABC-12 · Export\n  - Contesto: [ABC-12](https://acme.atlassian.net/browse/ABC-12) — il CSV è vuoto"));
+        Assert.That(jira, Is.EqualTo("https://acme.atlassian.net/browse/ABC-12"));
+        Assert.That(IssueFromCard.Label(jira!), Is.EqualTo("Jira ABC-12"));
+        Assert.That(IssueFromCard.Source(jira!), Is.EqualTo("Jira"));
+
+        var azure = IssueFromCard.LinkOf(Item("- [ ] 345 · Login\n  - Contesto: [345](https://dev.azure.com/org/Progetto%20X/_workitems/edit/345)"));
+        Assert.That(azure, Is.EqualTo("https://dev.azure.com/org/Progetto%20X/_workitems/edit/345"));
+        Assert.That(IssueFromCard.Label(azure!), Is.EqualTo("Azure #345"));
+
+        Assert.That(IssueFromCard.Label("https://github.com/o/r/issues/7"), Is.EqualTo("Issue #7"));
+        Assert.That(IssueFromCard.Source("https://github.com/o/r/issues/7"), Is.EqualTo("GitHub"));
+    }
+
+    [Test]
     public void The_link_is_read_from_what_gh_prints()
     {
         Assert.That(IssueFromCard.UrlOf("Creating issue in o/r\n\nhttps://github.com/o/r/issues/31\n"), Is.EqualTo("https://github.com/o/r/issues/31"));

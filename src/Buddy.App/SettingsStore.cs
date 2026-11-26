@@ -103,6 +103,44 @@ public static class SettingsStore
         set => SetFlag("notes-list-collapsed", value);
     }
 
+    /// <summary>The width of the board's chat panel, as last dragged (a small file with the number; null until then).</summary>
+    public static double? BoardChatWidth
+    {
+        get
+        {
+            try
+            {
+                var path = Path.Combine(Folder, "board-chat-width");
+                return File.Exists(path) && double.TryParse(File.ReadAllText(path), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var width) ? width : null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+        set
+        {
+            try
+            {
+                var path = Path.Combine(Folder, "board-chat-width");
+                if (value is { } width)
+                {
+                    Directory.CreateDirectory(Folder);
+                    File.WriteAllText(path, Math.Round(width).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+                else
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A convenience: losing it is harmless.
+            }
+        }
+    }
+
     /// <summary>Whether a group of pages in the project window's side bar is folded (a marker file per group).</summary>
     public static bool NavGroupClosed(string group) => GetFlag("nav-closed-" + group);
 

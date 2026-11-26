@@ -161,6 +161,7 @@ public partial class ChatView : UserControl
         UpdatePlaceholder();
         UpdatePinned();
         UpdateWorking();
+        UpdateEmptyState();
         MicButton.IsVisible = settings.Voice.Enabled;
     }
 
@@ -350,6 +351,7 @@ public partial class ChatView : UserControl
     {
         var answering = _conversation.IsAnswering;
         WorkingStrip.IsVisible = answering;
+        WorkingBar.IsVisible = answering;
         if (!answering)
         {
             _workingTimer.Stop();
@@ -370,10 +372,46 @@ public partial class ChatView : UserControl
 
     private async void OnStopClick(object? sender, RoutedEventArgs e) => await _conversation.StopAsync();
 
-    private async void OnNewConversationClick(object? sender, RoutedEventArgs e)
+    private async Task NewConversationAsync()
     {
         await _conversation.SendAsync("/nuova");
         Input.Focus();
+    }
+
+    /// <summary>An empty chat shows the buddy and a few ways to start (see <see cref="OnStarterClick"/>).</summary>
+    private void UpdateEmptyState() => EmptyState.IsVisible = _conversation.VisibleEntries.Count == 0;
+
+    private async void OnStarterClick(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.Tag is string command)
+        {
+            await _conversation.SendAsync(command);
+            Input.Focus();
+        }
+    }
+
+    /// <summary>
+    /// The "⋯" menu: a new conversation, the saved ones (newest first; picking one reopens it and Claude resumes its
+    /// session) and search in the chat.
+    /// </summary>
+    private void OnMoreClick(object? sender, RoutedEventArgs e)
+    {
+        var fresh = new MenuItem { Header = "Nuova conversazione", Icon = Icons.Of("IconNewChat", size: 13) };
+        ToolTip.SetTip(fresh, "/nuova: quella attuale resta salvata");
+        fresh.Click += async (_, _) => await NewConversationAsync();
+
+        var history = new MenuItem { Header = "Conversazioni precedenti", Icon = Icons.Of("IconHistory", size: 13), ItemsSource = HistoryItems() };
+        var search = new MenuItem { Header = "Cerca nella chat", Icon = Icons.Of("IconSearch", size: 13), InputGesture = new KeyGesture(Key.F, KeyModifiers.Control) };
+        search.Click += (_, _) => OpenSearch();
+
+        var menu = new ContextMenu
+        {
+            ItemsSource = new Control[] { fresh, history, search },
+            Placement = Avalonia.Controls.PlacementMode.BottomEdgeAlignedRight,
+            PlacementTarget = MoreButton,
+        };
+        MoreButton.ContextMenu = menu;
+        menu.Open(MoreButton);
     }
 
     /// <summary>Copies an answer's markdown; the button shows a tick for a moment.</summary>
@@ -527,6 +565,7 @@ public partial class ChatView : UserControl
         }
 
         var text = Input.Text ?? "";
+        SendButton.IsEnabled = text.Trim().Length > 0;
         _skills ??= Buddy.Core.Claude.ClaudeSkills.Installed(_settings);
         var matches = text.StartsWith('/') && !text.Contains(' ') && !text.Contains('\n')
             ? _conversation.Commands.Matching(text, _skills, templates: _conversation.Templates)
@@ -763,7 +802,7 @@ public partial class ChatView : UserControl
     {
         var attachment = _conversation.PendingAttachment;
         AttachmentPanel.IsVisible = attachment is not null;
-        AttachmentText.Text = attachment is null ? "" : $"📎 {attachment.Preview}";
+        AttachmentText.Text = attachment?.Preview ?? "";
         AttachmentImages.ItemsSource = attachment?.Images;
         AttachmentImages.IsVisible = attachment?.Images.Count > 0;
     }
@@ -921,6 +960,8 @@ public partial class ChatView : UserControl
             return; // the other chat: the ☕ button counts what is new there
         }
 
+        UpdateEmptyState();
+
         if (e.Action is NotifyCollectionChangedAction.Reset or NotifyCollectionChangedAction.Remove || e.NewItems?.OfType<ChatEntry>().Any(n => n.IsPinned) == true)
         {
             UpdatePinned(); // a conversation reopened, or cleared
@@ -966,6 +1007,7 @@ public partial class ChatView : UserControl
                 break;
             case nameof(Conversation.ShowingSide):
                 EntriesList.ItemsSource = _conversation.VisibleEntries;
+                UpdateEmptyState();
                 UpdateSideButton();
                 UpdateModeText();
                 UpdatePlaceholder();
@@ -1007,7 +1049,7 @@ public partial class ChatView : UserControl
     private void UpdateModeText()
     {
         var claude = _conversation.Mode == ChatMode.Claude;
-        var name = string.IsNullOrWhiteSpace(_settings.Appearance.Name) ? "Buddy" : _settings.Appearance.Name;
+        var name = string.IsNullOrWhiteSpace(_settings.Appearance.Name) ? "Bruce" : _settings.Appearance.Name;
         // Claude or local is said by the dot's colour and the model button: the name alone leaves them room.
         ModeText.Text = _conversation.ShowingSide ? $"{name} · Chiacchiere" : name;
         ToolTip.SetTip(ModeText, _conversation.ShowingSide ? "Chat del mentore" : claude ? "Stai parlando con Claude" : "Stai parlando con il modello locale");
@@ -1121,8 +1163,8 @@ public partial class ChatView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>The saved conversations, newest first; picking one reopens it (Claude resumes its session).</summary>
-    private void OnHistoryClick(object? sender, RoutedEventArgs e)
+    /// <summary>The saved conversations, newest first, and their folder: the submenu of "⋯".</summary>
+    private List<Control> HistoryItems()
     {
         var saved = _conversation.Archive?.List() ?? [];
         var items = new List<Control>();
@@ -1158,14 +1200,7 @@ public partial class ChatView : UserControl
             items.Add(folder);
         }
 
-        var menu = new ContextMenu
-        {
-            ItemsSource = items,
-            Placement = Avalonia.Controls.PlacementMode.BottomEdgeAlignedRight,
-            PlacementTarget = HistoryButton,
-        };
-        HistoryButton.ContextMenu = menu;
-        menu.Open(HistoryButton);
+        return items;
     }
 
     /// <summary>
@@ -1256,6 +1291,18 @@ public partial class ChatView : UserControl
             return;
         }
 
+        await SendInputAsync();
+    }
+
+    private async void OnSendClick(object? sender, RoutedEventArgs e)
+    {
+        Input.Focus();
+        await SendInputAsync();
+    }
+
+    /// <summary>Sends what is typed (Enter or the send button): kept in the history, the box emptied.</summary>
+    private async Task SendInputAsync()
+    {
         var message = Input.Text ?? "";
         if (message.Trim().Length > 0 && (Sent.Count == 0 || Sent[^1] != message.Trim()))
         {

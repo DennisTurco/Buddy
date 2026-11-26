@@ -136,6 +136,14 @@ public sealed class ColumnView(BoardColumn column, IReadOnlyList<CardView> cards
 
     public bool HasActions => Actions.Count > 0 && Column.Items.Count > 0;
 
+    /// <summary>
+    /// "14 da rivedere" in the column's head: the review dates that have passed, said once for the column instead of a
+    /// red badge on every card.
+    /// </summary>
+    public string OverdueText => Cards.Count(c => c.IsOverdue) is > 0 and var n ? $"{n} da rivedere" : "";
+
+    public bool HasOverdue => OverdueText.Length > 0;
+
     private static string EmptyFor(string key) => key switch
     {
         "appunti" => "Inbox vuota ✨",
@@ -161,7 +169,9 @@ public sealed class CardView : INotifyPropertyChanged
         Column = column;
         Accent = Flow.Accent(column.Key);
         PullRequest = pullRequest;
-        var chips = BuildChips(item, today);
+        _today = today;
+        IsOverdue = item.Due is not null && item.IsDue(today) && !item.Done && !item.Rejected;
+        var chips = BuildChips(item, today, column.Key);
         if (pullRequest is { } pr)
         {
             chips.Insert(0, new Chip(
@@ -194,6 +204,19 @@ public sealed class CardView : INotifyPropertyChanged
 
     public bool HasId => Item.Id is not null;
 
+    /// <summary>The tracker card it was imported from (or the issue made from it): GitHub, Jira, Azure Boards.</summary>
+    public string? SourceLink => _sourceLink ??= Buddy.Core.Tracker.IssueFromCard.LinkOf(Item) ?? "";
+
+    private string? _sourceLink;
+
+    public bool HasSourceLink => SourceLink is { Length: > 0 };
+
+    /// <summary>"Jira", "GitHub", "Azure": the label of the tile's link button.</summary>
+    public string SourceName => HasSourceLink ? Buddy.Core.Tracker.IssueFromCard.Source(SourceLink!) : "";
+
+    /// <summary>"Apri Jira ABC-12 · https://…": the button's tooltip.</summary>
+    public string SourceTip => HasSourceLink ? $"Apri {Buddy.Core.Tracker.IssueFromCard.Label(SourceLink!)} · {SourceLink}" : "";
+
     /// <summary>The item's tags ([tag:: bug] or [tag:: bug, ui]), shown as coloured labels next to the id.</summary>
     public IReadOnlyList<TagOption> TagChips => Item.TagList.Select(t => new TagOption(t, Tags.Brush(t), false)).ToList();
 
@@ -209,7 +232,27 @@ public sealed class CardView : INotifyPropertyChanged
 
     public bool IsClosed => Item.Done || Item.Rejected;
 
-    public string DateText => Item.Date is { } date ? date.ToString("d MMM yyyy", Culture) : "";
+    private readonly DateOnly _today;
+
+    /// <summary>Its date (review, deadline) has passed: counted in the column's head (see <see cref="ColumnView.OverdueText"/>).</summary>
+    public bool IsOverdue { get; }
+
+    /// <summary>"15 ott": the year only when it is not this one (the full date is in <see cref="DateTip"/>).</summary>
+    public string DateText => Item.Date is { } date
+        ? date.ToString(date.Year == _today.Year ? "d MMM" : "d MMM yyyy", Culture)
+        : "";
+
+    /// <summary>"scritta mercoledì 15 ottobre 2026 · 6 settimane fa": the date's tooltip.</summary>
+    public string? DateTip => Item.Date is { } date ? $"scritta {date.ToString("dddd d MMMM yyyy", Culture)} · {Ago(date, _today)}" : null;
+
+    internal static string Ago(DateOnly date, DateOnly today) => (today.DayNumber - date.DayNumber) switch
+    {
+        <= 0 => "oggi",
+        1 => "ieri",
+        < 14 and var d => $"{d} giorni fa",
+        < 60 and var d => $"{d / 7} settimane fa",
+        var d => $"{d / 30} mesi fa",
+    };
 
     public string? Note => Item.Note;
 
@@ -258,7 +301,7 @@ public sealed class CardView : INotifyPropertyChanged
     public bool SameAs(CardView other) =>
         Column.Key == other.Column.Key && (Item.Raw == other.Item.Raw || (Id is not null && Id == other.Id));
 
-    private static List<Chip> BuildChips(BoardItem item, DateOnly today)
+    private static List<Chip> BuildChips(BoardItem item, DateOnly today, string columnKey)
     {
         var chips = new List<Chip>();
         if (item.Field("priorita", "priority") is { } priority)
@@ -268,8 +311,10 @@ public sealed class CardView : INotifyPropertyChanged
 
         if (item.Due is { } due)
         {
+            // A passed review date of an idea (Da valutare) is a nudge, amber; red stays for real deadlines.
             var late = item.IsDue(today) && !item.Done && !item.Rejected;
-            chips.Add(new Chip($"{(late ? "⏰" : "📅")} {item.DueLabel} {due.ToString("d MMM", Culture)}", late ? ChipKind.Hot : ChipKind.Plain));
+            var kind = !late ? ChipKind.Plain : columnKey == "valutare" ? ChipKind.Warm : ChipKind.Hot;
+            chips.Add(new Chip($"{(late ? "⏰" : "📅")} {item.DueLabel} {due.ToString("d MMM", Culture)}", kind));
         }
 
         if (item.Field(Buddy.Core.Vault.Reminders.Field) is { } remind && DateOnly.TryParse(remind, CultureInfo.InvariantCulture, out var remindOn))
@@ -571,6 +616,9 @@ public sealed record WeekView(string Label, int Added, int Closed, double AddedH
 {
     public string Tip => $"Settimana del {Label}: {Added} voci nuove, {Closed} task chiusi";
 
+    /// <summary>"5 · 2": new and closed, over the bars under the pointer.</summary>
+    public string ValueText => $"{Added} · {Closed}";
+
     public bool HasAdded => Added > 0;
 
     public bool HasClosed => Closed > 0;
@@ -788,6 +836,9 @@ public static class Tags
 public sealed record TagOption(string Name, IBrush Brush, bool IsSelected, int Count = 0)
 {
     public string Label => Count > 0 ? $"{Name} {Count}" : Name;
+
+    /// <summary>The tag's colour at 20%: the label's background, with the name in the full colour (like GitHub's labels).</summary>
+    public IBrush Tint => Brush is ISolidColorBrush solid ? new SolidColorBrush(solid.Color, 0.2) : Brush;
 }
 
 /// <summary>

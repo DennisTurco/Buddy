@@ -43,7 +43,16 @@
                     <!-- ID on the left, the date it was written on the right: the card's quiet first line. -->
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Right" Text="{Binding DateText}" Classes="muted" FontSize="{x:Static app:TextSize.Caption}"
-                                   VerticalAlignment="Center" Margin="8,0,0,0" />
+                                   VerticalAlignment="Center" Margin="8,0,0,0" ToolTip.Tip="{Binding DateTip}" />
+                        <!-- Imported from a tracker: straight to the card there (Jira, GitHub, Azure), without opening the panel. -->
+                        <Button DockPanel.Dock="Right" Classes="sourcelink" IsVisible="{Binding HasSourceLink}" Click="OnCardSourceClick"
+                                ToolTip.Tip="{Binding SourceTip}" Cursor="Hand" Padding="5,0" MinHeight="0" Margin="6,0,0,0"
+                                Background="Transparent" BorderThickness="0" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="3">
+                                <chat:LineIcon Data="{StaticResource IconExternal}" Size="11" Foreground="{DynamicResource LinkInk}" />
+                                <TextBlock Text="{Binding SourceName}" FontSize="{x:Static app:TextSize.Caption}" Foreground="{DynamicResource LinkInk}" />
+                            </StackPanel>
+                        </Button>
                         <TextBlock Text="{Binding Id}" Classes="id" Foreground="{Binding Accent}" IsVisible="{Binding HasId}"
                                    TextTrimming="CharacterEllipsis" />
                     </DockPanel>
@@ -62,8 +71,8 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="p:TagOption">
-                                <Border Classes="tag" Background="{Binding Brush}">
-                                    <TextBlock Text="{Binding Name}" />
+                                <Border Classes="tag" Background="{Binding Tint}">
+                                    <TextBlock Text="{Binding Name}" Foreground="{Binding Brush}" />
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -127,20 +136,27 @@
             <Setter Property="Margin" Value="0,5,4,0" />
             <Setter Property="Background" Value="{DynamicResource UserBubble}" />
         </Style>
+        <!-- Coloured chips as tints: the colour at ~20% behind, the text in the colour (readable on light and dark). -->
         <Style Selector="Border.chip.good">
-            <Setter Property="Background" Value="#2E5B44" />
+            <Setter Property="Background" Value="#335FBF77" />
         </Style>
         <Style Selector="Border.chip.warm">
-            <Setter Property="Background" Value="#F2B544" />
+            <Setter Property="Background" Value="#33F2B544" />
         </Style>
         <Style Selector="Border.chip.hot">
-            <Setter Property="Background" Value="#E57373" />
-        </Style>
-        <Style Selector="Border.chip.warm TextBlock, Border.chip.hot TextBlock">
-            <Setter Property="Foreground" Value="#1F1C2C" />
+            <Setter Property="Background" Value="#38E57373" />
         </Style>
         <Style Selector="Border.chip.good TextBlock">
-            <Setter Property="Foreground" Value="#E3F6EC" />
+            <Setter Property="Foreground" Value="#4CAF6A" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.chip.warm TextBlock">
+            <Setter Property="Foreground" Value="#D99A2B" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.chip.hot TextBlock">
+            <Setter Property="Foreground" Value="#E05A5A" />
+            <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
         <!-- Cards -->
@@ -386,7 +402,6 @@
         <Style Selector="Border.tag TextBlock">
             <Setter Property="FontSize" Value="{x:Static app:TextSize.Caption}" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="#1F1C2C" />
         </Style>
         <Style Selector="Button.tagfilter, Button.tagpick">
             <Setter Property="Background" Value="{DynamicResource InputBack}" />
@@ -420,6 +435,26 @@
         </Style>
         <Style Selector="Border.column">
             <Setter Property="Width" Value="{DynamicResource ColumnWidth}" />
+        </Style>
+        <!-- A week of the chart: lit up with its numbers under the pointer. -->
+        <Style Selector="Border.week">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="2,0" />
+        </Style>
+        <Style Selector="Border.week:pointerover">
+            <Setter Property="Background" Value="{DynamicResource UserBubble}" />
+        </Style>
+        <Style Selector="Border.week TextBlock.weekvalue">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Border.week:pointerover TextBlock.weekvalue">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <!-- The chat's left edge: a line in the accent under the pointer, to show it can be dragged. -->
+        <Style Selector="Border.resizer:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ClaudeAccent}" />
+            <Setter Property="Opacity" Value="0.6" />
         </Style>
         <Style Selector="Border.column.empty">
             <Setter Property="Width" Value="{DynamicResource EmptyColumnWidth}" />
@@ -490,32 +525,15 @@
                     <TextBox x:Name="QuickNote" PlaceholderText="✍ Scrivi e premi Invio (Ctrl+N)" TextWrapping="Wrap" MaxHeight="120"
                              KeyDown="OnQuickNoteKeyDown" />
                     <TextBlock x:Name="QuickNoteDone" Classes="muted" FontSize="{x:Static app:TextSize.Small}" Margin="4,0,0,0" IsVisible="False" Text="✓ Aggiunto agli appunti" />
-                    <Grid ColumnDefinitions="*,6,*,6,Auto" Margin="0,6,0,0">
+                    <!-- Obsidian in sight; the vault's folder, reread, bug, feature and donations in "⋯". -->
+                    <Grid ColumnDefinitions="*,6,Auto" Margin="0,6,0,0">
                         <Button Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Content="Obsidian" Click="OnOpenVaultClick" ToolTip.Tip="Apri il vault in Obsidian" />
-                        <Button x:Name="OpenVaultFolderButton" Grid.Column="2" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Content="Cartella" Click="OnOpenVaultFolderClick" ToolTip.Tip="Apri la cartella del vault in Esplora file" />
-                        <Button Grid.Column="4" Classes="small" Click="OnRefreshClick"
-                                ToolTip.Tip="Rileggi le note (si aggiorna anche da sola)">
-                            <chat:IconLabel Label="⟳" />
+                                Click="OnOpenVaultClick" ToolTip.Tip="Apri il vault in Obsidian">
+                            <chat:IconLabel Label="📖 Apri in Obsidian" />
                         </Button>
-                    </Grid>
-                    <!-- Feedback: a new GitHub issue (on Buddy or on the project) and donations. -->
-                    <Grid ColumnDefinitions="*,4,*,4,*" Margin="0,4,0,0">
-                        <Button x:Name="BugButton" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Click="OnReportClick" Tag="bug"
-                                ToolTip.Tip="Segnala un bug: apre una issue su GitHub, su Buddy o sul progetto">
-                            <chat:IconLabel Label="🐞 Bug" />
-                        </Button>
-                        <Button Grid.Column="2" x:Name="FeatureButton" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Click="OnReportClick" Tag="feature"
-                                ToolTip.Tip="Chiedi una funzionalità: apre una issue su GitHub, su Buddy o sul progetto">
-                            <chat:IconLabel Label="✨ Idea" />
-                        </Button>
-                        <Button Grid.Column="4" Classes="small" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                Click="OnDonateClick"
-                                ToolTip.Tip="Sostieni Buddy con una donazione su PayPal">
-                            <chat:IconLabel Label="❤ Dona" />
+                        <Button x:Name="SideMoreButton" Grid.Column="2" Classes="small" Click="OnSideMoreClick"
+                                ToolTip.Tip="Cartella del vault, rileggi le note, segnala un bug, chiedi una funzionalità, dona">
+                            <chat:LineIcon Data="{StaticResource IconMore}" Size="16" />
                         </Button>
                     </Grid>
                 </StackPanel>
@@ -584,22 +602,23 @@
                         ToolTip.Tip="La chat con il buddy, la stessa della nuvoletta, qui accanto (Ctrl+J)">
                     <chat:IconLabel Label="💬 Chat" />
                 </Button>
-                <!-- Ctrl+K, always in sight: looks like a search box, opens the palette (notes, tasks, people, pages, commands). -->
-                <Button x:Name="PaletteOpener" DockPanel.Dock="Right" Width="230" Margin="8,0,0,0" VerticalAlignment="Center"
-                        HorizontalContentAlignment="Stretch" Padding="10,5" Click="OnPaletteOpenerClick"
-                        Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource Frame}" BorderThickness="1" CornerRadius="6"
-                        ToolTip.Tip="Trova qualsiasi cosa: note, task, persone, pagine, conversazioni, comandi (Ctrl+K)">
-                    <DockPanel>
-                        <Border DockPanel.Dock="Right" Padding="5,1" CornerRadius="4" BorderThickness="1"
-                                BorderBrush="{DynamicResource Frame}" VerticalAlignment="Center">
-                            <TextBlock Text="Ctrl+K" FontSize="{x:Static app:TextSize.Small}" Classes="muted" />
-                        </Border>
-                        <TextBlock Text="🔎 Cerca ovunque…" Classes="muted" VerticalAlignment="Center" />
-                    </DockPanel>
-                </Button>
-                <TextBox x:Name="Filter" DockPanel.Dock="Right" Width="280" VerticalAlignment="Center"
-                         PlaceholderText="🔍 Cerca ID, titolo, testo… (Ctrl+F)"
-                         ToolTip.Tip="Filtra le liste. Con una nota o una checklist aperta Ctrl+F cerca nella pagina; Ctrl+Shift+F torna qui" />
+                <!-- One search box. Typing filters this page (Ctrl+F); the key on its right (Ctrl+K) searches everywhere:
+                     notes, tasks, people, pages, conversations, commands. -->
+                <TextBox x:Name="Filter" DockPanel.Dock="Right" Width="340" VerticalAlignment="Center"
+                         PlaceholderText="Filtra la pagina… (Ctrl+F)"
+                         ToolTip.Tip="Filtra le liste. Con una nota o una checklist aperta Ctrl+F cerca nella pagina; Ctrl+Shift+F torna qui">
+                    <TextBox.InnerLeftContent>
+                        <chat:LineIcon Data="{StaticResource IconSearch}" Size="14" Margin="8,0,0,0" Foreground="{DynamicResource Muted}" />
+                    </TextBox.InnerLeftContent>
+                    <TextBox.InnerRightContent>
+                        <Button x:Name="PaletteOpener" Classes="link" Margin="0,0,6,0" VerticalAlignment="Center" Click="OnPaletteOpenerClick"
+                                ToolTip.Tip="Cerca ovunque: note, task, persone, pagine, conversazioni, comandi (Ctrl+K)">
+                            <Border Padding="5,1" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Divider}">
+                                <TextBlock Text="Ctrl+K · ovunque" FontSize="{x:Static app:TextSize.Caption}" Classes="muted" />
+                            </Border>
+                        </Button>
+                    </TextBox.InnerRightContent>
+                </TextBox>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock x:Name="ViewTitle" FontSize="{x:Static app:TextSize.Title}" FontWeight="Bold" />
                     <TextBlock x:Name="ViewSubtitle" Classes="muted" FontSize="{x:Static app:TextSize.Body}" Margin="0,2,16,0" TextTrimming="CharacterEllipsis" />
@@ -674,22 +693,31 @@
                                         </StackPanel>
                                         <chat:IconLabel Classes="section" Label="📈 Ultime 8 settimane" />
                                     </DockPanel>
-                                    <ItemsControl x:Name="WeeksChart" Height="118">
+                                    <ItemsControl x:Name="WeeksChart" Height="134">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <UniformGrid Rows="1" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
+                                            <!-- Under the pointer a week lights up and shows its numbers; a baseline joins the weeks,
+                                                 so an empty one reads as zero instead of a gap. -->
                                             <DataTemplate x:DataType="p:WeekView">
-                                                <DockPanel Background="Transparent" ToolTip.Tip="{Binding Tip}">
-                                                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding Label}" FontSize="{x:Static app:TextSize.Caption}" Classes="muted"
-                                                               Classes.current="{Binding IsCurrent}" HorizontalAlignment="Center" Margin="0,4,0,0" />
-                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Spacing="2">
-                                                        <Border Width="9" Height="{Binding AddedHeight}" CornerRadius="3,3,0,0" Background="#B99BF5" VerticalAlignment="Bottom" />
-                                                        <Border Width="9" Height="{Binding ClosedHeight}" CornerRadius="3,3,0,0" Background="#5FBF77" VerticalAlignment="Bottom" />
-                                                    </StackPanel>
-                                                </DockPanel>
+                                                <Border Classes="week" ToolTip.Tip="{Binding Tip}">
+                                                    <DockPanel>
+                                                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Label}" FontSize="{x:Static app:TextSize.Caption}" Classes="muted"
+                                                                   Classes.current="{Binding IsCurrent}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                                                        <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource Divider}" />
+                                                        <StackPanel VerticalAlignment="Bottom" Spacing="3">
+                                                            <TextBlock Classes="weekvalue" Text="{Binding ValueText}" HorizontalAlignment="Center"
+                                                                       FontSize="{x:Static app:TextSize.Caption}" FontWeight="SemiBold" />
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="2">
+                                                                <Border Width="11" Height="{Binding AddedHeight}" CornerRadius="3,3,0,0" Background="#B99BF5" VerticalAlignment="Bottom" />
+                                                                <Border Width="11" Height="{Binding ClosedHeight}" CornerRadius="3,3,0,0" Background="#5FBF77" VerticalAlignment="Bottom" />
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                </Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -717,7 +745,8 @@
                             </Border>
 
                             <StackPanel Grid.Column="2" Spacing="16">
-                                <Border x:Name="StatusPanel" Classes="panel" Background="{DynamicResource MentorBubble}"
+                                <!-- A panel like the others, the mentor's amber only on its edge: a note to read, not an alarm. -->
+                                <Border x:Name="StatusPanel" Classes="panel"
                                         BorderBrush="{DynamicResource MentorAccent}" BorderThickness="3,0,0,0">
                                     <StackPanel>
                                         <Button Classes="link" Click="OnStatusTitleClick" ToolTip.Tip="Apri la nota">
@@ -903,6 +932,12 @@
                                             </StackPanel>
                                         </Button>
                                     </DockPanel>
+                                    <!-- Dates passed in this column, said once here instead of on every card. -->
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="5" Margin="6,-4,4,8" IsVisible="{Binding HasOverdue}">
+                                        <chat:LineIcon Data="{StaticResource IconBell}" Size="12" Foreground="{DynamicResource Warning}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding OverdueText}" Foreground="{DynamicResource Warning}" FontSize="{x:Static app:TextSize.Small}"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    </StackPanel>
                                     <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}" Margin="2,0,0,4">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -1427,8 +1462,12 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <TextBox x:Name="PageFindBox" Width="220" PlaceholderText="Cerca nella nota…" VerticalAlignment="Center" />
                         <TextBlock x:Name="PageFindCount" MinWidth="40" VerticalAlignment="Center" Classes="muted" FontSize="{x:Static app:TextSize.Body}" />
-                        <Button Classes="small" Content="↑" Click="OnPageFindPreviousClick" ToolTip.Tip="Precedente (Shift+Invio)" />
-                        <Button Classes="small" Content="↓" Click="OnPageFindNextClick" ToolTip.Tip="Successivo (Invio)" />
+                        <Button Classes="small" Click="OnPageFindPreviousClick" ToolTip.Tip="Precedente (Shift+Invio)">
+                            <chat:IconLabel Label="↑" />
+                        </Button>
+                        <Button Classes="small" Click="OnPageFindNextClick" ToolTip.Tip="Successivo (Invio)">
+                            <chat:IconLabel Label="↓" />
+                        </Button>
                         <Button Classes="small" Click="OnPageFindCloseClick" ToolTip.Tip="Chiudi (Esc)">
                             <chat:IconLabel Label="✕" />
                         </Button>
@@ -1602,16 +1641,26 @@
 
         <!-- ============ Chat ============ -->
         <!-- The buddy's chat: the same ChatView as the bubble, on the same conversation (messages, side chat ☕, state). -->
+        <!-- Its left edge drags to make it wider or narrower (the width is remembered); ⤢ widens it to most of the window. -->
         <Border x:Name="ChatPanel" Grid.Column="3" Width="420" IsVisible="False" Background="{DynamicResource Paper}"
                 BorderBrush="{DynamicResource UserBubble}" BorderThickness="1,0,0,0">
-            <chat:ChatView x:Name="Chat" Margin="12,14,12,10">
-                <chat:ChatView.HeaderButtons>
-                    <Button Classes="link" Width="24" Height="22" HorizontalContentAlignment="Center"
-                            Click="OnCloseChatClick" ToolTip.Tip="Chiudi la chat (Esc; Ctrl+J la riapre)">
-                        <chat:LineIcon Data="{StaticResource IconClose}" />
-                    </Button>
-                </chat:ChatView.HeaderButtons>
-            </chat:ChatView>
+            <Panel>
+                <chat:ChatView x:Name="Chat" Margin="12,14,12,10">
+                    <chat:ChatView.HeaderButtons>
+                        <Button x:Name="ChatWidenButton" Classes="link" Width="24" Height="22" HorizontalContentAlignment="Center"
+                                Click="OnWidenChatClick" ToolTip.Tip="Allarga la chat (o riportala com'era)">
+                            <chat:LineIcon x:Name="ChatWidenIcon" Data="{StaticResource IconMaximize}" />
+                        </Button>
+                        <Button Classes="link" Width="24" Height="22" HorizontalContentAlignment="Center"
+                                Click="OnCloseChatClick" ToolTip.Tip="Chiudi la chat (Esc; Ctrl+J la riapre)">
+                            <chat:LineIcon Data="{StaticResource IconClose}" />
+                        </Button>
+                    </chat:ChatView.HeaderButtons>
+                </chat:ChatView>
+                <Border x:Name="ChatResizer" Classes="resizer" Width="6" HorizontalAlignment="Left" Background="Transparent"
+                        Cursor="SizeWestEast" ToolTip.Tip="Trascina per allargare o stringere la chat"
+                        PointerPressed="OnChatResizePressed" PointerMoved="OnChatResizeMoved" PointerReleased="OnChatResizeReleased" />
+            </Panel>
         </Border>
     </Grid>
 </Window>

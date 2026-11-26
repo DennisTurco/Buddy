@@ -172,6 +172,33 @@ public class UiTests
     }
 
     [AvaloniaTest]
+    public async Task Copying_wrapped_lines_and_a_list_keeps_each_line_once_with_its_number()
+    {
+        var view = new MarkdownView { Markdown = "Ora il parametro 33 è già andato avanti e le fatture utenze della luce sono state saltate, il log diceva `TipiServizio [G]` e così via.\n\n1. rimettere a 0 solo il 33 (il 32 e il 34 non sono filtrati per tipo servizio, quindi li lascerei come sono);\n2. rilanciare il task 24 e controllare che le fatture in `FattureInAttesaUtenze` scendano;\n\nPrima di procedere volevo il tuo ok: ti torna, o c'è qualcosa che mi sfugge?" };
+        var window = new Window { Content = view, Width = 300, Height = 800 };
+        window.Show();
+        await SettleAsync();
+
+        var blocks = view.GetLogicalDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>().ToList();
+        var start = blocks.First().TranslatePoint(new Point(0, 2), window)!.Value;
+        var last = blocks.Last();
+        var end = last.TranslatePoint(new Point(last.Bounds.Width - 1, last.Bounds.Height - 2), window)!.Value;
+        window.MouseDown(start, MouseButton.Left);
+        window.MouseMove(end);
+        window.MouseUp(end, MouseButton.Left);
+        await SettleAsync();
+        window.KeyPressQwerty(PhysicalKey.C, RawInputModifiers.Control);
+        await SettleAsync();
+
+        var copied = await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(window.Clipboard!);
+        Assert.That(copied, Is.EqualTo(
+            "Ora il parametro 33 è già andato avanti e le fatture utenze della luce sono state saltate, il log diceva TipiServizio [G] e così via.\n"
+            + "1. rimettere a 0 solo il 33 (il 32 e il 34 non sono filtrati per tipo servizio, quindi li lascerei come sono);\n"
+            + "2. rilanciare il task 24 e controllare che le fatture in FattureInAttesaUtenze scendano;\n"
+            + "Prima di procedere volevo il tuo ok: ti torna, o c'è qualcosa che mi sfugge?"));
+    }
+
+    [AvaloniaTest]
     public async Task The_settings_tables_switch_rules_and_commands_on_and_off()
     {
         var current = new BuddySettings
@@ -217,6 +244,78 @@ public class UiTests
         Assert.That(MarkdownView.SplitBoldAroundCode("**a `b` c**"), Is.EqualTo("**a** `b` **c**"));
         Assert.That(MarkdownView.SplitBoldAroundCode("**solo** e `code`"), Is.EqualTo("**solo** e `code`"));
         Assert.That(MarkdownView.SplitBoldAroundCode("```\n**a `b`**\n```"), Is.EqualTo("```\n**a `b`**\n```"));
+    }
+
+    [Test]
+    public void Quotes_are_read_back_as_markdown_without_their_markers()
+    {
+        var markdown = "Ecco la bozza:\n\n> Ciao! Il log diceva `X [G]`.\n>\n> 1. primo;\n> 2. **secondo**\nlazy\n\nFuori.\n\n```\n> non è una citazione\n```\n\n> seconda\n> > annidata";
+        Assert.That(QuoteBlocks.Quotes(markdown), Is.EqualTo(new[]
+        {
+            "Ciao! Il log diceva `X [G]`.\n\n1. primo;\n2. **secondo**\nlazy",
+            "seconda\n> annidata",
+        }));
+        Assert.That(QuoteBlocks.HasQuote("niente qui"), Is.False);
+    }
+
+    [AvaloniaTest]
+    public void Bruce_is_the_built_in_character_and_the_slime_is_a_choice()
+    {
+        // The headless platform does not decode images (every PNG is 1×1 here): what is checked is where frames come from.
+        foreach (var state in Enum.GetValues<PetState>())
+        {
+            foreach (var mode in Enum.GetValues<ChatMode>())
+            {
+                var name = Buddy.App.Pet.PetSprites.FileName(state, mode);
+                Assert.That(Avalonia.Platform.AssetLoader.Exists(new Uri($"avares://Buddy.App/Pet/Bruce/{name}")), Is.True, name);
+            }
+        }
+
+        var bruce = new Buddy.App.Pet.PetSprites(new PetSettings());
+        Assert.That(bruce.Frames(PetState.Idle, ChatMode.Local)[0], Is.InstanceOf<Avalonia.Media.Imaging.CroppedBitmap>(), "Bruce: cut from his strips");
+        Assert.That(bruce.WalkFrames(ChatMode.Claude)[0], Is.InstanceOf<Avalonia.Media.Imaging.CroppedBitmap>());
+
+        Assert.That(bruce.RestFrames(ChatMode.Local), Is.Not.Null.And.Not.Empty, "Bruce curls up now and then");
+
+        var slime = new Buddy.App.Pet.PetSprites(new PetSettings { Character = "slime" });
+        Assert.That(slime.Frames(PetState.Idle, ChatMode.Local)[0], Is.InstanceOf<Avalonia.Media.Imaging.WriteableBitmap>(), "the slime: drawn from its grids");
+        Assert.That(slime.RestFrames(ChatMode.Local), Is.Null, "the slime does not lie down");
+    }
+
+    [Test]
+    public void Days_are_named_from_today_and_a_new_day_splits_the_group()
+    {
+        var today = new DateTime(2026, 11, 26);
+        Assert.That(DayLabel.Of(today.AddHours(9), today), Is.EqualTo("Oggi"));
+        Assert.That(DayLabel.Of(today.AddDays(-1), today), Is.EqualTo("Ieri"));
+        Assert.That(DayLabel.Of(new DateTime(2026, 11, 24), today), Is.EqualTo("martedì 24 novembre"));
+        Assert.That(DayLabel.Of(new DateTime(2025, 3, 2), today), Is.EqualTo("2 marzo 2025"));
+
+        var yesterday = new ChatEntry(Speaker.User, "ieri") { Timestamp = DateTimeOffset.Now.AddDays(-1) };
+        var now = new ChatEntry(Speaker.User, "oggi");
+        var entries = new System.Collections.ObjectModel.ObservableCollection<ChatEntry> { yesterday, now };
+        ChatGrouping.Track(entries);
+        Assert.That(yesterday.StartsDay, Is.True, "a conversation from yesterday opens with its day");
+        Assert.That(now.StartsDay, Is.True);
+        Assert.That(now.JoinsPrevious, Is.False, "the day line splits the group");
+
+        var later = new ChatEntry(Speaker.User, "ancora oggi");
+        entries.Add(later);
+        Assert.That(later.StartsDay, Is.False);
+        Assert.That(later.JoinsPrevious, Is.True);
+    }
+
+    [AvaloniaTest]
+    public async Task Quote_in_a_message_gets_a_copy_button()
+    {
+        var view = new MarkdownView { Markdown = "Bozza:\n\n> Ciao **Wentu**!\n> - uno" };
+        var window = new Window { Content = view };
+        window.Show();
+        await SettleAsync();
+
+        var buttons = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Button>().ToList();
+        Assert.That(buttons.Select(b => ToolTip.GetTip(b) as string), Is.EqualTo(new[] { "Copia il testo in markdown" }));
+        window.Close();
     }
 
     [AvaloniaTest]

@@ -15,7 +15,23 @@ public sealed class EntryTemplateSelector : IDataTemplate
     public IDataTemplate? Permission { get; set; }
     public IDataTemplate? ToolActivity { get; set; }
 
-    public Control? Build(object? param) => Select(param)?.Build(param);
+    /// <summary>The entry's template, under a day line ("Ieri", "24 novembre") shown when the entry starts a day.</summary>
+    public Control? Build(object? param)
+    {
+        if (Select(param)?.Build(param) is not { } content)
+        {
+            return null;
+        }
+
+        var day = new TextBlock
+        {
+            Classes = { "day" },
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            [!Avalonia.Visual.IsVisibleProperty] = new Avalonia.Data.Binding(nameof(ChatEntry.StartsDay)),
+            [!TextBlock.TextProperty] = new Avalonia.Data.Binding(nameof(ChatEntry.Timestamp)) { Converter = DayLabel.Instance },
+        };
+        return new StackPanel { Children = { day, content } };
+    }
 
     public bool Match(object? data) => data is ChatEntry;
 
@@ -27,6 +43,28 @@ public sealed class EntryTemplateSelector : IDataTemplate
         ChatEntry { Speaker: Speaker.System } => System,
         _ => Assistant,
     };
+}
+
+/// <summary>A message's day for the line above it: "Oggi", "Ieri", "lunedì 24 novembre" (the year only when it is not this one).</summary>
+public sealed class DayLabel : IValueConverter
+{
+    public static readonly DayLabel Instance = new();
+
+    private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
+
+    public static string Of(DateTime day, DateTime today) => (today - day.Date).Days switch
+    {
+        0 => "Oggi",
+        1 => "Ieri",
+        _ when day.Year == today.Year => day.ToString("dddd d MMMM", Italian),
+        _ => day.ToString("d MMMM yyyy", Italian),
+    };
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is DateTimeOffset time ? Of(time.LocalDateTime, DateTime.Today) : null;
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
 }
 
 /// <summary>The tooltip of a tool-calls line: only a list of several opens.</summary>

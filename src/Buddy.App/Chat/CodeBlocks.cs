@@ -89,7 +89,7 @@ internal static partial class CodeBlocks
 
         var copy = new Button
         {
-            Content = "⧉ Copia",
+            Content = Icons.Of("IconCopy", "Copia", 12),
             FontSize = TextSize.Caption,
             Padding = new Thickness(6, 0),
             MinHeight = 0,
@@ -103,13 +103,13 @@ internal static partial class CodeBlocks
             if (TopLevel.GetTopLevel(copy)?.Clipboard is { } clipboard)
             {
                 await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, code);
-                copy.Content = "✓ Copiato";
+                copy.Content = Icons.Of("IconCheck", "Copiato", 12);
                 await Task.Delay(1200);
-                copy.Content = "⧉ Copia";
+                copy.Content = Icons.Of("IconCopy", "Copia", 12);
             }
         };
 
-        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var header = new DockPanel { Opacity = 0.8 };
         DockPanel.SetDock(copy, Dock.Right);
         header.Children.Add(copy);
         header.Children.Add(new TextBlock
@@ -125,9 +125,22 @@ internal static partial class CodeBlocks
             ((TextBlock)header.Children[1]).Foreground = mutedBrush;
         }
 
+        // A hairline between the header and the code.
+        var headerFrame = new Border
+        {
+            Child = header,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(0, 0, 0, 4),
+            Margin = new Thickness(0, 0, 0, 6),
+        };
+        if (block.TryFindResource("Divider", out var divider) && divider is IBrush dividerBrush)
+        {
+            headerFrame.BorderBrush = dividerBrush;
+        }
+
         var panel = new DockPanel();
-        DockPanel.SetDock(header, Dock.Top);
-        panel.Children.Add(header);
+        DockPanel.SetDock(headerFrame, Dock.Top);
+        panel.Children.Add(headerFrame);
         panel.Children.Add(new ScrollViewer
         {
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,

@@ -55,7 +55,10 @@ public partial class SettingsWindow : Window
         DataContext = _settings;
 
         FontCombo.ItemsSource = FontManager.Current.SystemFonts.Select(f => f.Name).Distinct().Order().ToList();
-        (Logo.UsesPixelArt(_settings.Appearance) ? LogoPixel : LogoModern).IsChecked = true;
+        (string.Equals(_settings.Pet.Character, "slime", StringComparison.OrdinalIgnoreCase) ? CharacterSlime : CharacterBruce).IsChecked = true;
+        (Logo.UsesPixelArt(_settings.Appearance) ? LogoPixel
+            : string.Equals(_settings.Appearance.Logo, Logo.Greyhound, StringComparison.OrdinalIgnoreCase) ? LogoGreyhound
+            : LogoModern).IsChecked = true;
         BuildThemeRows();
         BuildThemePresets();
         BuildPetColorRows();
@@ -385,14 +388,24 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>Logo: the vector speech bubble or the pixel-art face (applied when Buddy restarts, like the rest).</summary>
-    private void OnLogoChanged(object? sender, RoutedEventArgs e)
+    private void OnCharacterChanged(object? sender, RoutedEventArgs e)
     {
-        if (LogoPixel is null || LogoModern is null)
+        if (CharacterBruce is null || CharacterSlime is null)
         {
             return; // still loading
         }
 
-        _settings.Appearance.Logo = LogoPixel.IsChecked == true ? Logo.Pixel : Logo.Modern;
+        _settings.Pet.Character = CharacterSlime.IsChecked == true ? "slime" : "bruce";
+    }
+
+    private void OnLogoChanged(object? sender, RoutedEventArgs e)
+    {
+        if (LogoPixel is null || LogoModern is null || LogoGreyhound is null)
+        {
+            return; // still loading
+        }
+
+        _settings.Appearance.Logo = LogoPixel.IsChecked == true ? Logo.Pixel : LogoGreyhound.IsChecked == true ? Logo.Greyhound : Logo.Modern;
     }
 
     private async void OnSaveThemeClick(object? sender, RoutedEventArgs e)

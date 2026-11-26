@@ -88,7 +88,7 @@ public class JiraTests
 
         var item = ProjectBoard.ParseItems(line, new Regex(@"^(?:[A-Z]{1,10}-\d+)$")).Single();
         var board = new ProjectBoard([new BoardColumn("todo", "Da fare", "", "To-Do.md", [item])], [], []);
-        var other = issue with { Key = "ABC-13" };
+        var other = issue with { Key = "ABC-13", Url = "https://azienda.atlassian.net/browse/ABC-13" };
         Assert.That(TrackerImport.New([issue, other], board).Select(i => i.Key), Is.EqualTo(new[] { "ABC-13" }));
     }
 

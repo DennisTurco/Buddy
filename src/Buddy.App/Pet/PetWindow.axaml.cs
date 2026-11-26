@@ -31,6 +31,10 @@ public partial class PetWindow : Window
     private double? _walkTarget;
     private double _walkX;
     private DateTime _nextWalk = DateTime.Now.AddSeconds(8);
+
+    /// <summary>Now and then, idle, the pet lies down curled up for a while (when its art has a resting pose).</summary>
+    private DateTime _nextRest = DateTime.Now.AddSeconds(45);
+    private DateTime? _restUntil;
     private DateTime _lastWalkStep;
     private PixelPoint? _pressScreen;
     private PixelPoint _pressWindow;
@@ -56,6 +60,7 @@ public partial class PetWindow : Window
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Math.Clamp(pet.FrameMilliseconds, 50, 2000)) };
         _timer.Tick += (_, _) =>
         {
+            UpdateRest();
             MaybeStartWalk();
             Animate();
         };
@@ -111,11 +116,50 @@ public partial class PetWindow : Window
 
     private bool IsWalking => _walkTarget is not null;
 
+    private bool IsResting => _restUntil is { } until && DateTime.Now < until;
+
+    /// <summary>
+    /// Lies down for a real nap, 3 to 8 minutes, after a minute or two of idling; gets up at once when there is
+    /// something to do (a state other than idle, a drag, the chat open, a click), and when the nap is over.
+    /// </summary>
+    private void UpdateRest()
+    {
+        var calm = _conversation.PetState == PetState.Idle && !_dragging && !HoldStill() && !IsWalking;
+        if (_restUntil is not null)
+        {
+            if (!calm || !IsResting)
+            {
+                WakeUp();
+            }
+
+            return;
+        }
+
+        if (calm && DateTime.Now >= _nextRest && _sprites.RestFrames(_conversation.Mode) is { Count: > 0 })
+        {
+            _restUntil = DateTime.Now.AddSeconds(180 + _random.Next(301));
+            _tick = 0;
+        }
+    }
+
+    private void WakeUp()
+    {
+        if (_restUntil is null)
+        {
+            return;
+        }
+
+        _restUntil = null;
+        _tick = 0;
+        _nextRest = DateTime.Now.AddSeconds(90 + _random.Next(91));
+        _nextWalk = DateTime.Now.AddSeconds(3 + _random.Next(5)); // up again: often a little stroll
+    }
+
     /// <summary>Starts a stroll to a random spot on the same row of the screen, when idle and nothing holds the pet.</summary>
     private void MaybeStartWalk()
     {
         var pet = _settings.Pet;
-        if (!pet.Walk || IsWalking || _dragging || _conversation.PetState != PetState.Idle || HoldStill() || IsPointerOver || DateTime.Now < _nextWalk)
+        if (!pet.Walk || IsWalking || IsResting || _dragging || _conversation.PetState != PetState.Idle || HoldStill() || IsPointerOver || DateTime.Now < _nextWalk)
         {
             return;
         }
@@ -211,7 +255,7 @@ public partial class PetWindow : Window
 
     private void UpdateToolTip()
     {
-        var name = string.IsNullOrWhiteSpace(_settings.Appearance.Name) ? "Buddy" : _settings.Appearance.Name;
+        var name = string.IsNullOrWhiteSpace(_settings.Appearance.Name) ? "Bruce" : _settings.Appearance.Name;
         ToolTip.SetTip(Sprite, _conversation.CurrentTask is { } task
             ? $"{name}\n📌 {task}\nClick: chat · trascina qui file o testo"
             : $"{name}\nClick: chat · trascina qui file o testo");
@@ -254,6 +298,12 @@ public partial class PetWindow : Window
         }
     }
 
+    /// <summary>The art's own size in pixels (16 for the slime, 32 for Bruce, whatever custom art has).</summary>
+    private double ArtPixels => PetSprites.PixelHeight(Sprite.Source) is > 0 and var h ? h : PetSprites.BuiltInSize;
+
+    /// <summary>One pixel of the art on screen.</summary>
+    private double ArtPixel => Sprite.Height / ArtPixels;
+
     private void Animate()
     {
         var state = _conversation.PetState;
@@ -262,7 +312,18 @@ public partial class PetWindow : Window
             var steps = _sprites.WalkFrames(_conversation.Mode);
             Sprite.Source = steps[_tick % steps.Count];
             BadgeText.Text = "";
-            Bob.Y = _tick % 2 == 0 ? 0 : Sprite.Height / PetSprites.BuiltInSize;
+            // The slime hops as it walks; a character with walking frames (Bruce, custom art) steps by itself.
+            Bob.Y = ArtPixels == PetSprites.BuiltInSize && _tick % 2 == 1 ? ArtPixel : 0;
+            _tick++;
+            return;
+        }
+
+        if (IsResting && _sprites.RestFrames(_conversation.Mode) is { Count: > 0 } rest)
+        {
+            // Curled up: a slow breath, and a "z" that grows now and then.
+            Sprite.Source = rest[_tick % rest.Count];
+            BadgeText.Text = (_tick / 6 % 4) switch { 0 => "", 1 => "z", 2 => "zz", _ => "zzz" };
+            Bob.Y = 0;
             _tick++;
             return;
         }
@@ -271,14 +332,15 @@ public partial class PetWindow : Window
         Sprite.Source = frames[_tick % frames.Count];
         BadgeText.Text = PetSprites.Badge(state, _tick / 2);
 
-        // Bob by 1/16 of the size (one pixel of the built-in art): slow when idle, faster while busy, a hop on alerts.
-        var step = Sprite.Height / PetSprites.BuiltInSize;
+        // Bob by one pixel of the art: faster while busy, a hop on alerts. Standing still it does not move: a calm
+        // idle (the slime used to breathe up and down, which looked restless).
+        var step = ArtPixel;
         Bob.Y = state switch
         {
             PetState.Alert or PetState.Happy => _tick % 2 == 0 ? -2 * step : 0,
             PetState.Work or PetState.Think => _tick % 2 == 0 ? step : 0,
             PetState.Error => step,
-            _ => _tick / 3 % 2 == 0 ? 0 : step,
+            _ => 0,
         };
 
         _tick++;
@@ -336,6 +398,8 @@ public partial class PetWindow : Window
         }
         else if (e.InitialPressMouseButton == MouseButton.Left)
         {
+            WakeUp(); // a click gets him up
+            Animate();
             Clicked?.Invoke(this, EventArgs.Empty);
         }
     }

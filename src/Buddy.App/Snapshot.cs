@@ -340,7 +340,7 @@ internal static class Snapshot
     {
         Directory.CreateDirectory(folder);
         int[] sizes = [16, 24, 32, 48, 64, 128, 256];
-        var frames = sizes.ToDictionary(s => s, Logo.Png); // the project logo, whatever the user chose for their own icon
+        var frames = sizes.ToDictionary(s => s, s => Logo.Png(s, Logo.Greyhound)); // the project logo, whatever the user chose for their own icon
         File.WriteAllBytes(Path.Combine(folder, "icon.png"), frames[256]);
 
         using var ico = new BinaryWriter(File.Create(Path.Combine(folder, "buddy.ico")));

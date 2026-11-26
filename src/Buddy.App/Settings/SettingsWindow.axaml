@@ -77,6 +77,8 @@
                             </StackPanel>
                             <TextBlock Grid.Row="3" Text="Logo" Classes="label" />
                             <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="16" Margin="0,4">
+                                <RadioButton x:Name="LogoGreyhound" GroupName="Logo" Content="Levriero (disegnato)" IsCheckedChanged="OnLogoChanged"
+                                             ToolTip.Tip="Il muso di un levriero, disegnato come un'illustrazione" />
                                 <RadioButton x:Name="LogoModern" GroupName="Logo" Content="Moderno (fumetto)" IsCheckedChanged="OnLogoChanged"
                                              ToolTip.Tip="L'icona di finestre, area di notifica e bacheca: sobria, adatta al lavoro" />
                                 <RadioButton x:Name="LogoPixel" GroupName="Logo" Content="Pixel art (il personaggio)" IsCheckedChanged="OnLogoChanged"
@@ -112,6 +114,15 @@
             <TabItem Header="Personaggio">
                 <ScrollViewer Classes="page">
                     <StackPanel>
+                        <Grid ColumnDefinitions="170,*" Margin="0,0,0,8">
+                            <TextBlock Text="Personaggio" Classes="label" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" Margin="0,4">
+                                <RadioButton x:Name="CharacterBruce" GroupName="Character" Content="Bruce (levriero)" IsCheckedChanged="OnCharacterChanged"
+                                             ToolTip.Tip="Un levriero fulvo in pixel art; il collare prende il colore della modalità (verde locale, viola Claude)" />
+                                <RadioButton x:Name="CharacterSlime" GroupName="Character" Content="Slime" IsCheckedChanged="OnCharacterChanged"
+                                             ToolTip.Tip="Il personaggio tondo delle prime versioni, con i colori qui sotto" />
+                            </StackPanel>
+                        </Grid>
                         <Grid x:Name="PetColors">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="170" />
@@ -168,7 +179,7 @@
 
                         <TextBlock Text="Pixel art personalizzata" FontWeight="SemiBold" Margin="0,14,0,4" />
                         <TextBlock Classes="hint"
-                                   Text="Una cartella con un PNG per stato: idle, think, work, alert, error, happy, walk (.png). Ogni file è una striscia orizzontale di fotogrammi quadrati. Con il prefisso claude- (es. claude-idle.png) vale solo in modalità Claude. I file mancanti usano il personaggio predefinito. 'Esporta modello' scrive quelli predefiniti nella cartella, da modificare con un editor di pixel art." />
+                                   Text="Una cartella con un PNG per stato: idle, think, work, alert, error, happy, speak, walk (.png), e rest.png se il personaggio ogni tanto si accuccia. Ogni file è una striscia orizzontale di fotogrammi quadrati. Con il prefisso claude- (es. claude-idle.png) vale solo in modalità Claude. I file mancanti usano il personaggio predefinito. 'Esporta modello' scrive quelli predefiniti nella cartella, da modificare con un editor di pixel art." />
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Content="Sfoglia…" Click="OnBrowseSpriteFolderClick" />

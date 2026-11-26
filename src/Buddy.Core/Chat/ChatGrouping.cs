@@ -29,21 +29,33 @@ public static class ChatGrouping
     public static bool SameGroup(ChatEntry a, ChatEntry b) =>
         a.Speaker == b.Speaker && a.Speaker != Speaker.System && a is not PermissionEntry && b is not PermissionEntry;
 
+    /// <summary>
+    /// A day line goes above the first message of each day, except a conversation's first message when it is from
+    /// today (a chat of today alone has none).
+    /// </summary>
+    public static bool StartsDay(ChatEntry? previous, ChatEntry entry, DateTime today) => previous is null
+        ? entry.Timestamp.LocalDateTime.Date != today
+        : previous.Timestamp.LocalDateTime.Date != entry.Timestamp.LocalDateTime.Date;
+
     /// <summary>Recomputes from <paramref name="from"/>; past <paramref name="until"/> it stops at the first unchanged entry.</summary>
     private static void Update(IList<ChatEntry> entries, int from, int until)
     {
+        var today = DateTime.Today;
         for (var i = Math.Max(0, from); i < entries.Count; i++)
         {
             var entry = entries[i];
-            var joinsPrevious = i > 0 && SameGroup(entries[i - 1], entry);
-            var joinsNext = i + 1 < entries.Count && SameGroup(entry, entries[i + 1]);
-            if (i > until && entry.JoinsPrevious == joinsPrevious && entry.JoinsNext == joinsNext)
+            // A day line splits a group: the bubbles on each side of it get their own tails.
+            var startsDay = StartsDay(i > 0 ? entries[i - 1] : null, entry, today);
+            var joinsPrevious = i > 0 && !startsDay && SameGroup(entries[i - 1], entry);
+            var joinsNext = i + 1 < entries.Count && SameGroup(entry, entries[i + 1]) && !StartsDay(entry, entries[i + 1], today);
+            if (i > until && entry.JoinsPrevious == joinsPrevious && entry.JoinsNext == joinsNext && entry.StartsDay == startsDay)
             {
                 return;
             }
 
             entry.JoinsPrevious = joinsPrevious;
             entry.JoinsNext = joinsNext;
+            entry.StartsDay = startsDay;
         }
     }
 }

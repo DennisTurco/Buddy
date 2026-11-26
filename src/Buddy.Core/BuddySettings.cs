@@ -588,8 +588,8 @@ public sealed class ToolRule
 
 public sealed class AppearanceSettings
 {
-    /// <summary>Name shown in the bubble header.</summary>
-    public string Name { get; set; } = "Buddy";
+    /// <summary>The character's name, shown in the bubble header and the tooltip: Bruce, the greyhound, unless changed.</summary>
+    public string Name { get; set; } = "Bruce";
 
     public string FontFamily { get; set; } = "Segoe UI";
     public double FontSize { get; set; } = 13;
@@ -600,10 +600,11 @@ public sealed class AppearanceSettings
     public ThemeColors Theme { get; set; } = ThemeColors.Light();
 
     /// <summary>
-    /// The app's icon (windows, tray, board header): "moderno", the vector speech bubble, or "pixel", the face of the
-    /// pixel-art character. The character on the desk is the same either way.
+    /// The app's icon (windows, tray, board header): "levriero", a greyhound's face drawn like an illustration,
+    /// "moderno", the vector speech bubble, or "pixel", the face of the pixel-art character. The character on the desk
+    /// is the same either way.
     /// </summary>
-    public string Logo { get; set; } = "moderno";
+    public string Logo { get; set; } = "levriero";
 
     /// <summary>Colour sets saved by the user from Impostazioni → Aspetto, next to the built-in ones (<see cref="ThemeColors.BuiltIn"/>).</summary>
     public List<NamedTheme> CustomThemes { get; set; } = [];
@@ -784,7 +785,14 @@ public sealed class PetSettings
     /// <summary>Average pause between two walks, in seconds.</summary>
     public int WalkPauseSeconds { get; set; } = 20;
 
-    /// <summary>Body colours of the built-in character, per chat mode.</summary>
+    /// <summary>
+    /// The built-in character: "bruce", a fawn greyhound in pixel art (his collar takes the chat mode's colour), or
+    /// "slime", the round character of the first versions (coloured with <see cref="LocalColor"/> / <see cref="ClaudeColor"/>).
+    /// A <see cref="SpriteFolder"/> overrides either.
+    /// </summary>
+    public string Character { get; set; } = "bruce";
+
+    /// <summary>Body colours of the slime character, per chat mode.</summary>
     public string LocalColor { get; set; } = "#7FD1AE";
     public string ClaudeColor { get; set; } = "#B99BF5";
 

@@ -25,6 +25,7 @@
         <!-- Markdown: code background and links (replaced per window from the Appearance colours). -->
         <SolidColorBrush x:Key="CodeBack" Color="#EDEAF3" />
         <SolidColorBrush x:Key="InlineCodeBack" Color="#241F36" Opacity="0.16" />
+        <SolidColorBrush x:Key="InlineCodeBackSoft" Color="#241F36" Opacity="0.08" />
         <SolidColorBrush x:Key="LinkInk" Color="#6B4FC4" />
         <!-- Thin lines between the parts of a panel, edges of quiet buttons (the ink, see-through: any theme). -->
         <SolidColorBrush x:Key="Divider" Color="#241F36" Opacity="0.12" />
@@ -36,7 +37,11 @@
         <SolidColorBrush x:Key="SynType" Color="#2F6BD9" />
         <SolidColorBrush x:Key="SynTag" Color="#D2453A" />
         <!-- A list: the first font installed wins (Windows, macOS, then common Linux ones). -->
-        <FontFamily x:Key="MonoFont">Consolas, Menlo, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
+        <!-- Search hits and warnings (limits near the end): one amber for every theme. -->
+        <SolidColorBrush x:Key="Warning" Color="#F2B544" />
+        <!-- Shadow under the chat bubbles: barely there, just enough to lift them off the paper. -->
+        <BoxShadows x:Key="BubbleShadow">0 1 3 0 #1A000000</BoxShadows>
         <!-- Line icons on a 24×24 grid, drawn by chat:LineIcon in the colour of their button. -->
         <StreamGeometry x:Key="IconCopy">M11 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2z M5 15h-1a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h9a2 2 0 0 1 2 2v1</StreamGeometry>
         <StreamGeometry x:Key="IconSave">M19 21h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h11l5 5v11a2 2 0 0 1 -2 2z M17 21v-8h-10v8 M7 3v5h8</StreamGeometry>
@@ -108,6 +113,10 @@
         <StreamGeometry x:Key="IconList">M9 6h11 M9 12h11 M9 18h11 M4.5 6h0.01 M4.5 12h0.01 M4.5 18h0.01</StreamGeometry>
         <StreamGeometry x:Key="IconPause">M8 5v14 M16 5v14</StreamGeometry>
         <StreamGeometry x:Key="IconSearch">M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0z M20 20l-4 -4</StreamGeometry>
+        <StreamGeometry x:Key="IconMore">M4.5 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z M17.5 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z</StreamGeometry>
+        <StreamGeometry x:Key="IconSend">M22 2l-7 20l-4 -9l-9 -4z M22 2l-11 11</StreamGeometry>
+        <StreamGeometry x:Key="IconArrowDown">M12 5v14 M6 13l6 6l6 -6</StreamGeometry>
+        <StreamGeometry x:Key="IconArrowUp">M12 19v-14 M6 11l6 -6l6 6</StreamGeometry>
         <StreamGeometry x:Key="IconUndo">M9 14l-5 -5l5 -5 M4 9h10.5a5.5 5.5 0 0 1 0 11h-3.5</StreamGeometry>
     </Styles.Resources>
 

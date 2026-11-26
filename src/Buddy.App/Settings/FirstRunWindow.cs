@@ -49,7 +49,7 @@ public sealed class FirstRunWindow : Window
         form.Children.Add(Field(_userName));
 
         form.Children.Add(Heading("Come vuoi chiamare il tuo buddy?"));
-        _buddyName.Text = string.IsNullOrWhiteSpace(_settings.Appearance.Name) ? "Buddy" : _settings.Appearance.Name;
+        _buddyName.Text = string.IsNullOrWhiteSpace(_settings.Appearance.Name) ? "Bruce" : _settings.Appearance.Name;
         form.Children.Add(Field(_buddyName));
 
         form.Children.Add(Heading("Che personalità vuoi che abbia?"));
@@ -148,7 +148,7 @@ public sealed class FirstRunWindow : Window
     {
         var mentor = _settings.Mentor;
         mentor.UserName = (_userName.Text ?? "").Trim();
-        _settings.Appearance.Name = (_buddyName.Text ?? "").Trim() is { Length: > 0 } name ? name : "Buddy";
+        _settings.Appearance.Name = (_buddyName.Text ?? "").Trim() is { Length: > 0 } name ? name : "Bruce";
 
         if (_customPersonality.IsChecked == true && (_customText.Text ?? "").Trim().Length > 0)
         {

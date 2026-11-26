@@ -38,9 +38,15 @@ internal static class Appearance
         var accent = ((SolidColorBrush)window.Resources["ClaudeAccent"]!).Color;
         window.Resources["CodeBack"] = new SolidColorBrush(Mix(paper, ink, 0.12));
 
+        // Claude's permission and question box: a touch of the mentor's amber over the paper, light or dark alike.
+        var amber = ((SolidColorBrush)window.Resources["MentorAccent"]!).Color;
+        window.Resources["PermissionBack"] = new SolidColorBrush(Mix(paper, amber, 0.18));
+        window.Resources["PermissionBorder"] = new SolidColorBrush(amber);
+
         // Inline code: the same look as a see-through ink, because the markdown viewer paints it over the selection
         // highlight; an opaque background hid the selected `code` while copying.
         window.Resources["InlineCodeBack"] = new SolidColorBrush(ink, 0.16);
+        window.Resources["InlineCodeBackSoft"] = new SolidColorBrush(ink, 0.08);
         window.Resources["Divider"] = new SolidColorBrush(ink, 0.12);
         window.Resources["LinkInk"] = new SolidColorBrush(Luminance(paper) < 0.5 ? accent : Mix(accent, ink, 0.45));
 
@@ -60,7 +66,7 @@ internal static class Appearance
             // A missing font (e.g. "Segoe UI" on Linux) falls back to the system default.
             if (!string.IsNullOrWhiteSpace(appearance.FontFamily))
             {
-                window.FontFamily = new FontFamily($"{appearance.FontFamily}, {FontFamily.Default.Name}");
+                window.FontFamily = new FontFamily($"{UiFont(appearance.FontFamily)}, {FontFamily.Default.Name}");
             }
 
             window.FontSize = Math.Clamp(appearance.FontSize, 9, 24);
@@ -69,6 +75,15 @@ internal static class Appearance
         // Text inside templates (markdown included) inherits the window's ink.
         window.Foreground = (IBrush)window.Resources["Ink"]!;
     }
+
+    /// <summary>
+    /// The default "Segoe UI" becomes Windows 11's Segoe UI Variable (drawn for reading at text sizes), with the
+    /// classic one behind it on Windows 10. A font the user picked is kept as it is.
+    /// </summary>
+    internal static string UiFont(string family) =>
+        OperatingSystem.IsWindows() && family.Trim().Equals("Segoe UI", StringComparison.OrdinalIgnoreCase)
+            ? "Segoe UI Variable Text, Segoe UI"
+            : family;
 
     private static Color Mix(Color from, Color to, double amount) => Color.FromRgb(
         (byte)(from.R + ((to.R - from.R) * amount)),

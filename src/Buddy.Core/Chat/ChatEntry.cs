@@ -142,6 +142,18 @@ public class ChatEntry(Speaker speaker, string text = "") : INotifyPropertyChang
 
     private bool _joinsNext;
 
+    /// <summary>
+    /// The first message of a day, when the conversation is not only today's: the chat draws the day above it
+    /// ("Ieri", "24 novembre"); see <see cref="ChatGrouping"/>.
+    /// </summary>
+    public bool StartsDay
+    {
+        get => _startsDay;
+        set => Set(ref _startsDay, value);
+    }
+
+    private bool _startsDay;
+
     /// <summary>Matches the search in the chat (Ctrl+F): drawn with a frame.</summary>
     public bool IsHighlighted
     {

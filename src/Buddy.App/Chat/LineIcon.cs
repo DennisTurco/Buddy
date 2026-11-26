@@ -87,7 +87,7 @@ public static class Icons
         ["🔔"] = "IconBell", ["🗂"] = "IconInbox", ["🛠"] = "IconWrench", ["🧭"] = "IconCompass", ["🚫"] = "IconBan",
         ["🤔"] = "IconHelp", ["✅"] = "IconCheckCircle", ["🌐"] = "IconGlobe", ["🔁"] = "IconRepeat", ["✚"] = "IconPlus",
         ["↗"] = "IconExternal", ["📝"] = "IconNote", ["✕"] = "IconClose", ["📌"] = "IconPin", ["💾"] = "IconSave",
-        ["⟳"] = "IconRefresh", ["↶"] = "IconUndo",
+        ["⟳"] = "IconRefresh", ["↶"] = "IconUndo", ["↓"] = "IconArrowDown", ["↑"] = "IconArrowUp",
 
         // The pages of the project window and the headings of its panels.
         ["🏠"] = "IconHome", ["📋"] = "IconBoard", ["🗄"] = "IconArchive", ["📚"] = "IconBook", ["📖"] = "IconBookOpen",

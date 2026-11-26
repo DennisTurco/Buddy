@@ -63,24 +63,73 @@ public sealed class MarkdownView : UserControl
     /// <summary>
     /// The selected text, rebuilt from each paragraph's selection range. The library's own GetSelectedText is wrong
     /// when a paragraph contains `inline code`: it keeps only the part between the first and the last code span.
+    /// A list item keeps its number or bullet ("1. ", "- "), which the library draws in a block of its own that is
+    /// never selected. Its GetSelectedText also repeats every wrapped line after the first, so it is never used.
     /// </summary>
-    internal string SelectedText => string.Join("\n", _viewer.GetLogicalDescendants()
-        .OfType<ColorTextBlock.Avalonia.CTextBlock>()
-        .Select(block => (Selection: block.Selection, Text: block.Text ?? ""))
-        .Where(b => b.Selection is { } s && s.To > s.From && s.To <= b.Text.Length)
-        .Select(b => b.Text[b.Selection!.From..b.Selection.To]));
+    internal string SelectedText
+    {
+        get
+        {
+            var lines = new List<string>();
+            string? marker = null;
+            foreach (var block in _viewer.GetLogicalDescendants().OfType<ColorTextBlock.Avalonia.CTextBlock>())
+            {
+                var text = block.Text ?? "";
+                if (block.Classes.Contains("ListMarker"))
+                {
+                    marker = text.Trim() switch
+                    {
+                        "•" or "◦" or "○" or "●" or "■" or "□" => "-",
+                        var other => other,
+                    };
+                    continue;
+                }
+
+                if (block.Selection is { } s && s.To > s.From && s.To <= text.Length)
+                {
+                    var prefix = marker is { Length: > 0 } && s.From == 0 ? marker + " " : "";
+                    lines.Add(prefix + text[s.From..s.To]);
+                }
+
+                marker = null;
+            }
+
+            return string.Join("\n", lines);
+        }
+    }
+
+    private static readonly Avalonia.Input.KeyGesture[] DefaultCopy =
+    [
+        new(Avalonia.Input.Key.C, Avalonia.Input.KeyModifiers.Control),
+        new(Avalonia.Input.Key.Insert, Avalonia.Input.KeyModifiers.Control),
+        new(Avalonia.Input.Key.C, Avalonia.Input.KeyModifiers.Meta),
+    ];
+
+    /// <summary>
+    /// The library copies on Ctrl+C by itself (with the repeated lines), so this must always take the key first.
+    /// Application.PlatformSettings can be missing on the desktop (it is an optional feature in Avalonia 12): then
+    /// the usual shortcuts are used.
+    /// </summary>
+    private static bool IsCopyKey(Avalonia.Input.KeyEventArgs e)
+    {
+        var copy = Application.Current?.PlatformSettings?.HotkeyConfiguration.Copy;
+        return (copy is { Count: > 0 } ? (IEnumerable<Avalonia.Input.KeyGesture>)copy : DefaultCopy).Any(gesture => gesture.Matches(e))
+               || (e.Key == Avalonia.Input.Key.C && e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control)); // the library's own test
+    }
 
     private async void OnCopyKey(object? sender, Avalonia.Input.KeyEventArgs e)
     {
-        var copy = Application.Current?.PlatformSettings?.HotkeyConfiguration.Copy;
-        if (copy?.Any(gesture => gesture.Matches(e)) != true || SelectedText is not { Length: > 0 } text
-            || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        if (!IsCopyKey(e))
         {
             return;
         }
 
+        // Taken even with nothing selected here: the library would otherwise copy its own (wrong) text.
         e.Handled = true;
-        await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, text);
+        if (SelectedText is { Length: > 0 } text && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        {
+            await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, text);
+        }
     }
 
     /// <summary>Handles a clicked link instead of the desktop (returns true when handled), e.g. links between notes.</summary>
@@ -150,8 +199,19 @@ public sealed class MarkdownView : UserControl
                 CodeBlocks.Enhance(_viewer, _viewer.Markdown ?? "");
             }, Avalonia.Threading.DispatcherPriority.Loaded);
         }
+
+        if (!_quotesPending && QuoteBlocks.HasQuote(markdown))
+        {
+            _quotesPending = true;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                _quotesPending = false;
+                QuoteBlocks.Enhance(_viewer, _rendered ?? ""); // the text as written, not the one adjusted for the parser
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
+        }
     }
 
+    private bool _quotesPending;
     private bool _enhancePending;
     private bool _listsPending;
     private string? _rendered;

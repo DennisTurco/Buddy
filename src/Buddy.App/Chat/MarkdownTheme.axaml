@@ -22,11 +22,30 @@
     <Style Selector="ctxt|CTextBlock.Heading4, ctxt|CTextBlock.Heading5, ctxt|CTextBlock.Heading6">
         <Setter Property="Margin" Value="0,10,0,2" />
     </Style>
+    <!-- In a chat message (MarkdownView with the "message" class): headings sized for a message, not a page, and a
+         little more air between paragraphs, so long answers read in blocks. -->
+    <Style Selector=".message ctxt|CTextBlock.Heading1">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="Margin" Value="0,10,0,4" />
+    </Style>
+    <Style Selector=".message ctxt|CTextBlock.Heading2">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="Margin" Value="0,10,0,3" />
+    </Style>
+    <Style Selector=".message ctxt|CTextBlock.Heading3, .message ctxt|CTextBlock.Heading4, .message ctxt|CTextBlock.Heading5, .message ctxt|CTextBlock.Heading6">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Margin" Value="0,8,0,2" />
+    </Style>
+    <Style Selector=".message ctxt|CTextBlock.Paragraph">
+        <Setter Property="Margin" Value="0,3,0,6" />
+    </Style>
     <Style Selector="ctxt|CCode:not(.x)">
         <Setter Property="Foreground" Value="{DynamicResource Ink}" />
         <!-- See-through: the viewer paints inline code over the selection, an opaque background would hide it. -->
         <Setter Property="Background" Value="{DynamicResource InlineCodeBack}" />
         <Setter Property="MonospaceFontFamily" Value="{StaticResource MonoFont}" />
+        <!-- The library draws code in bold: next to the text it shouted (`main`, `<NEW VERSION>`). The tint is enough. -->
+        <Setter Property="FontWeight" Value="Normal" />
         <!-- No box: with padding, margin or rounded corners the library draws the code as a separate box, whose
              selection is wrong (the highlight stops after the code, clicks snap to its end). Plain, it is selected
              like the text around it. -->
@@ -34,6 +53,10 @@
         <Setter Property="Margin" Value="0" />
         <Setter Property="CornerRadius" Value="0" />
         <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <!-- In a table cell the code would make a box of its own: a lighter tint, the cell lines do the framing. -->
+    <Style Selector="Grid.Table ctxt|CCode:not(.x)">
+        <Setter Property="Background" Value="{DynamicResource InlineCodeBackSoft}" />
     </Style>
     <Style Selector="ctxt|CHyperlink:not(.x)">
         <Setter Property="Foreground" Value="{DynamicResource LinkInk}" />
@@ -77,10 +100,20 @@
     </Style>
 
     <!-- Quotes and notes -->
+    <!-- A quote is often a draft to send (a message, a ticket): a sheet of paper with the accent on its edge, in the
+         normal ink so it reads as well as the rest. Its copy button comes from QuoteBlocks. -->
     <Style Selector="Border.Blockquote">
-        <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
+        <Setter Property="Background" Value="{DynamicResource Paper}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ClaudeAccent}" />
+        <Setter Property="BorderThickness" Value="3,0,0,0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Margin" Value="0,4" />
     </Style>
     <Style Selector="Border.Blockquote ctxt|CTextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+    </Style>
+    <Style Selector="Border.Blockquote ctxt|CTextBlock.ListMarker">
         <Setter Property="Foreground" Value="{DynamicResource Muted}" />
     </Style>
     <Style Selector="Border.Note">
@@ -98,7 +131,7 @@
         <Setter Property="Margin" Value="0,2,7,2" />
         <Setter Property="MinWidth" Value="10" />
     </Style>
-    <Style Selector="Grid.List ctxt|CTextBlock.Paragraph">
+    <Style Selector="Grid.List ctxt|CTextBlock.Paragraph, .message Grid.List ctxt|CTextBlock.Paragraph">
         <Setter Property="Margin" Value="0,2" />
     </Style>
 

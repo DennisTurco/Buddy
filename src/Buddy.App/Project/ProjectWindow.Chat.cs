@@ -58,6 +58,11 @@ public partial class ProjectWindow
         }
 
         var opening = !ChatPanel.IsVisible;
+        if (opening && _chatWidthBeforeWiden is null)
+        {
+            RestoreChatWidth();
+        }
+
         ChatPanel.IsVisible = true;
         UpdateChatToggle();
         if (opening)
@@ -112,6 +117,92 @@ public partial class ProjectWindow
         ChatToggle.Content = Icons.Label(ChatPanel.IsVisible ? "💬 Chiudi chat" : "💬 Chat");
 
     private void OnChatToggleClick(object? sender, RoutedEventArgs e) => ToggleChat();
+
+    // ---- Width: dragged on the left edge, or widened with ⤢ -----------------------------------------------------
+
+    private const double ChatMinWidth = 320;
+    private const double DefaultChatWidth = 420;
+
+    /// <summary>The width before ⤢ widened it (null while not widened).</summary>
+    private double? _chatWidthBeforeWiden;
+
+    private double? _resizeStartX;
+    private double _resizeStartWidth;
+
+    /// <summary>At most the window minus room for the page on the left, so the board never vanishes.</summary>
+    private double ChatMaxWidth => Math.Max(ChatMinWidth, Bounds.Width - MainGrid.ColumnDefinitions[0].ActualWidth - 360);
+
+    private void RestoreChatWidth() => SetChatWidth(SettingsStore.BoardChatWidth ?? DefaultChatWidth, remember: false);
+
+    private void SetChatWidth(double width, bool remember)
+    {
+        ChatPanel.Width = Math.Clamp(width, ChatMinWidth, ChatMaxWidth);
+        if (remember)
+        {
+            SettingsStore.BoardChatWidth = ChatPanel.Width;
+        }
+    }
+
+    private void OnWidenChatClick(object? sender, RoutedEventArgs e)
+    {
+        if (_chatWidthBeforeWiden is { } before)
+        {
+            _chatWidthBeforeWiden = null;
+            SetChatWidth(before, remember: false);
+        }
+        else
+        {
+            _chatWidthBeforeWiden = ChatPanel.Width;
+            SetChatWidth(ChatMaxWidth, remember: false);
+        }
+
+        UpdateWidenButton();
+    }
+
+    private void UpdateWidenButton()
+    {
+        var widened = _chatWidthBeforeWiden is not null;
+        ChatWidenIcon.Data = this.FindResource(widened ? "IconRestore" : "IconMaximize") as Geometry;
+        ToolTip.SetTip(ChatWidenButton, widened ? "Riporta la chat alla larghezza di prima" : "Allarga la chat su quasi tutta la finestra");
+    }
+
+    private void OnChatResizePressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _resizeStartX = e.GetPosition(this).X;
+        _resizeStartWidth = ChatPanel.Width;
+        e.Pointer.Capture(ChatResizer);
+        e.Handled = true;
+    }
+
+    private void OnChatResizeMoved(object? sender, Avalonia.Input.PointerEventArgs e)
+    {
+        if (_resizeStartX is not { } start)
+        {
+            return;
+        }
+
+        // The panel is on the right: dragging the edge to the left makes it wider.
+        SetChatWidth(_resizeStartWidth + (start - e.GetPosition(this).X), remember: false);
+    }
+
+    private void OnChatResizeReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
+    {
+        if (_resizeStartX is null)
+        {
+            return;
+        }
+
+        _resizeStartX = null;
+        e.Pointer.Capture(null);
+        _chatWidthBeforeWiden = null; // a width chosen by hand is the new normal
+        SettingsStore.BoardChatWidth = ChatPanel.Width;
+        UpdateWidenButton();
+    }
 
     private void OnCloseChatClick(object? sender, RoutedEventArgs e) => HideChat();
 }

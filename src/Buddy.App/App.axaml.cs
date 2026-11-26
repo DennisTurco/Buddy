@@ -242,7 +242,7 @@ public partial class App : Application
             bubble.ShowAndFocus();
         }
 
-        var name = string.IsNullOrWhiteSpace(settings.Appearance.Name) ? "Buddy" : settings.Appearance.Name;
+        var name = string.IsNullOrWhiteSpace(settings.Appearance.Name) ? "Bruce" : settings.Appearance.Name;
         try
         {
             _tray = PlatformServices.CreateTrayIcon(name, Logo.Png(settings.Appearance, pet.Sprites, 32),

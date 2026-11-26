@@ -812,7 +812,7 @@ public partial class ProjectWindow : Window
 
         if (Buddy.Core.Tracker.IssueFromCard.LinkOf(card.Item) is { } link)
         {
-            CardIssueButton.Content = Icons.Label($"↗ Issue {Buddy.Core.Tracker.IssueFromCard.Number(link)}");
+            CardIssueButton.Content = Icons.Label($"↗ {Buddy.Core.Tracker.IssueFromCard.Label(link)}");
             ToolTip.SetTip(CardIssueButton, link);
             CardIssueButton.IsVisible = true;
             return;
@@ -826,6 +826,16 @@ public partial class ProjectWindow : Window
         CardIssueButton.Content = Icons.Label("✚ Crea issue GitHub");
         ToolTip.SetTip(CardIssueButton, $"Crea un'issue in {repository} da questa voce e ci mette il link");
         CardIssueButton.IsVisible = true;
+    }
+
+    /// <summary>The link on a card's tile: opens the tracker card it came from (the tile is not selected).</summary>
+    private void OnCardSourceClick(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is Button { DataContext: CardView { SourceLink: { Length: > 0 } link } })
+        {
+            Shell.Open(link);
+        }
     }
 
     private async void OnCardIssueClick(object? sender, RoutedEventArgs e)
@@ -2675,15 +2685,9 @@ public partial class ProjectWindow : Window
         }
     }
 
-    /// <summary>"🐞 Bug" / "✨ Idea": where to open the issue, Buddy itself or the project's GitHub repository.</summary>
-    private async void OnReportClick(object? sender, RoutedEventArgs e)
+    /// <summary>Where a bug report or a feature request can go: Buddy itself or the project's GitHub repository.</summary>
+    private async Task<MenuItem[]> IssueTargetsAsync(Buddy.Core.Repo.IssueKind kind)
     {
-        if (sender is not Button { Tag: string tag } button)
-        {
-            return;
-        }
-
-        var kind = tag == "bug" ? Buddy.Core.Repo.IssueKind.Bug : Buddy.Core.Repo.IssueKind.Feature;
         _repo ??= new Buddy.Core.Repo.GitRepo(Microsoft.Extensions.Options.Options.Create(_settings), TimeProvider.System);
         var project = _repo.IsAvailable ? Buddy.Core.Repo.GitHubLinks.FromRemote(await _repo.GetRemoteUrlAsync()) : null;
 
@@ -2700,8 +2704,45 @@ public partial class ProjectWindow : Window
             onProject.Click += (_, _) => Shell.Open(Buddy.Core.Repo.GitHubLinks.NewIssueUrl(project, kind));
         }
 
+        return [onBuddy, onProject];
+    }
+
+    /// <summary>
+    /// The side bar's "⋯": the vault's folder, reread the notes, report a bug, ask for a feature, donate. Kept out of
+    /// sight so the side bar's foot holds only the quick note, the ideas and Obsidian.
+    /// </summary>
+    private async void OnSideMoreClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        var folder = new MenuItem { Header = "Apri la cartella del vault", Icon = Icons.Of("IconFolder", size: 13) };
+        folder.Click += (s, a) => OnOpenVaultFolderClick(s, a);
+        var refresh = new MenuItem { Header = "Rileggi le note", Icon = Icons.Of("IconRefresh", size: 13) };
+        ToolTip.SetTip(refresh, "Si aggiorna anche da sola");
+        refresh.Click += (_, _) => Reload();
+        var bug = new MenuItem
+        {
+            Header = "Segnala un bug", Icon = Icons.Of("IconBug", size: 13),
+            ItemsSource = await IssueTargetsAsync(Buddy.Core.Repo.IssueKind.Bug),
+        };
+        var feature = new MenuItem
+        {
+            Header = "Chiedi una funzionalità", Icon = Icons.Of("IconSparkles", size: 13),
+            ItemsSource = await IssueTargetsAsync(Buddy.Core.Repo.IssueKind.Feature),
+        };
+        var donate = new MenuItem { Header = "Sostieni Buddy (PayPal)", Icon = Icons.Of("IconHeart", size: 13) };
+        donate.Click += (s, a) => OnDonateClick(s, a);
+
         // A ContextMenu, not a MenuFlyout: the flyout does not open on X11.
-        var menu = new ContextMenu { Placement = PlacementMode.TopEdgeAlignedLeft, PlacementTarget = button, Items = { onBuddy, onProject } };
+        var menu = new ContextMenu
+        {
+            Placement = PlacementMode.TopEdgeAlignedRight,
+            PlacementTarget = button,
+            ItemsSource = new Control[] { folder, refresh, new Separator(), bug, feature, donate },
+        };
         button.ContextMenu = menu;
         menu.Open(button);
     }

@@ -15,9 +15,35 @@ public static partial class IssueFromCard
 {
     public const string Field = "issue";
 
-    /// <summary>The issue the card is already tied to: its [issue:: …] field, or a GitHub issue link anywhere in it (an imported card).</summary>
+    /// <summary>
+    /// The tracker card the board card is tied to: its [issue:: …] field, or the link of the card it was imported
+    /// from, anywhere in it (a GitHub issue, a Jira card, an Azure Boards work item).
+    /// </summary>
     public static string? LinkOf(BoardItem item) =>
-        item.Field(Field) is { } field ? field : IssueUrlRegex().Match(item.Raw) is { Success: true } m ? m.Value : null;
+        item.Field(Field) is { } field ? field : TrackerUrlRegex().Match(item.Raw) is { Success: true } m ? m.Value : null;
+
+    /// <summary>"Issue #12", "Jira ABC-12", "Azure #345": what the link points to, short enough for a button.</summary>
+    public static string Label(string url)
+    {
+        if (Regex.Match(url, @"/browse/([A-Za-z][A-Za-z0-9_]*-\d+)") is { Success: true } jira)
+        {
+            return "Jira " + jira.Groups[1].Value;
+        }
+
+        if (Regex.Match(url, @"/_workitems/edit/(\d+)") is { Success: true } azure)
+        {
+            return "Azure #" + azure.Groups[1].Value;
+        }
+
+        return url.Contains("/issues/", StringComparison.Ordinal) ? "Issue " + Number(url) : "Link";
+    }
+
+    /// <summary>The tracker's name for a tile ("GitHub", "Jira", "Azure"), or "Link".</summary>
+    public static string Source(string url) =>
+        url.Contains("/browse/", StringComparison.Ordinal) ? "Jira"
+        : url.Contains("/_workitems/", StringComparison.Ordinal) ? "Azure"
+        : url.Contains("github.com/", StringComparison.OrdinalIgnoreCase) ? "GitHub"
+        : "Link";
 
     /// <summary>The card's title; its Contesto, Dove, Fatto quando… and notes as the body; bug / enhancement from its tags.</summary>
     public static IssueDraft Draft(BoardItem item)
@@ -106,4 +132,8 @@ public static partial class IssueFromCard
 
     [GeneratedRegex(@"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+")]
     private static partial Regex IssueUrlRegex();
+
+    /// <summary>A GitHub issue, a Jira card (…/browse/KEY-12) or an Azure Boards work item (…/_workitems/edit/12).</summary>
+    [GeneratedRegex(@"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+|https?://[^\s()\[\]<>]+/browse/[A-Za-z][A-Za-z0-9_]*-\d+|https://[^\s()\[\]<>]+/_workitems/edit/\d+")]
+    private static partial Regex TrackerUrlRegex();
 }

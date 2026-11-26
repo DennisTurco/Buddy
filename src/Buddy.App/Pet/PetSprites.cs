@@ -61,7 +61,7 @@ public sealed class PetSprites
     {
         if (!_cache.TryGetValue((state, mode), out var frames))
         {
-            frames = LoadCustom(state, mode) ?? Bitmaps(BuiltIn(state, mode));
+            frames = LoadCustom(state, mode) ?? LoadBruce(FileName(state, mode)) ?? Bitmaps(BuiltIn(state, mode));
             _cache[(state, mode)] = frames;
         }
 
@@ -75,11 +75,53 @@ public sealed class PetSprites
         {
             frames = LoadCustomFile(mode == ChatMode.Claude ? "claude-walk.png" : "walk.png")
                 ?? (mode == ChatMode.Claude ? LoadCustomFile("walk.png") : null)
-                ?? (HasCustomFolder ? Frames(PetState.Idle, mode) : Bitmaps(BuiltInWalk(mode)));
+                ?? (HasCustomFolder ? Frames(PetState.Idle, mode) : null)
+                ?? LoadBruce(mode == ChatMode.Claude ? "claude-walk.png" : "walk.png")
+                ?? Bitmaps(BuiltInWalk(mode));
             _walkCache[mode] = frames;
         }
 
         return frames;
+    }
+
+    private readonly Dictionary<ChatMode, IReadOnlyList<IImage>?> _restCache = [];
+
+    /// <summary>
+    /// Lying down, curled up, now and then while idle: "rest.png" (or "claude-rest.png") from the custom folder, else
+    /// Bruce's. Null when there is none (the slime does not lie down).
+    /// </summary>
+    public IReadOnlyList<IImage>? RestFrames(ChatMode mode)
+    {
+        if (!_restCache.TryGetValue(mode, out var frames))
+        {
+            var name = mode == ChatMode.Claude ? "claude-rest.png" : "rest.png";
+            frames = LoadCustomFile(name) ?? (mode == ChatMode.Claude ? LoadCustomFile("rest.png") : null)
+                ?? (HasCustomFolder ? null : LoadBruce(name));
+            _restCache[mode] = frames;
+        }
+
+        return frames;
+    }
+
+    /// <summary>Bruce is the character (the default), not the slime.</summary>
+    public bool IsBruce => !string.Equals(_settings.Character, "slime", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Bruce's strip <paramref name="name"/> from the app's resources (Pet/Bruce), or null with the slime chosen.</summary>
+    private IReadOnlyList<IImage>? LoadBruce(string name)
+    {
+        if (!IsBruce)
+        {
+            return null;
+        }
+
+        var uri = new Uri($"avares://Buddy.App/Pet/Bruce/{name}");
+        if (!AssetLoader.Exists(uri))
+        {
+            return null;
+        }
+
+        using var stream = AssetLoader.Open(uri);
+        return SplitStrip(new Bitmap(stream));
     }
 
     /// <summary>The built-in idle character scaled to <paramref name="size"/> pixels without smoothing, as PNG (icons).</summary>
@@ -188,21 +230,34 @@ public sealed class PetSprites
     {
         try
         {
-            var image = new Bitmap(path);
-            var size = image.PixelSize.Height;
-            var count = Math.Max(1, image.PixelSize.Width / size);
-            var frames = new List<IImage>(count);
-            for (var i = 0; i < count; i++)
-            {
-                frames.Add(new CroppedBitmap(image, new PixelRect(i * size, 0, size, size)));
-            }
-
-            return frames;
+            return SplitStrip(new Bitmap(path));
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
         {
             return null;
         }
+    }
+
+    /// <summary>A frame's height in pixels of the art (16 for the slime, 32 for Bruce): a crop's area, a bitmap's pixels.</summary>
+    public static int PixelHeight(IImage? image) => image switch
+    {
+        CroppedBitmap crop => crop.SourceRect.Height,
+        Bitmap bitmap => bitmap.PixelSize.Height,
+        _ => BuiltInSize,
+    };
+
+    /// <summary>A horizontal strip of square frames, cut into its frames.</summary>
+    private static List<IImage> SplitStrip(Bitmap image)
+    {
+        var size = image.PixelSize.Height;
+        var count = Math.Max(1, image.PixelSize.Width / size);
+        var frames = new List<IImage>(count);
+        for (var i = 0; i < count; i++)
+        {
+            frames.Add(new CroppedBitmap(image, new PixelRect(i * size, 0, size, size)));
+        }
+
+        return frames;
     }
 
     private IReadOnlyList<byte[]> BuiltIn(PetState state, ChatMode mode)
