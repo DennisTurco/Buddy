@@ -1012,19 +1012,31 @@ public partial class ProjectWindow
 
         if (report is not null)
         {
-            // Why each mark: the evidence the mentor read, with how it moved since last time.
+            // Why each mark: the evidence the mentor read, how many facts it rests on, how it moved since last time. A
+            // mark on fewer than MinEvidence facts is not given as a number ("in formazione").
             var reasons = report.Scores
-                .Where(s => Matches($"{s.Aspect} {s.Reason}"))
+                .Where(s => Matches($"{s.Aspect} {s.Reason} {string.Join(" ", s.Evidence ?? [])}"))
                 .Select(s =>
                 {
                     var change = ProfileReports.Change(report, previous, s.Aspect);
                     var trend = change switch { > 0 => $" ↑{change}", < 0 => $" ↓{-change}", _ => "" };
-                    return $"- **{s.Aspect}** {(s.Score is { } v ? $"{v}/10{trend}" : "n.d.")}" + (s.Reason.Length > 0 ? $" — {s.Reason}" : "");
+                    var count = s.Evidence is { } ev ? $" · {Facts(ev.Count)}" : "";
+                    var mark = s.Shown is { } v ? $"{v}/10{trend}{count}"
+                        : s.Forming ? $"in formazione · {Facts(s.Evidence!.Count)} su {ProfileReports.MinEvidence}"
+                        : "n.d.";
+                    var line = $"- **{s.Aspect}** {mark}" + (s.Reason.Length > 0 ? $" — {s.Reason}" : "");
+                    return s.Evidence is { Count: > 0 } facts ? $"{line}\n  - *{string.Join(" · ", facts)}*" : line;
                 })
                 .ToList();
             if (reasons.Count > 0)
             {
-                cards.Add(new PageCard("Perché questi voti", "gli indizi letti nel diario", [], string.Join("\n", reasons), path, "#B99BF5"));
+                var forming = report.Forming.Count();
+                var unknown = report.Scores.All(s => s.Evidence is null);
+                cards.Add(new PageCard("Perché questi voti",
+                    unknown ? "indizi non contati: chiedi un nuovo resoconto per vederli"
+                    : forming > 0 ? $"un voto compare con almeno {ProfileReports.MinEvidence} indizi distinti · {forming} ancora in formazione"
+                    : $"ogni voto poggia su almeno {ProfileReports.MinEvidence} indizi distinti",
+                    [], string.Join("\n", reasons), path, "#B99BF5"));
             }
 
             ListCard("Punti di forza", null, report.Strengths, "#7BC47F");
@@ -1060,7 +1072,7 @@ public partial class ProjectWindow
             foreach (var past in reports.Take(6))
             {
                 history.AppendLine($"| {past.Date.ToString("d MMM yyyy", Italian)} | {past.Average?.ToString("0.0", Italian) ?? "n.d."} | "
-                                   + string.Join(" · ", past.Rated.Select(s => $"{s.Aspect} {s.Score}")) + " |");
+                                   + string.Join(" · ", past.Rated.Select(s => $"{s.Aspect} {s.Shown}")) + " |");
             }
 
             cards.Add(new PageCard("Com'è cambiato", $"{reports.Count} resoconti", [], history.ToString(), path, "#B99BF5"));
@@ -1081,6 +1093,9 @@ public partial class ProjectWindow
         };
     }
 
+    /// <summary>"1 indizio", "3 indizi".</summary>
+    private static string Facts(int count) => count == 1 ? "1 indizio" : $"{count} indizi";
+
     /// <summary>The profile page's charts, each only when there is something to draw.</summary>
     private List<Control> ProfileCharts(IReadOnlyList<ProfileReport> reports, string journal)
     {
@@ -1089,27 +1104,30 @@ public partial class ProjectWindow
         var previous = reports.Count > 1 ? reports[1] : null;
 
         // The marks as a radar, the previous report dashed under them.
-        if (report is not null && report.Rated.Any())
+        // Marks still forming (too few facts) are drawn as missing, with a note saying why.
+        string? Note(AspectScore s) => s.Forming ? "pochi indizi" : null;
+        if (report is not null && report.Scores.Any(s => s.Score is not null))
         {
-            var series = new List<ChartSeries> { new("Oggi", Lilac, report.Scores.Select(s => (double?)s.Score).ToList()) };
+            var series = new List<ChartSeries> { new("Oggi", Lilac, report.Scores.Select(s => (double?)s.Shown).ToList()) };
             var legend = new List<(string, Avalonia.Media.Color, bool)> { ($"{report.Date.ToString("d MMM", Italian)}", Lilac, false) };
             if (previous is not null)
             {
                 series.Add(new ChartSeries("Prima", Grey, ProfileReports.Aspects
-                    .Select(a => (double?)previous.Scores.FirstOrDefault(s => s.Aspect == a)?.Score).ToList(), Dashed: true));
+                    .Select(a => (double?)previous.Scores.FirstOrDefault(s => s.Aspect == a)?.Shown).ToList(), Dashed: true));
                 legend.Add(($"{previous.Date.ToString("d MMM", Italian)}", Grey, true));
             }
 
-            var missing = report.Scores.Count(s => s.Score is null);
+            var missing = report.Scores.Count(s => s.Shown is null);
             charts.Add(ChartPanels.Panel("Il tuo profilo a colpo d'occhio",
-                missing > 0 ? $"{missing} aspett{(missing == 1 ? "o" : "i")} ancora senza voto: mancano indizi nel diario" : "voti da 1 a 10",
-                new RadarChart { Axes = report.Scores.Select(s => s.Aspect).ToList(), Series = series }, legend));
+                missing > 0 ? $"{missing} aspett{(missing == 1 ? "o" : "i")} senza voto: servono almeno {ProfileReports.MinEvidence} indizi nel diario" : "voti da 1 a 10",
+                new RadarChart { Axes = report.Scores.Select(s => s.Aspect).ToList(), Series = series, Notes = report.Scores.Select(Note).ToList() }, legend));
 
             charts.Add(ChartPanels.Panel("I voti",
                 previous is null ? "il primo resoconto: dal prossimo vedrai come cambiano" : $"↑↓ rispetto al {previous.Date.ToString("d MMMM", Italian)}",
                 new BarChart
                 {
-                    Rows = report.Scores.Select(s => (s.Aspect, (double?)s.Score, (double?)ProfileReports.Change(report, previous, s.Aspect))).ToList(),
+                    Rows = report.Scores.Select(s => new BarRow(s.Aspect, s.Shown, ProfileReports.Change(report, previous, s.Aspect),
+                        s.Forming ? $"in formazione {s.Evidence!.Count}/{ProfileReports.MinEvidence}" : null)).ToList(),
                 }));
         }
 
@@ -1119,7 +1137,7 @@ public partial class ProjectWindow
             var timeline = reports.Take(8).Reverse().ToList();
             Avalonia.Media.Color[] palette = [Blue, Green, Amber];
             var moved = ProfileReports.Aspects
-                .Select(a => (Aspect: a, Values: timeline.Select(r => r.Scores.FirstOrDefault(s => s.Aspect == a)?.Score).ToList()))
+                .Select(a => (Aspect: a, Values: timeline.Select(r => r.Scores.FirstOrDefault(s => s.Aspect == a)?.Shown).ToList()))
                 .Where(x => x.Values.Count(v => v is not null) >= 2)
                 .OrderByDescending(x => Math.Abs((x.Values.Last(v => v is not null) ?? 0) - (x.Values.First(v => v is not null) ?? 0)))
                 .Take(3)

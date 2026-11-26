@@ -9,6 +9,9 @@ namespace Buddy.App.Project;
 /// <summary>A line or a polygon of a chart: its name in the legend, its colour and one value per point (null: no value).</summary>
 public sealed record ChartSeries(string Name, Color Color, IReadOnlyList<double?> Values, bool Dashed = false);
 
+/// <summary>A row of a <see cref="BarChart"/>; <paramref name="Note"/> is written in place of a missing value ("n.d." by default).</summary>
+public sealed record BarRow(string Label, double? Value, double? Change = null, string? Note = null);
+
 /// <summary>A stacked part of a column: its value and colour.</summary>
 public sealed record ColumnPart(double Value, Color Color);
 
@@ -45,6 +48,9 @@ public sealed class RadarChart : ChartBase
     public required IReadOnlyList<string> Axes { get; init; }
 
     public required IReadOnlyList<ChartSeries> Series { get; init; }
+
+    /// <summary>What is written next to an axis whose value is missing in the first series ("n.d." when null).</summary>
+    public IReadOnlyList<string?>? Notes { get; init; }
 
     public double Max { get; init; } = 10;
 
@@ -89,7 +95,7 @@ public sealed class RadarChart : ChartBase
         {
             context.DrawLine(GridPen, center, At(i, Max));
             var missing = Series.Count > 0 && (i >= Series[0].Values.Count || Series[0].Values[i] is null);
-            var label = Text(missing ? $"{Axes[i]} (n.d.)" : Axes[i], 11, Muted);
+            var label = Text(missing ? $"{Axes[i]} ({(Notes is { } notes && i < notes.Count ? notes[i] : null) ?? "n.d."})" : Axes[i], 11, Muted);
             var tip = At(i, Max + 0.9);
             var x = tip.X < center.X - 4 ? tip.X - label.Width : tip.X > center.X + 4 ? tip.X : tip.X - label.Width / 2;
             var y = tip.Y < center.Y - 4 ? tip.Y - label.Height : tip.Y > center.Y + 4 ? tip.Y : tip.Y - label.Height / 2;
@@ -227,7 +233,7 @@ public sealed class LineChart : ChartBase
 /// </summary>
 public sealed class BarChart : ChartBase
 {
-    public required IReadOnlyList<(string Label, double? Value, double? Change)> Rows { get; init; }
+    public required IReadOnlyList<BarRow> Rows { get; init; }
 
     public double Max { get; init; } = 10;
 
@@ -247,7 +253,8 @@ public sealed class BarChart : ChartBase
 
         var labels = Rows.Select(r => Text(r.Label, 11, Muted)).ToList();
         var labelWidth = Math.Min(Bounds.Width * 0.42, labels.Max(l => l.Width) + 10);
-        const double valueWidth = 54;
+        var notes = Rows.Select(r => r.Value is null ? Text(r.Note ?? "n.d.", 10, Muted) : null).ToList();
+        var valueWidth = Math.Max(54, notes.Max(n => n?.Width ?? 0) + 12);
         var track = Math.Max(20, Bounds.Width - labelWidth - valueWidth);
         var trackBrush = Brush("Divider", new SolidColorBrush(Colors.Gray, 0.2));
         var fill = new SolidColorBrush(Color);
@@ -255,7 +262,7 @@ public sealed class BarChart : ChartBase
         var down = new SolidColorBrush(Color.Parse("#E8857A"));
         for (var i = 0; i < Rows.Count; i++)
         {
-            var (_, value, change) = Rows[i];
+            var (_, value, change, _) = Rows[i];
             var middle = i * RowHeight + RowHeight / 2;
             context.DrawText(labels[i], new Point(0, middle - labels[i].Height / 2));
             var bar = new Rect(labelWidth, middle - 5, track, 10);
@@ -265,7 +272,7 @@ public sealed class BarChart : ChartBase
                 context.DrawRectangle(fill, null, bar.WithWidth(track * Math.Clamp(v / Max, 0, 1)), 5, 5);
             }
 
-            var number = Text(value is { } n ? Format(n) : "n.d.", 11, value is null ? Muted : Ink, bold: value is not null);
+            var number = notes[i] ?? Text(Format(value!.Value), 11, Ink, bold: true);
             var x = labelWidth + track + 8;
             context.DrawText(number, new Point(x, middle - number.Height / 2));
             if (change is { } c && c != 0)

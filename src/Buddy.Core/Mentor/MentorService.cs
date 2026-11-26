@@ -1436,8 +1436,16 @@ public sealed class MentorService : IDisposable
             text.AppendLine(string.Join(" · ", rated.Select(s =>
             {
                 var change = ProfileReports.Change(report, previous, s.Aspect);
-                return $"{s.Aspect} **{s.Score}**" + (change is > 0 ? $" ↑{change}" : change is < 0 ? $" ↓{-change}" : "");
+                return $"{s.Aspect} **{s.Shown}**" + (change is > 0 ? $" ↑{change}" : change is < 0 ? $" ↓{-change}" : "");
             }))).AppendLine();
+        }
+
+        // Marks on one or two facts are not given as numbers: they would weigh more than they are worth.
+        var forming = report.Forming.Select(s => s.Aspect).ToList();
+        if (forming.Count > 0)
+        {
+            text.AppendLine($"In formazione, con meno di {ProfileReports.MinEvidence} indizi: {string.Join(", ", forming)}. "
+                            + "Il voto comparirà quando il diario ne racconterà di più.").AppendLine();
         }
 
         if (report.Strengths.Count > 0)

@@ -903,8 +903,11 @@ public class PagesAndPaletteTests
             Assert.That(sent, Is.EqualTo("/resoconto"));
 
             var file = Path.Combine(root, "Diario", Buddy.Core.Mentor.ProfileReports.FileName);
+            // Maturità has a mark on a single fact: it stays "in formazione".
             Buddy.Core.Mentor.AspectScore[] Marks(int leadership) =>
-                [.. Buddy.Core.Mentor.ProfileReports.Aspects.Select(a => new Buddy.Core.Mentor.AspectScore(a, a == "Leadership" ? leadership : null, "dagli episodi"))];
+                [.. Buddy.Core.Mentor.ProfileReports.Aspects.Select(a => a == "Maturità"
+                    ? new Buddy.Core.Mentor.AspectScore(a, 8, "una volta sola") { Evidence = ["episodio 2026-11-16 · Rilascio"] }
+                    : new Buddy.Core.Mentor.AspectScore(a, a == "Leadership" ? leadership : null, "dagli episodi"))];
             Buddy.Core.Mentor.ProfileReports.Add(file, new Buddy.Core.Mentor.ProfileReport(new DateOnly(2026, 11, 12), "Prima.", Marks(5), [], [], [], []));
             Buddy.Core.Mentor.ProfileReports.Add(file, new Buddy.Core.Mentor.ProfileReport(new DateOnly(2026, 11, 26), "Sei curioso e preciso.", Marks(7),
                 ["Chiedi il perché"], ["Fermati prima di rispondere"],
@@ -926,14 +929,17 @@ public class PagesAndPaletteTests
                 "Perché questi voti", "Punti di forza", "Da migliorare", "Prossimi passi", "Hai proposto il rilascio a fasi", "Hai risposto secco a Chicca",
                 "Com'è cambiato",
             }));
-            Assert.That(cards[0].Markdown, Does.Contain("**Leadership** 7/10 ↑2 — dagli episodi").And.Contain("**Maturità** n.d."));
+            Assert.That(cards[0].Markdown, Does.Contain("**Leadership** 7/10 ↑2 — dagli episodi").And.Contain("**Comunicazione** n.d."));
 
             // The charts: the radar, the marks over time, mood, hours and habits, the episodes, the interventions' balance.
             var charts = window.GetVisualDescendants().OfType<ChartBase>().ToList();
             Assert.That(charts.OfType<RadarChart>().Single().Series, Has.Count.EqualTo(2), "today and the previous report");
             Assert.That(charts.OfType<LineChart>().Count(), Is.EqualTo(2), "the marks over time and the mood");
             Assert.That(charts.OfType<ColumnChart>().Count(), Is.EqualTo(2), "hours and habits, episodes");
-            Assert.That(charts.OfType<BarChart>().Single().Rows.First(), Is.EqualTo(("Leadership", (double?)7, (double?)2)));
+            var bars = charts.OfType<BarChart>().Single().Rows;
+            Assert.That(bars[0], Is.EqualTo(new BarRow("Leadership", 7, 2)));
+            Assert.That(bars[1], Is.EqualTo(new BarRow("Maturità", null, null, "in formazione 1/3")), "a mark on one fact is not drawn");
+            Assert.That(cards[0].Markdown, Does.Contain("**Maturità** in formazione · 1 indizio su 3").And.Contain("*episodio 2026-11-16 · Rilascio*"));
             Assert.That(charts.All(c => c.Bounds.Width > 0), Is.True, "laid out as wide as the cards");
             Assert.That(cards[4].Chips.Single().IsGood, Is.True);
             Assert.That(cards[5].Chips.Single().IsHot, Is.True);

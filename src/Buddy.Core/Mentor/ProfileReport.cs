@@ -6,7 +6,32 @@ using System.Text.RegularExpressions;
 namespace Buddy.Core.Mentor;
 
 /// <summary>A mark from 1 to 10 on one aspect, with the evidence; <paramref name="Score"/> null when there is not enough to say.</summary>
-public sealed record AspectScore(string Aspect, int? Score, string Reason);
+public sealed record AspectScore(string Aspect, int? Score, string Reason)
+{
+    /// <summary>
+    /// The distinct facts the mark rests on ("episodio 2026-11-16 · Rilascio", "diario 2026-11-20"); null for a report
+    /// written before they were counted.
+    /// </summary>
+    public IReadOnlyList<string>? Evidence { get; init; }
+
+    /// <summary>
+    /// Enough evidence to show the mark: a mark on one or two facts reads truer than it is, so it stays "in formazione"
+    /// (kept in the file, left out of the page's numbers, the average and the comparisons). Unknown counts are shown.
+    /// </summary>
+    public bool Reliable => Evidence is null || Evidence.Count >= ProfileReports.MinEvidence;
+
+    /// <summary>The mark to show: null when there is none or it rests on too little.</summary>
+    public int? Shown => Reliable ? Score : null;
+
+    /// <summary>A mark given, but on too little evidence to show it yet.</summary>
+    public bool Forming => Score is not null && !Reliable;
+
+    public bool Equals(AspectScore? other) =>
+        other is not null && Aspect == other.Aspect && Score == other.Score && Reason == other.Reason
+        && (Evidence ?? []).SequenceEqual(other.Evidence ?? []) && (Evidence is null) == (other.Evidence is null);
+
+    public override int GetHashCode() => HashCode.Combine(Aspect, Score, Reason, Evidence?.Count);
+}
 
 /// <summary>Something the user did that went well or not: when (a date, may be ""), what, and why it counts.</summary>
 public sealed record Intervention(string When, string What, string Why);
@@ -26,11 +51,14 @@ public sealed record ProfileReport(
     /// <summary>What changed since the previous report, in a sentence or two ("" for the first one).</summary>
     public string Since { get; init; } = "";
 
-    /// <summary>The marks that have a value.</summary>
-    public IEnumerable<AspectScore> Rated => Scores.Where(s => s.Score is not null);
+    /// <summary>The marks shown: with a value and enough evidence behind it.</summary>
+    public IEnumerable<AspectScore> Rated => Scores.Where(s => s.Shown is not null);
 
-    /// <summary>The average of the marks given, or null when none.</summary>
-    public double? Average => Rated.Any() ? Rated.Average(s => s.Score!.Value) : null;
+    /// <summary>The marks still forming: given, but on fewer than <see cref="ProfileReports.MinEvidence"/> facts.</summary>
+    public IEnumerable<AspectScore> Forming => Scores.Where(s => s.Forming);
+
+    /// <summary>The average of the marks shown, or null when none.</summary>
+    public double? Average => Rated.Any() ? Rated.Average(s => s.Shown!.Value) : null;
 }
 
 /// <summary>
@@ -59,6 +87,11 @@ public static partial class ProfileReports
 
     public const int MaxSteps = 3;
 
+    /// <summary>Distinct facts a mark needs before it is shown.</summary>
+    public const int MinEvidence = 3;
+
+    public const int MaxEvidence = 8;
+
     /// <summary>The note's path: in the journal when there is one, otherwise next to the project's notes.</summary>
     public static string PathFor(BuddySettings settings) =>
         Path.Combine(!string.IsNullOrWhiteSpace(settings.Mentor.JournalPath) ? settings.Mentor.JournalPath : settings.ProjectPath, FileName);
@@ -79,7 +112,7 @@ public static partial class ProfileReports
             "Su di me"), i diari in Diario/ degli ultimi 45 giorni, le ultime retrospettive in Retro/, Andamento.md, Pillole.md.
             Non modificare né creare file. Poi rispondi SOLO con un oggetto JSON:
             {"sintesi": "...",
-             "voti": [{"aspetto": "...", "voto": 1-10 | null, "motivo": "..."}],
+             "voti": [{"aspetto": "...", "voto": 1-10 | null, "motivo": "...", "indizi": ["..."]}],
              "punti_di_forza": ["..."], "da_migliorare": ["..."],
              "interventi_positivi": [{"quando": "AAAA-MM-GG", "cosa": "...", "perche": "..."}],
              "interventi_negativi": [{"quando": "AAAA-MM-GG", "cosa": "...", "perche": "..."}],
@@ -93,6 +126,11 @@ public static partial class ProfileReports
               SOLO dai fatti letti. "motivo": una frase che cita l'indizio (un episodio, un diario, una retro). Se non ci
               sono abbastanza indizi su un aspetto, "voto": null e nel motivo cosa servirebbe per valutarlo. Non gonfiare i
               voti per gentilezza e non abbassarli per severità: un voto credibile gli serve di più.
+              "indizi": i fatti DISTINTI su cui poggia il voto, uno per voce, nella forma "episodio AAAA-MM-GG · titolo",
+              "diario AAAA-MM-GG", "retro AAAA-Www" o "check-out AAAA-MM-GG" (al massimo {{MaxEvidence}}). Solo fatti che
+              dicono davvero qualcosa su QUELL'aspetto: lo stesso episodio letto due volte è un indizio solo, e non allungare
+              la lista per sembrare più sicuro. Con meno di {{MinEvidence}} indizi il voto resta "in formazione" e non gli
+              viene mostrato: va bene, è più onesto.
             - "punti_di_forza" e "da_migliorare": al massimo {{MaxItems}} ciascuno, una frase concreta per voce, legata a
               comportamenti osservati ("chiede il perché prima di insistere"), non a etichette ("è testardo"). In
               "da_migliorare" scrivi anche come, in breve.
@@ -114,7 +152,9 @@ public static partial class ProfileReports
             prompt.AppendLine("Tieni i voti coerenti con questi: cambiali solo se i fatti nuovi lo giustificano, e dillo nel motivo.");
             foreach (var score in previous.Scores)
             {
-                prompt.AppendLine($"- {score.Aspect}: {(score.Score is { } s ? s + "/10" : "n.d.")}");
+                prompt.AppendLine($"- {score.Aspect}: {(score.Score is { } s ? s + "/10" : "n.d.")}"
+                                  + (score.Evidence is { } ev
+                                      ? $" ({ev.Count} {(ev.Count == 1 ? "indizio" : "indizi")}{(score.Forming ? ", in formazione" : "")})" : ""));
             }
         }
 
@@ -157,7 +197,12 @@ public static partial class ProfileReports
 
                 int? score = item.TryGetProperty("voto", out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d)
                     ? Math.Clamp((int)Math.Round(d), 1, 10) : null;
-                given[aspect] = new AspectScore(aspect, score, Str(item, "motivo"));
+                // The evidence, each fact once; none listed counts as none (the mark is not shown), never as unknown.
+                var evidence = item.TryGetProperty("indizi", out var list) && list.ValueKind == JsonValueKind.Array
+                    ? list.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => Evidence(e.GetString()!))
+                        .Where(e => e.Length > 0).Distinct(StringComparer.CurrentCultureIgnoreCase).Take(MaxEvidence).ToList()
+                    : [];
+                given[aspect] = new AspectScore(aspect, score, Str(item, "motivo")) { Evidence = evidence };
             }
 
             List<string> Items(string name) =>
@@ -170,13 +215,13 @@ public static partial class ProfileReports
 
             var summary = root.TryGetProperty("sintesi", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString()!.Trim() : "";
             var report = new ProfileReport(date, summary,
-                Aspects.Select(a => given.TryGetValue(a, out var g) ? g : new AspectScore(a, null, "")).ToList(),
+                Aspects.Select(a => given.TryGetValue(a, out var g) ? g : new AspectScore(a, null, "") { Evidence = [] }).ToList(),
                 Items("punti_di_forza"), Items("da_migliorare"), Interventions("interventi_positivi"), Interventions("interventi_negativi"))
             {
                 NextSteps = Items("prossimi_passi").Take(MaxSteps).ToList(),
                 Since = root.TryGetProperty("rispetto_a_prima", out var since) && since.ValueKind == JsonValueKind.String ? since.GetString()!.Trim() : "",
             };
-            return report.Summary.Length == 0 && !report.Rated.Any() && report.Strengths.Count == 0 && report.Improvements.Count == 0
+            return report.Summary.Length == 0 && report.Scores.All(sc => sc.Score is null) && report.Strengths.Count == 0 && report.Improvements.Count == 0
                 ? null : report;
         }
         catch (JsonException)
@@ -193,6 +238,9 @@ public static partial class ProfileReports
     /// <summary>"2026-11-16", or "" when the text is not a date.</summary>
     private static string Day(string text) =>
         DateOnly.TryParseExact(text.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d.ToString("yyyy-MM-dd") : "";
+
+    /// <summary>A piece of evidence as it is written in the note's "(indizi: a; b)": no separators inside it.</summary>
+    private static string Evidence(string text) => Clean(text).Replace(';', ',').Replace('(', '[').Replace(')', ']');
 
     /// <summary>One line: no line breaks, no dash that would split the line when read back.</summary>
     private static string Clean(string text) => text.ReplaceLineEndings(" ").Replace(" — ", " - ").Trim();
@@ -212,7 +260,9 @@ public static partial class ProfileReports
         foreach (var score in report.Scores)
         {
             text.Append($"- **{score.Aspect}:** {(score.Score is { } s ? s + "/10" : "n.d.")}")
-                .Append(score.Reason.Length > 0 ? $" — {score.Reason}" : "").Append('\n');
+                .Append(score.Reason.Length > 0 ? $" — {score.Reason}" : "")
+                .Append(score.Evidence is { } ev ? $" (indizi: {(ev.Count == 0 ? "nessuno" : string.Join("; ", ev))})" : "")
+                .Append('\n');
         }
 
         void List(string title, IEnumerable<string> lines)
@@ -279,10 +329,7 @@ public static partial class ProfileReports
                 Body(name).Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("- ", StringComparison.Ordinal))
                     .Select(l => l[2..].Trim()).Where(l => l.Length > 0 && l != "(niente per ora)");
 
-            var given = Bullets("voti").Select(l => ScoreLine().Match(l)).Where(m => m.Success)
-                .Select(m => new AspectScore(m.Groups["aspect"].Value.Trim(),
-                    int.TryParse(m.Groups["score"].Value, out var s) ? Math.Clamp(s, 1, 10) : null, m.Groups["why"].Value.Trim()))
-                .ToList();
+            var given = Bullets("voti").Select(ReadScore).OfType<AspectScore>().ToList();
             List<Intervention> Interventions(string name) => Bullets(name).Select(l => InterventionLine().Match(l))
                 .Select(m => new Intervention(m.Groups["when"].Value.Trim(), m.Groups["what"].Value.Trim(), m.Groups["why"].Value.Trim()))
                 .ToList();
@@ -296,6 +343,26 @@ public static partial class ProfileReports
         }
 
         return reports.OrderByDescending(r => r.Date).ToList();
+    }
+
+    /// <summary>"**Leadership:** 6/10 — motivo (indizi: a; b)" → the mark; the evidence is null when the line has none (an older report).</summary>
+    private static AspectScore? ReadScore(string line)
+    {
+        IReadOnlyList<string>? evidence = null;
+        if (EvidenceTail().Match(line) is { Success: true } tail)
+        {
+            var listed = tail.Groups["ev"].Value.Trim();
+            evidence = listed.Equals("nessuno", StringComparison.OrdinalIgnoreCase)
+                ? []
+                : listed.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            line = line[..tail.Index];
+        }
+
+        var m = ScoreLine().Match(line.TrimEnd());
+        return m.Success
+            ? new AspectScore(m.Groups["aspect"].Value.Trim(), int.TryParse(m.Groups["score"].Value, out var s) ? Math.Clamp(s, 1, 10) : null,
+                m.Groups["why"].Value.Trim()) { Evidence = evidence }
+            : null;
     }
 
     private static Dictionary<string, string> Sections(string text)
@@ -338,8 +405,9 @@ public static partial class ProfileReports
     /// <summary>How a mark moved since the previous report: +2, -1…; null when either is missing.</summary>
     public static int? Change(ProfileReport current, ProfileReport? previous, string aspect)
     {
-        var now = current.Scores.FirstOrDefault(s => s.Aspect.Equals(aspect, StringComparison.CurrentCultureIgnoreCase))?.Score;
-        var before = previous?.Scores.FirstOrDefault(s => s.Aspect.Equals(aspect, StringComparison.CurrentCultureIgnoreCase))?.Score;
+        // Only marks shown on both sides: a move from or to a mark still forming would say more than the facts.
+        var now = current.Scores.FirstOrDefault(s => s.Aspect.Equals(aspect, StringComparison.CurrentCultureIgnoreCase))?.Shown;
+        var before = previous?.Scores.FirstOrDefault(s => s.Aspect.Equals(aspect, StringComparison.CurrentCultureIgnoreCase))?.Shown;
         return now is { } n && before is { } b ? n - b : null;
     }
 
@@ -351,6 +419,9 @@ public static partial class ProfileReports
 
     [GeneratedRegex(@"^\*\*(?<aspect>[^*:]+):?\*\*:?\s*(?:(?<score>\d{1,2})\s*/\s*10|n\.?d\.?)?\s*(?:—\s*(?<why>.*))?$")]
     private static partial Regex ScoreLine();
+
+    [GeneratedRegex(@"\s*\(indizi:\s*(?<ev>[^()]*)\)\s*$")]
+    private static partial Regex EvidenceTail();
 
     [GeneratedRegex(@"^(?:\*\*(?<when>[^*]+)\*\*\s*)?(?<what>.+?)(?:\s+—\s+(?<why>.*))?$")]
     private static partial Regex InterventionLine();

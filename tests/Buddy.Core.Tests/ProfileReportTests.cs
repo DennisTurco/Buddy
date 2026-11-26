@@ -19,8 +19,10 @@ public class ProfileReportTests
     private const string Answer = """
         Ecco il resoconto:
         {"sintesi": "Sei curioso e preciso; con chi è vago ti spazientisci.",
-         "voti": [{"aspetto": "leadership", "voto": 6, "motivo": "Hai guidato la riunione del rilascio."},
-                  {"aspetto": "Maturità", "voto": 14, "motivo": "Troppo alto: tagliato."},
+         "voti": [{"aspetto": "leadership", "voto": 6, "motivo": "Hai guidato la riunione del rilascio.",
+                   "indizi": ["episodio 2026-11-16 · Rilascio", "diario 2026-11-18", "Episodio 2026-11-16 · rilascio", "retro 2026-W47 (sfida)"]},
+                  {"aspetto": "Maturità", "voto": 14, "motivo": "Troppo alto: tagliato.", "indizi": ["diario 2026-11-20", "diario 2026-11-21", "diario 2026-11-22"]},
+                  {"aspetto": "Autonomia", "voto": 9, "motivo": "Su un solo fatto.", "indizi": ["diario 2026-11-20"]},
                   {"aspetto": "Comunicazione", "voto": null, "motivo": "Servono più episodi."},
                   {"aspetto": "Simpatia", "voto": 9, "motivo": "Non è un aspetto valutato."}],
          "punti_di_forza": ["Chiedi il perché prima di insistere", "Chiedi il perché prima di insistere", "Scrivi i test prima"],
@@ -40,7 +42,15 @@ public class ProfileReportTests
         Assert.That(report.Scores[0].Score, Is.EqualTo(6));
         Assert.That(report.Scores[1].Score, Is.EqualTo(10), "kept within 1-10");
         Assert.That(report.Scores[2].Score, Is.Null);
-        Assert.That(report.Scores.Single(s => s.Aspect == "Autonomia").Score, Is.Null, "not given: no mark");
+        Assert.That(report.Scores.Single(s => s.Aspect == "Affidabilità").Score, Is.Null, "not given: no mark");
+        Assert.That(report.Scores[0].Evidence, Is.EqualTo(new[] { "episodio 2026-11-16 · Rilascio", "diario 2026-11-18", "retro 2026-W47 [sfida]" }),
+            "each fact once, without the note's separators");
+
+        // A mark on fewer than three facts is kept but not shown: out of the average and of the marks shown.
+        var autonomy = report.Scores.Single(s => s.Aspect == "Autonomia");
+        Assert.That((autonomy.Score, autonomy.Shown, autonomy.Forming), Is.EqualTo((9, (int?)null, true)));
+        Assert.That(report.Forming.Select(s => s.Aspect), Is.EqualTo(new[] { "Autonomia" }));
+        Assert.That(report.Rated.Select(s => s.Aspect), Is.EqualTo(new[] { "Leadership", "Maturità" }));
         Assert.That(report.Strengths, Is.EqualTo(new[] { "Chiedi il perché prima di insistere", "Scrivi i test prima" }));
         Assert.That(report.Improvements.Single(), Does.Not.Contain(" — "), "the dash would split the line when read back");
         Assert.That(report.Positive.Single().When, Is.EqualTo("2026-11-16"));
@@ -115,6 +125,8 @@ public class ProfileReportTests
         Assert.That(latest.Improvements, Is.EqualTo(second.Improvements));
         Assert.That(latest.Positive, Is.EqualTo(second.Positive));
         Assert.That(latest.Negative, Is.EqualTo(second.Negative));
+        Assert.That(latest.Scores.Single(s => s.Aspect == "Autonomia").Forming, Is.True, "the evidence is read back with the mark");
+        Assert.That(latest.Scores.Single(s => s.Aspect == "Comunicazione").Evidence, Is.Empty, "«nessuno» is counted, not unknown");
         Assert.That(latest.NextSteps, Is.EqualTo(second.NextSteps));
         Assert.That(latest.Since, Is.EqualTo(second.Since));
         Assert.That(ProfileReports.Change(latest, reports[1], "Leadership"), Is.EqualTo(2));
@@ -129,7 +141,9 @@ public class ProfileReportTests
 
         Assert.That(prompt, Does.Contain("Leadership, Maturità"));
         Assert.That(prompt, Does.Contain("Resoconto precedente (2026-11-12)"));
-        Assert.That(prompt, Does.Contain("- Leadership: 6/10"));
+        Assert.That(prompt, Does.Contain("- Leadership: 6/10 (3 indizi)"));
+        Assert.That(prompt, Does.Contain("- Autonomia: 9/10 (1 indizio, in formazione)"));
+        Assert.That(prompt, Does.Contain("\"indizi\""));
         Assert.That(prompt, Does.Contain("- Comunicazione: n.d."));
     }
 
@@ -141,6 +155,8 @@ public class ProfileReportTests
 
         var message = MentorService.ReportMessage(now, before);
         Assert.That(message, Does.Contain("Leadership **7** ↑1"));
+        Assert.That(message, Does.Not.Contain("Autonomia **"), "a mark on one fact is not given as a number");
+        Assert.That(message, Does.Contain("In formazione, con meno di 3 indizi: Autonomia"));
         Assert.That(message, Does.Contain("💪 Chiedi il perché"));
         Assert.That(message, Does.Contain("Il mio profilo"));
     }
