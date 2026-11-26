@@ -48,6 +48,7 @@ internal static class Appearance
         window.Resources["InlineCodeBack"] = new SolidColorBrush(ink, 0.16);
         window.Resources["InlineCodeBackSoft"] = new SolidColorBrush(ink, 0.08);
         window.Resources["Divider"] = new SolidColorBrush(ink, 0.12);
+        window.Resources["SelectionRing"] = new BoxShadows(new BoxShadow { Spread = 1.5, Color = accent });
         window.Resources["LinkInk"] = new SolidColorBrush(Luminance(paper) < 0.5 ? accent : Mix(accent, ink, 0.45));
 
         // Code colours readable on the paper: One Dark on a dark one, One Light on a light one.

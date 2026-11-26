@@ -650,13 +650,14 @@ public sealed class ThemeColors
         MentorAccent = "#F2B544",
     };
 
-    /// <summary>The five built-in themes, in the order they are offered.</summary>
+    /// <summary>The six built-in themes, in the order they are offered.</summary>
     public static IReadOnlyList<(string Name, Func<ThemeColors> Create)> BuiltIn { get; } =
     [
         ("Chiaro", Light),
         ("Scuro", Dark),
         ("Notte blu", NightBlue),
         ("Foresta", Forest),
+        ("Smeraldo", Emerald),
         ("Tramonto", Sunset),
     ];
 
@@ -697,6 +698,27 @@ public sealed class ThemeColors
         Input = "#202C25",
         MentorBubble = "#3B3520",
         MentorAccent = "#E8C15A",
+    };
+
+    /// <summary>
+    /// Green through and through, and dark: a forest-green paper (not black), brighter greens for the bubbles and the
+    /// text box, green borders and secondary text, a vivid emerald-lime accent (buttons, links, focus), lime for the
+    /// local model and a green-gold for the mentor. Foresta is the quiet grey-green one, with violet.
+    /// </summary>
+    public static ThemeColors Emerald() => new()
+    {
+        Background = "#123A28",
+        Border = "#7CC79C",
+        Text = "#F0FFF5",
+        MutedText = "#A9DABD",
+        UserBubble = "#1D5A3D",
+        LocalBubble = "#235C2C",
+        LocalAccent = "#B5E655",
+        ClaudeBubble = "#175843",
+        ClaudeAccent = "#4ADE80",
+        Input = "#18493A",
+        MentorBubble = "#47481C",
+        MentorAccent = "#E3D55A",
     };
 
     public static ThemeColors Sunset() => new()

@@ -171,7 +171,10 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
     private CancellationTokenSource? _localAnswer;
 
     /// <summary>A model is answering (Claude working or the local model streaming): the bubble offers to stop it.</summary>
-    public bool IsAnswering => _claudeBusy || _localAnswer is not null;
+    public bool IsAnswering => _claudeBusy || _localAnswer is not null || IsRouting;
+
+    /// <summary>The local model is reading a plain message to decide where it goes (see TryRouteAsync).</summary>
+    public bool IsRouting { get; private set; }
 
     /// <summary>
     /// Last time the user worked in the chat with a model (a message to Claude or the local model, or an answer
@@ -185,7 +188,7 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
     public DateTimeOffset? AnswerStarted { get; private set; }
 
     /// <summary>Who is answering right now (for the "working" strip).</summary>
-    public Speaker? Answering => _claudeBusy ? Speaker.Claude : _localAnswer is not null ? Speaker.Local : null;
+    public Speaker? Answering => _claudeBusy ? Speaker.Claude : _localAnswer is not null || IsRouting ? Speaker.Local : null;
 
     /// <summary>Claude Code model aliases offered in the bubble ("" = the CLI's default).</summary>
     public static readonly IReadOnlyList<(string Alias, string Label)> ClaudeModels =
@@ -648,6 +651,20 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
             return;
         }
 
+        try
+        {
+            await SendOnAsync(input, attachment, command);
+        }
+        finally
+        {
+            DropPending(); // a waiting bubble nothing replaced (an error, a message handled without an answer)
+            _routedAt = null;
+        }
+    }
+
+    /// <summary>A message that is not a command of the buddy: routed, then to the local model or Claude.</summary>
+    private async Task SendOnAsync(string input, Attachment? attachment, string? command)
+    {
         // A plain message: the local model reads it first (an action of the buddy, or a job for Claude).
         if (command is null && await TryRouteAsync(input, attachment))
         {
@@ -1073,7 +1090,8 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
 
         var stop = new CancellationTokenSource();
         _localAnswer = stop;
-        AnswerStarted = DateTimeOffset.Now;
+        AnswerStarted = _routedAt ?? DateTimeOffset.Now; // from the message's sending, when the router read it first
+        _routedAt = null;
         MarkWorkActivity();
         Notify(nameof(IsAnswering));
         try
@@ -1412,7 +1430,63 @@ public sealed partial class Conversation : INotifyPropertyChanged, IAsyncDisposa
         PetState = PetState.Idle;
     }
 
-    private void Add(ChatEntry entry) => OnUi(() => Entries.Add(entry));
+    private void Add(ChatEntry entry) => OnUi(() =>
+    {
+        if (_pending is { } pending)
+        {
+            // The message shown early comes back from the path that handles it: it is already there.
+            if (entry.Speaker == Speaker.User && !pending.UserShown && entry.Text == pending.User.Text)
+            {
+                pending.UserShown = true;
+                return;
+            }
+
+            // Anything else takes the place of the waiting bubble (and of the early message, if it is another one).
+            _pending = null;
+            Entries.Remove(pending.Answer);
+            if (entry.Speaker == Speaker.User && !pending.UserShown)
+            {
+                Entries.Remove(pending.User);
+            }
+        }
+
+        Entries.Add(entry);
+    });
+
+    /// <summary>
+    /// A message shown at once with a waiting bubble, before the slow work that decides who answers it: the
+    /// entries added afterwards replace them (see <see cref="Add"/>), so nothing is shown twice.
+    /// </summary>
+    private sealed class PendingMessage(ChatEntry user, ChatEntry answer)
+    {
+        public ChatEntry User { get; } = user;
+
+        public ChatEntry Answer { get; } = answer;
+
+        /// <summary>The path that handled the message has added its own copy of it (skipped).</summary>
+        public bool UserShown { get; set; }
+    }
+
+    private PendingMessage? _pending;
+
+    private void ShowPending(string input, string waiting) => OnUi(() =>
+    {
+        var pending = new PendingMessage(new ChatEntry(Speaker.User, input),
+            new ChatEntry(Speaker.Local) { IsStreaming = true, WaitingText = waiting });
+        _pending = pending;
+        Entries.Add(pending.User);
+        Entries.Add(pending.Answer);
+    });
+
+    /// <summary>The message was handled without a new entry: the waiting bubble goes, the message stays.</summary>
+    private void DropPending() => OnUi(() =>
+    {
+        if (_pending is { } pending)
+        {
+            _pending = null;
+            Entries.Remove(pending.Answer);
+        }
+    });
 
     private PhraseSettings Phrases => _options.Value.Phrases;
 

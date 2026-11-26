@@ -83,11 +83,13 @@
                     <!-- Markdown also while streaming: redrawn a few times a second (IsLive), the final text at once. -->
                     <chat:MarkdownView Classes="message" Markdown="{Binding Text, Converter={StaticResource HideQuickReplies}}" IsLive="{Binding IsStreaming}"
                                        IsVisible="{Binding !IsWaiting}" />
-                    <!-- Waiting for the first words: three dots pulsing one after the other. -->
+                    <!-- Waiting for the first words: three dots pulsing one after the other, and what is going on. -->
                     <StackPanel Classes="typing" Orientation="Horizontal" Spacing="4" Margin="2,6,2,5" IsVisible="{Binding IsWaiting}">
-                        <Ellipse Classes="dot d1" />
-                        <Ellipse Classes="dot d2" />
-                        <Ellipse Classes="dot d3" />
+                        <Ellipse Classes="dot d1" VerticalAlignment="Center" />
+                        <Ellipse Classes="dot d2" VerticalAlignment="Center" />
+                        <Ellipse Classes="dot d3" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding WaitingText}" Margin="6,0,0,0" VerticalAlignment="Center"
+                                   FontSize="{x:Static app:TextSize.Small}" Foreground="{DynamicResource Muted}" />
                     </StackPanel>
                     <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActionsTemplate}" IsVisible="{Binding HasActions}" />
                     <DockPanel Margin="0,4,0,0" IsVisible="{Binding !IsStreaming}">
@@ -470,14 +472,6 @@
             <Setter Property="Foreground" Value="{DynamicResource Muted}" />
             <Setter Property="Margin" Value="0,10,0,6" />
         </Style>
-        <!-- The answer in progress: a thin line moving under the header. -->
-        <Style Selector="ProgressBar.working">
-            <Setter Property="MinHeight" Value="2" />
-            <Setter Property="Height" Value="2" />
-            <Setter Property="CornerRadius" Value="1" />
-            <Setter Property="Foreground" Value="{DynamicResource ClaudeAccent}" />
-            <Setter Property="Background" Value="Transparent" />
-        </Style>
         <!-- The attachment's ready-made questions: only while the pointer is on the chip. -->
         <Style Selector="Border.attachment WrapPanel.actions">
             <Setter Property="IsVisible" Value="False" />
@@ -683,8 +677,6 @@
                     </Button>
                 </WrapPanel>
             </StackPanel>
-            <!-- A model is answering: a thin moving line on top, seen wherever the chat is scrolled. -->
-            <ProgressBar x:Name="WorkingBar" Classes="working" IsIndeterminate="True" VerticalAlignment="Top" IsVisible="False" />
             <!-- Search in the conversation (Ctrl+F): Enter / ↓ next, Shift+Enter / ↑ previous, Esc closes. -->
             <Border x:Name="SearchBar" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,2,14,0" Padding="6,2"
                     CornerRadius="8" Background="{DynamicResource InputBack}" BorderBrush="{DynamicResource ClaudeAccent}"

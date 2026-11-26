@@ -30,6 +30,7 @@ public sealed class LocalAssistant(OllamaClient ollama, ContextBuilder contextBu
         (string.IsNullOrWhiteSpace(options.Value.Ollama.SystemPrompt)
             ? $"{DefaultSystemPrompt}\nTono: {Mentor.Personalities.Describe(options.Value.Mentor)}"
             : options.Value.Ollama.SystemPrompt)
+        + Philosophy.Instruction
         + (options.Value.Assistant.QuickReplies ? "\n" + Chat.QuickReplies.Instruction : "");
 
     public async IAsyncEnumerable<string> AskAsync(

@@ -880,6 +880,72 @@ public class PagesAndPaletteTests
     }
 
     [AvaloniaTest]
+    public async Task The_profile_page_shows_the_latest_report_with_marks_strengths_and_interventions()
+    {
+        var root = Directory.CreateTempSubdirectory("buddy-profile-").FullName;
+        try
+        {
+            var project = Path.Combine(root, "Progetti", "Demo");
+            Buddy.Core.Vault.FlowTemplate.CreateProject(project, "Demo");
+            var settings = new BuddySettings { ProjectPath = project, Mentor = { JournalPath = Path.Combine(root, "Diario") } };
+            using var vault = new VaultIndex(Options.Create(settings));
+            var window = new ProjectWindow(vault, Options.Create(settings)) { Width = 1200, Height = 700 };
+            window.Show();
+            await Settle();
+
+            string? sent = null;
+            window.ChatCommandRequested += command => sent = command;
+            window.ShowView("profile");
+            await Settle();
+            Assert.That(window.PageCards.ItemsSource as IEnumerable<PageCard>, Is.Empty, "no report yet");
+            window.GetVisualDescendants().OfType<Button>().First(b => b.Tag as string == "profile:new")
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.That(sent, Is.EqualTo("/resoconto"));
+
+            var file = Path.Combine(root, "Diario", Buddy.Core.Mentor.ProfileReports.FileName);
+            Buddy.Core.Mentor.AspectScore[] Marks(int leadership) =>
+                [.. Buddy.Core.Mentor.ProfileReports.Aspects.Select(a => new Buddy.Core.Mentor.AspectScore(a, a == "Leadership" ? leadership : null, "dagli episodi"))];
+            Buddy.Core.Mentor.ProfileReports.Add(file, new Buddy.Core.Mentor.ProfileReport(new DateOnly(2026, 11, 12), "Prima.", Marks(5), [], [], [], []));
+            Buddy.Core.Mentor.ProfileReports.Add(file, new Buddy.Core.Mentor.ProfileReport(new DateOnly(2026, 11, 26), "Sei curioso e preciso.", Marks(7),
+                ["Chiedi il perché"], ["Fermati prima di rispondere"],
+                [new Buddy.Core.Mentor.Intervention("2026-11-16", "Hai proposto il rilascio a fasi", "Ha sbloccato la riunione")],
+                [new Buddy.Core.Mentor.Intervention("", "Hai risposto secco a Chicca", "Potevi chiedere cosa le serviva")])
+                { NextSteps = ["Scrivi i tre punti prima della riunione"], Since = "Più calmo." });
+            File.WriteAllText(Path.Combine(root, "Diario", "Andamento.md"),
+                "| Settimana | Umore medio | Ore attive | Mantenuta? |\n|---|---|---|---|\n| 2026-W46 | 3 | 30 | sì |\n| 2026-W47 | 4 | 28 | no |\n");
+            Buddy.Core.Vault.Episodes.Add(Buddy.Core.Vault.Episodes.PathFor(settings),
+                new Buddy.Core.Vault.Episode(DateOnly.FromDateTime(DateTime.Today), "Riunione tesa", ["Chicca"], "Discussione tesa", "", "", "", []));
+            window.ShowView("board");
+            window.ShowView("profile");
+            await Settle();
+
+            Assert.That(window.PageHeader.Markdown, Does.Contain("Sei curioso e preciso.").And.Contain("Più calmo.").And.Contain("Media dei voti 7"));
+            var cards = (window.PageCards.ItemsSource as IEnumerable<PageCard>)!.ToList();
+            Assert.That(cards.Select(c => c.Title), Is.EqualTo(new[]
+            {
+                "Perché questi voti", "Punti di forza", "Da migliorare", "Prossimi passi", "Hai proposto il rilascio a fasi", "Hai risposto secco a Chicca",
+                "Com'è cambiato",
+            }));
+            Assert.That(cards[0].Markdown, Does.Contain("**Leadership** 7/10 ↑2 — dagli episodi").And.Contain("**Maturità** n.d."));
+
+            // The charts: the radar, the marks over time, mood, hours and habits, the episodes, the interventions' balance.
+            var charts = window.GetVisualDescendants().OfType<ChartBase>().ToList();
+            Assert.That(charts.OfType<RadarChart>().Single().Series, Has.Count.EqualTo(2), "today and the previous report");
+            Assert.That(charts.OfType<LineChart>().Count(), Is.EqualTo(2), "the marks over time and the mood");
+            Assert.That(charts.OfType<ColumnChart>().Count(), Is.EqualTo(2), "hours and habits, episodes");
+            Assert.That(charts.OfType<BarChart>().Single().Rows.First(), Is.EqualTo(("Leadership", (double?)7, (double?)2)));
+            Assert.That(charts.All(c => c.Bounds.Width > 0), Is.True, "laid out as wide as the cards");
+            Assert.That(cards[4].Chips.Single().IsGood, Is.True);
+            Assert.That(cards[5].Chips.Single().IsHot, Is.True);
+            Assert.That(cards[5].Markdown, Does.Contain("Potevi chiedere cosa le serviva"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [AvaloniaTest]
     public async Task A_page_note_is_edited_with_the_tool_bar_and_renamed_but_flow_notes_are_protected()
     {
         var root = Directory.CreateTempSubdirectory("buddy-editor-").FullName;
@@ -1050,8 +1116,10 @@ public class PagesAndPaletteTests
             await Settle();
 
             var card = window.Cards.Single(c => c.Id == "AB-42");
-            Assert.That(card.Chips.First().Text, Is.EqualTo("❌ CI #5 · 👍"));
+            Assert.That(card.Chips.First().Text, Is.EqualTo("❌ CI #5"));
             Assert.That(card.Chips.First().IsHot, Is.True);
+            Assert.That(card.Chips[1].Text, Is.EqualTo("👍 approvata"));
+            Assert.That(card.Chips[1].IsGood, Is.True);
         }
         finally
         {

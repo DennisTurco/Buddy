@@ -230,5 +230,12 @@ public partial class ProjectWindow
         {
             await SetSaidDoneAsync(local[SaidUndone.Length..], done: false);
         }
+        else if (local.StartsWith(ChatCommandAction, StringComparison.Ordinal))
+        {
+            ChatCommandRequested?.Invoke(local[ChatCommandAction.Length..]); // a command of the buddy, e.g. /rifletti
+        }
     }
+
+    /// <summary>A card button that sends one of the buddy's chat commands (not a request to Claude): "chat:/rifletti …".</summary>
+    private const string ChatCommandAction = "chat:";
 }

@@ -40,6 +40,7 @@ public partial class ProjectWindow : Window
         ("glossary", "📖  Glossario", "Glossario"),
         ("people", "👥  Persone", "Persone"),
         ("episodes", "📓  Episodi", "Episodi"),
+        ("profile", "🪞  Il mio profilo", "Il mio profilo"),
         ("calls", "🎙  Trascrizioni", "Trascrizioni delle call"),
         ("registry", "📒  Registro", "Registro: cosa ci si è detti"),
         ("commitments", "✅  Impegni", "Impegni"),
@@ -894,6 +895,7 @@ public partial class ProjectWindow : Window
                 ItemFields.Set(card.Item.Raw, Buddy.Core.Tracker.IssueFromCard.Field, url))))
         {
             AfterEdit();
+            ShowToast($"✚ {Buddy.Core.Tracker.IssueFromCard.Label(url)} creata");
         }
     }
 
@@ -1800,6 +1802,7 @@ public partial class ProjectWindow : Window
         {
             StopEditingCard();
             AfterEdit();
+            ShowToast("✏ Voce salvata");
         }
     }
 
@@ -1816,6 +1819,7 @@ public partial class ProjectWindow : Window
         {
             CloseDetail();
             AfterEdit();
+            ShowToast("🗑 Voce eliminata");
         }
     }
 
@@ -2006,6 +2010,7 @@ public partial class ProjectWindow : Window
             && await WriteAsync(() => VaultWriter.Save(FullPath(note.Note.RelativePath), note.Note.Content, NoteEditor.Text ?? "")))
         {
             StopEditingNote();
+            ShowToast("💾 Nota salvata");
         }
     }
 

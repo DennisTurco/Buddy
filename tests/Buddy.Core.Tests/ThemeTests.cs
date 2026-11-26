@@ -27,9 +27,9 @@ public class ThemeTests
     }
 
     [Test]
-    public void There_are_five_built_in_themes_with_distinct_names()
+    public void There_are_six_built_in_themes_with_distinct_names()
     {
-        Assert.That(ThemeColors.BuiltIn.Select(t => t.Name).Distinct().Count(), Is.EqualTo(5));
+        Assert.That(ThemeColors.BuiltIn.Select(t => t.Name).Distinct().Count(), Is.EqualTo(6));
     }
 
     [TestCaseSource(nameof(Themes))]

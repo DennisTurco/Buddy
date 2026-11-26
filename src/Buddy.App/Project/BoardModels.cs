@@ -174,9 +174,18 @@ public sealed class CardView : INotifyPropertyChanged
         var chips = BuildChips(item, today, column.Key);
         if (pullRequest is { } pr)
         {
+            // The review in a chip of its own: each chip starts with its icon (see Icons.Split), none in the middle.
+            if (pr.Review == "CHANGES_REQUESTED")
+            {
+                chips.Insert(0, new Chip("✏ modifiche richieste", ChipKind.Hot));
+            }
+            else if (pr.Review == "APPROVED")
+            {
+                chips.Insert(0, new Chip("👍 approvata", ChipKind.Good));
+            }
+
             chips.Insert(0, new Chip(
-                (pr.Checks switch { "success" => "✅ CI", "failure" => "❌ CI", "pending" => "⏳ CI", _ => "PR" }) + $" #{pr.Number}"
-                + (pr.Review == "CHANGES_REQUESTED" ? " · ✏" : pr.Review == "APPROVED" ? " · 👍" : ""),
+                (pr.Checks switch { "success" => "✅ CI", "failure" => "❌ CI", "pending" => "⏳ CI", _ => "PR" }) + $" #{pr.Number}",
                 pr.Checks switch { "success" => ChipKind.Good, "failure" => ChipKind.Hot, "pending" => ChipKind.Warm, _ => ChipKind.Plain }));
         }
 
@@ -876,7 +885,11 @@ public sealed record PageCardAction(string Label, string Tip, string Request)
 public sealed record PageButton(string Label, string Action, string? Tip = null);
 
 /// <summary>What a generic page shows: a line under the title, an optional markdown header (tables), the cards.</summary>
-public sealed record PageContent(string Subtitle, string? Header, IReadOnlyList<PageCard> Cards, IReadOnlyList<PageButton> Buttons, string Empty);
+public sealed record PageContent(string Subtitle, string? Header, IReadOnlyList<PageCard> Cards, IReadOnlyList<PageButton> Buttons, string Empty)
+{
+    /// <summary>Panels with charts, between the header and the cards (Il mio profilo).</summary>
+    public IReadOnlyList<Avalonia.Controls.Control> Charts { get; init; } = [];
+}
 
 /// <summary>A result of the Ctrl+K box: what it is, and what Enter does with it.</summary>
 public sealed record PaletteItem(string Icon, string Title, string? Subtitle, string Kind, Action Open, int Score)

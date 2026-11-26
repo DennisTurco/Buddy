@@ -75,7 +75,9 @@ public class LocalAiTests
 
     // ---- Conversation -----------------------------------------------------------------------------------------
 
-    private Conversation Chat(FakeModel model, Action<BuddySettings>? configure = null)
+    private Conversation Chat(FakeModel model, Action<BuddySettings>? configure = null) => Chat(model.Complete, configure);
+
+    private Conversation Chat(Func<IReadOnlyList<LlmMessage>, bool, CancellationToken, Task<string>> complete, Action<BuddySettings>? configure = null)
     {
         var vaultPath = Path.Combine(_root, "vault");
         Directory.CreateDirectory(vaultPath);
@@ -88,7 +90,7 @@ public class LocalAiTests
         var repo = new Repo.GitRepo(options, TimeProvider.System);
         var local = new LocalAssistant(new OllamaClient(new HttpClient(), options), new ContextBuilder(vault, options, TimeProvider.System), options);
         return new Conversation(local, new Claude.ClaudeAuth(options), new AssistantCommands(vault, repo, options), repo, options,
-            localAi: new LocalAi(model.Complete, options));
+            localAi: new LocalAi(complete, options));
     }
 
     [Test]
@@ -117,6 +119,40 @@ public class LocalAiTests
         Assert.That(conversation.Entries.Select(e => e.Text).First(), Is.EqualTo("a che punto è la T-001?"));
         Assert.That(conversation.Entries.Last().Text, Does.Contain("Login con SSO"));
         Assert.That(conversation.Entries.Last().Actions.Single().Command, Is.EqualTo("/l a che punto è la T-001?"));
+    }
+
+    [Test]
+    public async Task While_the_router_reads_the_message_it_is_already_shown_with_a_waiting_bubble()
+    {
+        var reading = new TaskCompletionSource<string>();
+        var conversation = Chat((_, _, _) => reading.Task);
+
+        var sending = conversation.SendAsync("a che punto è la T-001?");
+        await Task.Delay(50);
+
+        Assert.That(conversation.Entries.Select(e => e.Speaker), Is.EqualTo(new[] { Speaker.User, Speaker.Local }), "message and bubble at once");
+        Assert.That(conversation.Entries[0].Text, Is.EqualTo("a che punto è la T-001?"));
+        Assert.That(conversation.Entries[1].IsWaiting, Is.True);
+        Assert.That(conversation.Entries[1].WaitingText, Is.EqualTo("Leggo il messaggio…"));
+        Assert.That((conversation.IsAnswering, conversation.IsRouting, conversation.Answering), Is.EqualTo((true, true, (Speaker?)Speaker.Local)));
+
+        reading.SetResult("""{"tipo":"azione","azione":"stato","testo":"T-001"}""");
+        await sending;
+
+        Assert.That(conversation.Entries.Count(e => e.Speaker == Speaker.User), Is.EqualTo(1), "the message is not shown twice");
+        Assert.That(conversation.Entries.Any(e => e.IsStreaming), Is.False, "the waiting bubble gave way to the answer");
+        Assert.That(conversation.Entries.Last().Text, Does.Contain("Login con SSO"));
+        Assert.That(conversation.IsAnswering, Is.False);
+    }
+
+    [Test]
+    public void An_answer_that_starts_with_blanks_still_shows_the_waiting_mark()
+    {
+        var answer = new ChatEntry(Speaker.Local) { IsStreaming = true };
+        answer.Text = "\n\n";
+        Assert.That(answer.IsWaiting, Is.True, "blanks only: nothing to read yet");
+        answer.Text += "Ecco";
+        Assert.That(answer.IsWaiting, Is.False);
     }
 
     [Test]

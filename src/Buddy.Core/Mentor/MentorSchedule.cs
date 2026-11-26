@@ -66,6 +66,12 @@ public sealed class MentorState
     /// <summary>Day the cards waiting on someone ([chi:: …]) were last brought up: once a day.</summary>
     public DateOnly? PeopleNudgedOn { get; set; }
 
+    /// <summary>Episodes («data · titolo») the mentor already offered to reflect on: offered once each.</summary>
+    public List<string> ReflectionsOffered { get; set; } = [];
+
+    /// <summary>The last day a reflection was offered: at most one a day.</summary>
+    public DateOnly? ReflectionOfferedOn { get; set; }
+
     /// <summary>Tasks just gone to review, waiting for a quiet moment to ask what was learned.</summary>
     public List<string> PendingTaskRetros { get; set; } = [];
 

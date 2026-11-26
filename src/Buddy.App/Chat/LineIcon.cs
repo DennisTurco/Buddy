@@ -94,7 +94,11 @@ public static class Icons
         ["📅"] = "IconCalendar", ["💳"] = "IconCard", ["⚖"] = "IconScale", ["👥"] = "IconUsers", ["📓"] = "IconJournal",
         ["🎙"] = "IconMic", ["🔀"] = "IconPullRequest", ["📁"] = "IconFolder", ["＋"] = "IconPlus", ["📈"] = "IconChart",
         ["⚡"] = "IconBolt", ["🩺"] = "IconPulse", ["🤖"] = "IconBot", ["📸"] = "IconCamera", ["⏸"] = "IconPause",
-        ["🔍"] = "IconSearch", ["📒"] = "IconList",
+        ["🔍"] = "IconSearch", ["📒"] = "IconList", ["🪞"] = "IconProfile",
+
+        // States on the cards' chips and bands.
+        ["❌"] = "IconXCircle", ["⏳"] = "IconHourglass", ["👍"] = "IconThumbUp", ["🔓"] = "IconUnlock", ["⎇"] = "IconBranch",
+        ["👤"] = "IconUser", ["🤝"] = "IconUsers", ["⚠"] = "IconAlert", ["⏰"] = "IconAlarm", ["⏱"] = "IconStopwatch",
     };
 
     /// <summary>"🐞 Bug" → ("IconBug", "Bug"); a label without a known leading emoji → (null, label).</summary>

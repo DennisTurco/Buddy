@@ -26,8 +26,10 @@
         <!-- Width of a generic page's cards: two or three per row, set by the page's width (FitPageCards). -->
         <x:Double x:Key="PageCardWidth">380</x:Double>
         <DataTemplate x:Key="ChipTemplate" x:DataType="p:Chip">
-            <Border Classes="chip" Classes.good="{Binding IsGood}" Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}">
-                <TextBlock Text="{Binding Text}" FontSize="{x:Static app:TextSize.Small}" />
+            <!-- A leading emoji ("✅ CI #5", "🧪 3/5") is drawn as a line icon, like everywhere else. -->
+            <Border Classes="chip" Classes.good="{Binding IsGood}" Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}"
+                    TextElement.FontSize="{x:Static app:TextSize.Small}">
+                <chat:IconLabel Label="{Binding Text}" IconSize="11" Spacing="4" />
             </Border>
         </DataTemplate>
 
@@ -38,7 +40,8 @@
                 <StackPanel>
                     <!-- A ⏸ task inside Da fare: a band says it is on hold. -->
                     <Border Classes="waitband" IsVisible="{Binding IsWaiting}" Background="{Binding Accent}">
-                        <TextBlock Text="{Binding WaitingBanner}" FontSize="{x:Static app:TextSize.Small}" FontWeight="SemiBold" Foreground="#1F2A44" />
+                        <chat:IconLabel Label="{Binding WaitingBanner}" IconSize="11" Spacing="4" TextElement.FontSize="{x:Static app:TextSize.Small}"
+                                        TextElement.FontWeight="SemiBold" TextElement.Foreground="#1F2A44" />
                     </Border>
                     <!-- ID on the left, the date it was written on the right: the card's quiet first line. -->
                     <DockPanel>
@@ -138,25 +141,38 @@
         </Style>
         <!-- Coloured chips as tints: the colour at ~20% behind, the text in the colour (readable on light and dark). -->
         <Style Selector="Border.chip.good">
-            <Setter Property="Background" Value="#335FBF77" />
+            <Setter Property="Background" Value="{DynamicResource GoodTint}" />
         </Style>
         <Style Selector="Border.chip.warm">
-            <Setter Property="Background" Value="#33F2B544" />
+            <Setter Property="Background" Value="{DynamicResource WarmTint}" />
         </Style>
         <Style Selector="Border.chip.hot">
-            <Setter Property="Background" Value="#38E57373" />
+            <Setter Property="Background" Value="{DynamicResource DangerTint}" />
+        </Style>
+        <!-- The chip's line icon (its leading emoji, see Icons.Split) in the same colour as its text. -->
+        <Style Selector="Border.chip chat|LineIcon">
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
         </Style>
         <Style Selector="Border.chip.good TextBlock">
-            <Setter Property="Foreground" Value="#4CAF6A" />
+            <Setter Property="Foreground" Value="{DynamicResource Good}" />
             <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.chip.good chat|LineIcon">
+            <Setter Property="Foreground" Value="{DynamicResource Good}" />
         </Style>
         <Style Selector="Border.chip.warm TextBlock">
-            <Setter Property="Foreground" Value="#D99A2B" />
+            <Setter Property="Foreground" Value="{DynamicResource WarmInk}" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
+        <Style Selector="Border.chip.warm chat|LineIcon">
+            <Setter Property="Foreground" Value="{DynamicResource WarmInk}" />
+        </Style>
         <Style Selector="Border.chip.hot TextBlock">
-            <Setter Property="Foreground" Value="#E05A5A" />
+            <Setter Property="Foreground" Value="{DynamicResource Danger}" />
             <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.chip.hot chat|LineIcon">
+            <Setter Property="Foreground" Value="{DynamicResource Danger}" />
         </Style>
 
         <!-- Cards -->
@@ -171,6 +187,7 @@
                 <Transitions>
                     <BrushTransition Property="Background" Duration="0:0:0.12" />
                     <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" />
+                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.12" />
                 </Transitions>
             </Setter>
         </Style>
@@ -179,7 +196,7 @@
         </Style>
         <Style Selector="Border.card.selected">
             <Setter Property="Background" Value="{DynamicResource UserBubble}" />
-            <Setter Property="BoxShadow" Value="0 0 0 1 #8A84A3" />
+            <Setter Property="BoxShadow" Value="{DynamicResource SelectionRing}" />
         </Style>
         <Style Selector="Border.card.waiting">
             <Setter Property="Opacity" Value="0.82" />
@@ -286,8 +303,8 @@
             <Setter Property="Foreground" Value="{DynamicResource Muted}" />
         </Style>
         <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#33E57373" />
-            <Setter Property="Foreground" Value="#D64545" />
+            <Setter Property="Background" Value="{DynamicResource DangerTint}" />
+            <Setter Property="Foreground" Value="{DynamicResource Danger}" />
         </Style>
 
         <!-- Empty states: a soft box with an icon and a line that says what to do, instead of an italic grey line. -->
@@ -335,7 +352,7 @@
             <Setter Property="Background" Value="{DynamicResource UserBubble}" />
         </Style>
         <Style Selector="ProgressBar.limit.warning">
-            <Setter Property="Foreground" Value="#F2B544" />
+            <Setter Property="Foreground" Value="{DynamicResource Warning}" />
         </Style>
         <Style Selector="TextBlock.current">
             <Setter Property="FontWeight" Value="Bold" />
@@ -355,6 +372,65 @@
             <Setter Property="RenderTransform" Value="translateY(-2px)" />
             <Setter Property="BoxShadow" Value="0 4 12 0 #33000000" />
         </Style>
+        <!-- Selected and under the pointer: it keeps its ring. -->
+        <Style Selector="Border.card.selected:pointerover">
+            <Setter Property="BoxShadow" Value="{DynamicResource SelectionRing}" />
+        </Style>
+
+        <!-- Where a dragged card would land: the column (or Chiudi / Rifiuta) tinted with the accent. -->
+        <Style Selector="Border.column">
+            <Setter Property="Background" Value="{DynamicResource InputBack}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.column.droptarget, Border.closezone.droptarget">
+            <Setter Property="Background" Value="{DynamicResource ClaudeBubble}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ClaudeAccent}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+
+        <!-- A page still loading (git, gh): grey blocks the shape of its cards, breathing until the cards come. -->
+        <Style Selector="Border.skeleton">
+            <Setter Property="Background" Value="{DynamicResource InputBack}" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Height" Value="96" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+        </Style>
+        <Style Selector="StackPanel#PageLoading[IsVisible=True] Border.skeleton">
+            <Style.Animations>
+                <Animation Duration="0:0:1.4" IterationCount="Infinite" PlaybackDirection="Alternate">
+                    <KeyFrame Cue="0%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+                    <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.45" /></KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+        <Style Selector="Border.skeletonline">
+            <Setter Property="Background" Value="{DynamicResource Divider}" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Height" Value="10" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+
+        <!-- A short confirmation (saved, deleted…): bottom right, fades in and out by itself. -->
+        <Style Selector="Border#InfoToast">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border#InfoToast.shown">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Button.tile">
             <Setter Property="RenderTransform" Value="translateY(0px)" />
             <Setter Property="Transitions">
@@ -368,7 +444,7 @@
         </Style>
 
         <Style Selector="ProgressBar.limit.done">
-            <Setter Property="Foreground" Value="#5FBF77" />
+            <Setter Property="Foreground" Value="{DynamicResource Good}" />
         </Style>
         <Style Selector="ProgressBar.big">
             <Setter Property="Height" Value="8" />
@@ -376,7 +452,7 @@
             <Setter Property="CornerRadius" Value="4" />
         </Style>
         <Style Selector="CheckBox.redo TextBlock">
-            <Setter Property="Foreground" Value="#F2B544" />
+            <Setter Property="Foreground" Value="{DynamicResource Warning}" />
         </Style>
         <Style Selector="CheckBox.struck TextBlock">
             <Setter Property="TextDecorations" Value="Strikethrough" />
@@ -873,13 +949,15 @@
                 <Grid x:Name="CloseZones" DockPanel.Dock="Bottom" ColumnDefinitions="*,*" Margin="0,10,10,0" IsVisible="False">
                     <Border x:Name="CloseZoneDone" Classes="closezone" Tag="fatti" DragDrop.AllowDrop="True" Margin="0,0,5,0">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="✅ Chiudi" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Base}" HorizontalAlignment="Center" />
+                            <chat:IconLabel Label="✅ Chiudi" HorizontalAlignment="Center" IconSize="15"
+                                            TextElement.FontWeight="SemiBold" TextElement.FontSize="{x:Static app:TextSize.Base}" />
                             <TextBlock Text="Rilascia qui: Claude lo porta in Fatti con /chiudi" Classes="muted" FontSize="{x:Static app:TextSize.Small}" HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
                     <Border x:Name="CloseZoneRejected" Grid.Column="1" Classes="closezone" Tag="rifiutati" DragDrop.AllowDrop="True" Margin="5,0,0,0">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="🚫 Rifiuta" FontWeight="SemiBold" FontSize="{x:Static app:TextSize.Base}" HorizontalAlignment="Center" />
+                            <chat:IconLabel Label="🚫 Rifiuta" HorizontalAlignment="Center" IconSize="15"
+                                            TextElement.FontWeight="SemiBold" TextElement.FontSize="{x:Static app:TextSize.Base}" />
                             <TextBlock Text="Rilascia qui: ti chiede il motivo e usa /rifiuta" Classes="muted" FontSize="{x:Static app:TextSize.Small}" HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
@@ -895,7 +973,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="p:ColumnView">
                             <Border Classes="column" Classes.empty="{Binding IsEmpty}" CornerRadius="12" Padding="8" Margin="0,0,10,0"
-                                    Background="{DynamicResource InputBack}" DragDrop.AllowDrop="True">
+                                    DragDrop.AllowDrop="True">
                                 <Panel>
                                 <!-- An empty column is a narrow strip (count, ＋, title down the side): the others get its room.
                                      Still a place to drop a card. -->
@@ -1378,6 +1456,30 @@
                             <Border x:Name="PageHeaderPanel" Classes="panel" Margin="0,0,0,14" IsVisible="False">
                                 <chat:MarkdownView x:Name="PageHeader" Loaded="OnMarkdownLoaded" />
                             </Border>
+                            <!-- Charts of the page, as wide as its cards (Il mio profilo). -->
+                            <WrapPanel x:Name="PageCharts" />
+
+                            <!-- Placeholders while the page's data is read in the background (Settimana, PR). -->
+                            <StackPanel x:Name="PageLoading" IsVisible="False">
+                                <ItemsControl x:Name="PageLoadingCards">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Classes="skeleton" Width="{DynamicResource PageCardWidth}" Padding="14,14">
+                                                <StackPanel>
+                                                    <Border Classes="skeletonline" Width="180" Height="12" />
+                                                    <Border Classes="skeletonline" Width="120" />
+                                                    <Border Classes="skeletonline" Width="70" Margin="0" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                             <Border x:Name="PageEmptyPanel" Classes="empty" IsVisible="False" MaxWidth="560" HorizontalAlignment="Left">
                                 <DockPanel>
                                     <chat:LineIcon DockPanel.Dock="Left" Data="{StaticResource IconInbox}" Size="22"
@@ -1661,6 +1763,12 @@
                         Cursor="SizeWestEast" ToolTip.Tip="Trascina per allargare o stringere la chat"
                         PointerPressed="OnChatResizePressed" PointerMoved="OnChatResizeMoved" PointerReleased="OnChatResizeReleased" />
             </Panel>
+        </Border>
+        <!-- Short confirmations of quick actions (ShowToast): over everything, bottom right. -->
+        <Border x:Name="InfoToast" Grid.ColumnSpan="4" ZIndex="20" VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                Margin="0,0,20,18" Padding="12,7" CornerRadius="10" Background="{DynamicResource Frame}" BoxShadow="0 4 16 0 #50000000">
+            <chat:IconLabel x:Name="InfoToastLabel" IconSize="13" TextElement.Foreground="{DynamicResource Paper}"
+                            TextElement.FontSize="{x:Static app:TextSize.Body}" />
         </Border>
     </Grid>
 </Window>

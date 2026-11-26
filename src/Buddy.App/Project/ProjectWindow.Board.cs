@@ -3,7 +3,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using Avalonia.VisualTree;
 using Buddy.Core.Vault;
 
@@ -165,6 +164,27 @@ public partial class ProjectWindow
         _undoTimer.Start();
     }
 
+    private Avalonia.Threading.DispatcherTimer? _toastTimer;
+
+    private static readonly TimeSpan ToastTime = TimeSpan.FromSeconds(2.2);
+
+    /// <summary>
+    /// A short confirmation at the bottom right ("✏ Voce salvata"): a leading emoji becomes its line icon. It fades
+    /// out by itself; a new one replaces it and starts the time again.
+    /// </summary>
+    internal void ShowToast(string label)
+    {
+        InfoToastLabel.Label = label;
+        InfoToast.Classes.Add("shown");
+        _toastTimer ??= new Avalonia.Threading.DispatcherTimer(ToastTime, Avalonia.Threading.DispatcherPriority.Normal, (_, _) =>
+        {
+            _toastTimer?.Stop();
+            InfoToast.Classes.Remove("shown");
+        });
+        _toastTimer.Stop();
+        _toastTimer.Start();
+    }
+
     private void HideUndo()
     {
         _undoTimer?.Stop();
@@ -234,18 +254,10 @@ public partial class ProjectWindow
             return;
         }
 
-        if (_dropHighlight is not null)
-        {
-            _dropHighlight.ClearValue(Border.BorderBrushProperty);
-            _dropHighlight.ClearValue(Border.BorderThicknessProperty);
-        }
-
+        // A class, not local values: the look (accent border, tinted background, fade) lives in the window's styles.
+        _dropHighlight?.Classes.Remove("droptarget");
         _dropHighlight = border;
-        if (border is not null)
-        {
-            border.BorderBrush = (IBrush?)this.FindResource("ClaudeAccent") ?? Brushes.MediumPurple;
-            border.BorderThickness = new Thickness(2);
-        }
+        border?.Classes.Add("droptarget");
     }
 
     private static CardView? CardUnder(object? source) =>
@@ -288,6 +300,9 @@ public partial class ProjectWindow
         if (await WriteAsync(() => VaultWriter.ReplaceBlock(FullPath(card.Column.NotePath), card.Item.Raw, updated)))
         {
             AfterEdit();
+            ShowToast(date is { } day
+                ? $"🔔 Promemoria il {day.ToString("d MMMM", CultureInfo.GetCultureInfo("it-IT"))}"
+                : "🔔 Promemoria tolto");
         }
     }
 

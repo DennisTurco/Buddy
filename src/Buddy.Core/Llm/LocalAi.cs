@@ -229,6 +229,25 @@ public sealed class LocalAi
         return draft is { Length: > 10 } ? draft.Trim() : null;
     }
 
+    /// <summary>
+    /// A turn of a conversation the caller keeps (system prompt first, then the exchanges): the model's next message,
+    /// or null when Ollama does not answer. Used by the mentor's reflections on episodes.
+    /// </summary>
+    public async Task<string?> ChatAsync(IReadOnlyList<LlmMessage> messages, CancellationToken cancellationToken = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(Timeout);
+        try
+        {
+            return await _complete(messages, false, timeout.Token) is { } answer && answer.Trim().Length > 0 ? StripFence(answer.Trim()) : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException
+                                   || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            return null;
+        }
+    }
+
     private const string CondensePrompt = """
         Riassumi questo allegato (log, stack trace, output) per un altro assistente che deve capire il problema.
         Tieni ALLA LETTERA: messaggi di errore ed eccezioni, codici, percorsi di file con numeri di riga, nomi di
@@ -267,6 +286,10 @@ public sealed class LocalAi
         // A rewrite, an answer or a summary is not a clean-up: the original is kept.
         return cleaned is { Length: > 0 } && cleaned.Length >= text.Length * 0.6 && cleaned.Length <= text.Length * 1.3 + 10 ? cleaned : null;
     }
+
+    /// <summary>A JSON object asked with a one-off request (the episode's fields after a reflection); null when unusable.</summary>
+    public Task<JsonDocument?> JsonAsync(string system, string user, CancellationToken cancellationToken = default) =>
+        AskJsonAsync(system, user, cancellationToken);
 
     // ---- Calls ------------------------------------------------------------------------------------------------
 

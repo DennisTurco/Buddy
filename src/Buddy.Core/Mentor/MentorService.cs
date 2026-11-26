@@ -164,6 +164,7 @@ public sealed class MentorService : IDisposable
             PostReminders();
             AddPeopleFromCards();
             PostPeopleOnCards();
+            OfferReflection();
             TrackTasksInReview();
             if (!IsWorkingInChat && _state.PendingTaskRetros.Count > 0 && Settings.Enabled)
             {
@@ -631,7 +632,245 @@ public sealed class MentorService : IDisposable
             text.AppendLine().AppendLine($"💡 **Da ricordare la prossima volta:** {findings.Lesson} (te lo ripropongo quando ti ricapita con loro)");
         }
 
+        if (_conversation.LocalAi is not null)
+        {
+            actions.Add(new ChatAction("🧭 Riflettiamoci", $"/rifletti {episode.Key}", "Il modello locale ti fa qualche domanda per capire cosa c'era sotto"));
+        }
+
         _conversation.PostMentor(text.ToString().TrimEnd() + AddedPeopleLine(added), actions: actions);
+    }
+
+    // ---- Reflections on episodes (local model) --------------------------------------------------------------------
+
+    /// <summary>
+    /// "/rifletti [episodio]": the local model goes back over an episode with the user, one question at a time, to find
+    /// what is underneath it; with no episode named, over the recent ones, looking for what keeps coming back. It runs
+    /// in the chat it was asked from (the side chat for the mentor's own offers) and never leaves the computer.
+    /// </summary>
+    internal async Task ReflectAsync(string name)
+    {
+        var offTopic = _conversation.ShowingSide;
+        if (_conversation.LocalAi is not { } local)
+        {
+            _conversation.PostMentor("Per riflettere sugli episodi serve il modello locale (Ollama): attivalo in Impostazioni → AI locale.", offTopic: offTopic);
+            return;
+        }
+
+        var episodes = Episodes.Read(EpisodesPath);
+        if (episodes.Count == 0)
+        {
+            _conversation.PostMentor("Non ci sono ancora episodi: raccontane uno con `/episodio …` e poi ci ripensiamo insieme.", offTopic: offTopic);
+            return;
+        }
+
+        string opening;
+        Episode? single = null;
+        if (name.Trim().Length > 0)
+        {
+            single = EpisodeReflection.Find(episodes, name);
+            if (single is null)
+            {
+                _conversation.PostMentor($"Non trovo l'episodio «{name.Trim()}». Scrivi la data o qualche parola del titolo (pagina 📓 Episodi).", offTopic: offTopic);
+                return;
+            }
+
+            opening = EpisodeReflection.Opening(single);
+        }
+        else
+        {
+            var recent = EpisodeReflection.Recent(episodes, DateOnly.FromDateTime(Now));
+            if (recent.Count < 2)
+            {
+                single = episodes[0];
+                opening = EpisodeReflection.Opening(single);
+            }
+            else
+            {
+                opening = EpisodeReflection.PatternOpening(recent);
+            }
+        }
+
+        var thread = new List<Llm.LlmMessage>
+        {
+            Llm.LlmMessage.System($"{EpisodeReflection.SystemPrompt}\n{EpisodeReflection.WhoIsWho(Settings.UserName)}\nTono: {Personalities.Describe(Settings)}"),
+            Llm.LlmMessage.User(opening),
+        };
+        await ReflectTurnAsync(new Reflection(local, thread, single?.Key ?? episodes[0].Key, single, offTopic), turns: 0);
+    }
+
+    /// <summary>
+    /// A reflection under way. <see cref="Original"/>: the episode it is about as it was before (null when it looks at
+    /// several), whose fields are filled in from the answers; <see cref="Version"/> keeps an older filling from
+    /// overwriting a newer one when the user answers fast.
+    /// </summary>
+    private sealed class Reflection(Llm.LocalAi local, List<Llm.LlmMessage> thread, string episodeKey, Episode? original, bool offTopic)
+    {
+        public Llm.LocalAi Local { get; } = local;
+        public List<Llm.LlmMessage> Thread { get; } = thread;
+        public string EpisodeKey { get; } = episodeKey;
+        public Episode? Original { get; } = original;
+        public bool OffTopic { get; } = offTopic;
+        public int Version;
+    }
+
+    /// <summary>One message of the model; when it asks something, the user's answer goes on with the same reflection.</summary>
+    private async Task ReflectTurnAsync(Reflection reflection, int turns)
+    {
+        var (local, thread, episodeKey, offTopic) = (reflection.Local, reflection.Thread, reflection.EpisodeKey, reflection.OffTopic);
+        _conversation.SetThinking(true);
+        var reply = await local.ChatAsync(thread);
+        _conversation.SetThinking(false);
+        if (reply is null)
+        {
+            _conversation.PostMentor("Il modello locale non risponde (Ollama è avviato?). Riprova più tardi con `/rifletti`.", offTopic: offTopic);
+            return;
+        }
+
+        thread.Add(Llm.LlmMessage.Assistant(reply));
+        var (text, summary) = EpisodeReflection.Split(reply);
+        if (summary is not null)
+        {
+            if (reflection.Original is null)
+            {
+                // Several episodes: which one the summary belongs to is the user's call.
+                _conversation.PostMentor($"{text}\n\n💡 **Da ricordare:** {summary}",
+                    actions:
+                    [
+                        new ChatAction("💾 Salva nell'episodio", $"/rifletti-salva {episodeKey} | {summary.ReplaceLineEndings(" ").Replace("|", "/")}",
+                            $"Lo scrive come «Da ricordare» in «{episodeKey}»: te lo ripropongo quando ricapita con quelle persone"),
+                    ],
+                    offTopic: offTopic);
+                return;
+            }
+
+            // One episode: what came out goes in it by itself (reaction, outcome, what to remember).
+            _conversation.SetThinking(true);
+            var updated = await FillEpisodeAsync(reflection, summary);
+            _conversation.SetThinking(false);
+            _conversation.PostMentor($"{text}\n\n💡 **Da ricordare:** {summary}\n\n"
+                                     + (updated is not null
+                                         ? $"💾 Aggiornato l'episodio «{updated.Title}»: come hai reagito, com'è finita e cosa ricordare. Te lo ripropongo quando ricapita con {(updated.People.Count > 0 ? string.Join(", ", updated.People) : "loro")}."
+                                         : $"Non sono riuscito ad aggiornare l'episodio in {Episodes.FileName}."),
+                offTopic: offTopic);
+            return;
+        }
+
+        if (reflection.Original is not null && EpisodeReflection.Exchanges(thread).Count > 0)
+        {
+            _ = FillEpisodeAsync(reflection, null); // while the user reads and answers the next question
+        }
+
+        _conversation.PostMentor(text, answer =>
+        {
+            if (answer.Length == 0)
+            {
+                return Task.CompletedTask; // skipped: the reflection rests
+            }
+
+            // "basta" closes at once; after MaxTurns answers the model is asked to wrap up after this one.
+            var wantsToStop = EpisodeReflection.WantsToStop(answer);
+            thread.Add(Llm.LlmMessage.User(wantsToStop ? EpisodeReflection.WrapUp : answer));
+            if (!wantsToStop && turns + 1 >= EpisodeReflection.MaxTurns)
+            {
+                thread.Add(Llm.LlmMessage.User(EpisodeReflection.WrapUp));
+            }
+
+            return ReflectTurnAsync(reflection, turns + 1);
+        }, offTopic: offTopic);
+    }
+
+    /// <summary>
+    /// Writes what the answers so far say in the episode's "Come ho reagito" and "Com'è finita" (under what the user had
+    /// written), and the summary as "Da ricordare" when there is one. The local model reads the answers; nothing leaves
+    /// the PC. Returns the episode as saved, or null when it could not be written.
+    /// </summary>
+    private async Task<Episode?> FillEpisodeAsync(Reflection reflection, string? summary)
+    {
+        var version = Interlocked.Increment(ref reflection.Version);
+        var original = reflection.Original!;
+        (string Reaction, string Outcome)? fields = null;
+        using (var json = await reflection.Local.JsonAsync(EpisodeReflection.FieldsPrompt, EpisodeReflection.FieldsInput(original, reflection.Thread)))
+        {
+            if (json is not null)
+            {
+                string Str(string name) => json.RootElement.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : "";
+                fields = (Str("come_ho_reagito"), Str("com_e_finita"));
+            }
+        }
+
+        if (version != reflection.Version || (fields is null && summary is null))
+        {
+            return null; // a newer answer is being read, or the model gave nothing usable
+        }
+
+        try
+        {
+            return Episodes.Update(EpisodesPath, reflection.EpisodeKey, e =>
+            {
+                // An unusable answer leaves the fields as the last filling wrote them.
+                var filled = fields is { } f ? EpisodeReflection.WithFields(e, original, f.Reaction, f.Outcome) : e;
+                return summary is null ? filled : filled with { Lesson = summary };
+            });
+        }
+        catch (IOException ex)
+        {
+            _log.LogWarning(ex, "Episodio non aggiornato dalla riflessione");
+            return null;
+        }
+    }
+
+    /// <summary>"/rifletti-salva data · titolo | frase": the reflection's summary becomes the episode's "Da ricordare".</summary>
+    private string SaveReflection(string rest)
+    {
+        var parts = rest.Split('|', 2, StringSplitOptions.TrimEntries);
+        if (parts.Length < 2 || parts[1].Length == 0)
+        {
+            return "Non ho capito cosa salvare.";
+        }
+
+        try
+        {
+            return Episodes.Update(EpisodesPath, parts[0], e => e with { Lesson = parts[1] }) is { } saved
+                ? $"💾 Salvato in «{saved.Title}»: te lo ripropongo quando ti ricapita con {(saved.People.Count > 0 ? string.Join(", ", saved.People) : "loro")}."
+                : $"Non trovo più l'episodio «{parts[0]}» in {Episodes.FileName}.";
+        }
+        catch (IOException ex)
+        {
+            return $"Non riesco a scrivere in {Episodes.FileName}: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Once a day at most, an episode of one to three days ago that ended badly (or with someone already met in another
+    /// episode) gets an offer to think it over, in the side chat. Each episode is offered once.
+    /// </summary>
+    internal void OfferReflection()
+    {
+        var today = DateOnly.FromDateTime(Now);
+        if (_conversation.LocalAi is null || _state.ReflectionOfferedOn == today)
+        {
+            return;
+        }
+
+        var episode = EpisodeReflection.ToOffer(Episodes.Read(EpisodesPath), today, _state.ReflectionsOffered);
+        if (episode is null)
+        {
+            return;
+        }
+
+        _state.ReflectionOfferedOn = today;
+        _state.ReflectionsOffered.Add(episode.Key);
+        if (_state.ReflectionsOffered.Count > 50)
+        {
+            _state.ReflectionsOffered.RemoveRange(0, _state.ReflectionsOffered.Count - 50);
+        }
+
+        SaveState();
+        var when = (today.DayNumber - episode.Date.DayNumber) == 1 ? "ieri" : $"il {episode.Date.ToString("d MMMM", System.Globalization.CultureInfo.GetCultureInfo("it-IT"))}";
+        _conversation.PostMentor(
+            $"📓 Ripensavo all'episodio di {when}, «{episode.Title}». Ti va di ripensarci insieme? Qualche domanda per capire cosa c'era sotto: resta tutto sul tuo PC.",
+            actions: [new ChatAction("🧭 Riflettiamo", $"/rifletti {episode.Key}", "Il modello locale ti fa qualche domanda sull'episodio, una alla volta")],
+            offTopic: true);
     }
 
     /// <summary>
@@ -1131,6 +1370,90 @@ public sealed class MentorService : IDisposable
         }
     }
 
+    private bool _reporting;
+
+    /// <summary>
+    /// "/resoconto": Claude reads the journal (profile, episodes, diary, retros) and answers with a portrait of the user,
+    /// marks on a few aspects, strengths, things to improve and the interventions that went well or not. The buddy
+    /// writes it on top of Resoconto.md (the older ones stay, to see the marks move) and posts the gist.
+    /// </summary>
+    internal async Task ReportAsync()
+    {
+        if (!HasJournal)
+        {
+            _conversation.PostMentor("Per il resoconto mi serve la cartella del diario: impostala in Impostazioni → Mentore.");
+            return;
+        }
+
+        if (_reporting)
+        {
+            _conversation.PostMentor("Sto già preparando il resoconto: un attimo.");
+            return;
+        }
+
+        _reporting = true;
+        try
+        {
+            var path = ProfileReports.PathFor(_settings);
+            var previous = ProfileReports.Read(path).FirstOrDefault();
+            var today = DateOnly.FromDateTime(Now);
+            _conversation.PostMentor("🪞 Rileggo diario, profilo ed episodi per il tuo resoconto: ci vuole un minuto.");
+            _conversation.SetThinking(true);
+            var result = await _claude.RunAsync(ProfileReports.Prompt(MentorPrompts.Persona(Settings), today, previous),
+                Settings.JournalPath, Settings.Model, timeout: TimeSpan.FromMinutes(8));
+            _conversation.SetThinking(false);
+            if (!result.Success || ProfileReports.Parse(result.Text, today) is not { } report)
+            {
+                _conversation.PostMentor("Non sono riuscito a preparare il resoconto" + (result.Success ? "." : $": {result.Text}") + " Riprova con `/resoconto`.");
+                return;
+            }
+
+            try
+            {
+                ProfileReports.Add(path, report);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _conversation.PostMentor($"Non riesco a salvare {ProfileReports.FileName}: {ex.Message}");
+                return;
+            }
+
+            _conversation.PostMentor(ReportMessage(report, previous));
+        }
+        finally
+        {
+            _reporting = false;
+        }
+    }
+
+    /// <summary>The report in the chat, short: the portrait, the marks with how they moved, one strength and one thing to improve.</summary>
+    internal static string ReportMessage(ProfileReport report, ProfileReport? previous)
+    {
+        var text = new StringBuilder("🪞 **Il tuo resoconto**\n\n").AppendLine(report.Summary).AppendLine();
+        var rated = report.Rated.ToList();
+        if (rated.Count > 0)
+        {
+            text.AppendLine(string.Join(" · ", rated.Select(s =>
+            {
+                var change = ProfileReports.Change(report, previous, s.Aspect);
+                return $"{s.Aspect} **{s.Score}**" + (change is > 0 ? $" ↑{change}" : change is < 0 ? $" ↓{-change}" : "");
+            }))).AppendLine();
+        }
+
+        if (report.Strengths.Count > 0)
+        {
+            text.AppendLine($"💪 {report.Strengths[0]}");
+        }
+
+        if (report.Improvements.Count > 0)
+        {
+            text.AppendLine($"🎯 {report.Improvements[0]}");
+        }
+
+        text.AppendLine().Append($"Tutto il resto (interventi riusciti e no, motivi dei voti) è nella pagina 🪞 Il mio profilo e in {ProfileReports.FileName}.");
+        return text.ToString();
+    }
+
     /// <summary>Runs a generation prompt in the journal folder; null when Claude or the journal is unavailable.</summary>
     private async Task<string?> GenerateAsync(string prompt, IEnumerable<string>? readOnly = null)
     {
@@ -1233,10 +1556,19 @@ public sealed class MentorService : IDisposable
             var people = PeopleNote() is { } note ? People.Named(People.Parse(note.Content), text).Select(p => p.Name).ToList() : [];
             return RecordEpisodeAsync(new Episode(DateOnly.FromDateTime(Now), Episodes.TitleFrom(text), people, text, "", "", "", []));
         }, "cosa è successo");
-        Add("/prepara", "prepara una conversazione con una persona: come impostarla e il primo messaggio", call => PrepareConversationAsync(call.Rest),
+        Add("/resoconto", "il tuo profilo: punti di forza, da migliorare, interventi riusciti e no, voti", _ => ReportAsync());
+        Add("/prepara","prepara una conversazione con una persona: come impostarla e il primo messaggio", call => PrepareConversationAsync(call.Rest),
             "persona [argomento]");
         commands.Add(new ChatCommand("/episodio-analizza", "analizza un episodio salvato", "data · titolo", CommandGroup.Mentor, Hidden: true),
             call => AnalyzeEpisodeAsync(call.Rest));
+        Add("/rifletti", "ripensiamo a un episodio (o a cosa si ripete): ti faccio domande con il modello locale", call => ReflectAsync(call.Rest),
+            "[episodio]");
+        commands.Add(new ChatCommand("/rifletti-salva", "salva quanto capito come «Da ricordare» dell'episodio", "data · titolo | frase", CommandGroup.Mentor, Hidden: true),
+            call =>
+            {
+                _conversation.PostMentor(SaveReflection(call.Rest), offTopic: _conversation.ShowingSide);
+                return Task.CompletedTask;
+            });
         commands.Add(new ChatCommand("/trascrizione-persone", "aggiorna le schede delle persone da una call", "Trascrizioni/…md", CommandGroup.Mentor, Hidden: true),
             call => AnalyzeCallPeopleAsync(call.Rest));
         commands.Add(new ChatCommand("/scheda", "cambia un campo della scheda di una persona", "Nome | campo | modo | valore", CommandGroup.Mentor, Hidden: true),

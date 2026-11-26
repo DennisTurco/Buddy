@@ -40,6 +40,16 @@
         <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
         <!-- Search hits and warnings (limits near the end): one amber for every theme. -->
         <SolidColorBrush x:Key="Warning" Color="#F2B544" />
+        <!-- State colours of chips, bars and buttons (ok / attention / problem): ink and a ~20% tint behind it,
+             readable on light and dark papers alike. -->
+        <SolidColorBrush x:Key="Good" Color="#4CAF6A" />
+        <SolidColorBrush x:Key="GoodTint" Color="#335FBF77" />
+        <SolidColorBrush x:Key="WarmInk" Color="#D99A2B" />
+        <SolidColorBrush x:Key="WarmTint" Color="#33F2B544" />
+        <SolidColorBrush x:Key="Danger" Color="#E05A5A" />
+        <SolidColorBrush x:Key="DangerTint" Color="#38E57373" />
+        <!-- The ring of a selected card: the chat's accent (Appearance replaces it with the theme's own). -->
+        <BoxShadows x:Key="SelectionRing">0 0 0 1.5 #B99BF5</BoxShadows>
         <!-- Shadow under the chat bubbles: barely there, just enough to lift them off the paper. -->
         <BoxShadows x:Key="BubbleShadow">0 1 3 0 #1A000000</BoxShadows>
         <!-- Line icons on a 24×24 grid, drawn by chat:LineIcon in the colour of their button. -->
@@ -105,6 +115,7 @@
         <StreamGeometry x:Key="IconJournal">M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1v-16a1 1 0 0 1 1 -1z M9 3v18 M12.5 8h3.5 M12.5 12h3.5</StreamGeometry>
         <StreamGeometry x:Key="IconPullRequest">M4 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M4 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M16 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z M6 8v8 M18 16v-7a3 3 0 0 0 -3 -3h-4 M13 3.5l-2.5 2.5l2.5 2.5</StreamGeometry>
         <StreamGeometry x:Key="IconFolder">M3 6a2 2 0 0 1 2 -2h4l2 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z</StreamGeometry>
+        <StreamGeometry x:Key="IconProfile">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z M9 10a3 3 0 1 0 6 0a3 3 0 1 0 -6 0z M6.2 18.8a4 4 0 0 1 3.8 -2.8h4a4 4 0 0 1 3.8 2.8</StreamGeometry>
         <StreamGeometry x:Key="IconChart">M3 3v18h18 M7 15l4 -4l3 3l6 -6</StreamGeometry>
         <StreamGeometry x:Key="IconBolt">M13 2l-9 12h7l-1 8l9 -12h-7z</StreamGeometry>
         <StreamGeometry x:Key="IconPulse">M3 12h4l3 -8l4 16l3 -8h4</StreamGeometry>
@@ -114,6 +125,15 @@
         <StreamGeometry x:Key="IconPause">M8 5v14 M16 5v14</StreamGeometry>
         <StreamGeometry x:Key="IconSearch">M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0z M20 20l-4 -4</StreamGeometry>
         <StreamGeometry x:Key="IconMore">M4.5 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z M17.5 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z</StreamGeometry>
+        <StreamGeometry x:Key="IconXCircle">M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z M9 9l6 6 M15 9l-6 6</StreamGeometry>
+        <StreamGeometry x:Key="IconHourglass">M6 3h12 M6 21h12 M7 3v3l5 6l5 -6v-3 M7 21v-3l5 -6l5 6v3</StreamGeometry>
+        <StreamGeometry x:Key="IconThumbUp">M7 10v11h-3v-11z M7 10l4 -7a2 2 0 0 1 3 2l-1 5h6a2 2 0 0 1 2 2.3l-1.4 7a2 2 0 0 1 -2 1.7h-10.6</StreamGeometry>
+        <StreamGeometry x:Key="IconUnlock">M5 11h14v10h-14z M8 11v-4a4 4 0 0 1 7.8 -1.2</StreamGeometry>
+        <StreamGeometry x:Key="IconBranch">M6 3v12 M15 6a3 3 0 1 0 6 0a3 3 0 1 0 -6 0z M3 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0z M18 9a9 9 0 0 1 -9 9</StreamGeometry>
+        <StreamGeometry x:Key="IconUser">M8 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0z M4 21v-1a6 6 0 0 1 6 -6h4a6 6 0 0 1 6 6v1</StreamGeometry>
+        <StreamGeometry x:Key="IconAlarm">M5 13a7 7 0 1 0 14 0a7 7 0 1 0 -14 0z M12 10v3l2 2 M5 3l-2 2 M19 3l2 2</StreamGeometry>
+        <StreamGeometry x:Key="IconStopwatch">M4 13a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z M12 9v4l2 2 M10 2h4 M12 2v3</StreamGeometry>
+        <StreamGeometry x:Key="IconAlert">M12 3l10 18h-20z M12 10v4 M12 17v0.01</StreamGeometry>
         <StreamGeometry x:Key="IconSend">M22 2l-7 20l-4 -9l-9 -4z M22 2l-11 11</StreamGeometry>
         <StreamGeometry x:Key="IconArrowDown">M12 5v14 M6 13l6 6l6 -6</StreamGeometry>
         <StreamGeometry x:Key="IconArrowUp">M12 19v-14 M6 11l6 -6l6 6</StreamGeometry>

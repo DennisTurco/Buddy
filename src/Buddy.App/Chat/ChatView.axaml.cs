@@ -351,7 +351,6 @@ public partial class ChatView : UserControl
     {
         var answering = _conversation.IsAnswering;
         WorkingStrip.IsVisible = answering;
-        WorkingBar.IsVisible = answering;
         if (!answering)
         {
             _workingTimer.Stop();
@@ -363,7 +362,9 @@ public partial class ChatView : UserControl
             _workingTimer.Start();
         }
 
-        var who = _conversation.Answering == Speaker.Claude ? "Claude sta lavorando" : "Il modello locale sta rispondendo";
+        var who = _conversation.Answering == Speaker.Claude ? "Claude sta lavorando"
+            : _conversation.IsRouting ? "Il modello locale legge il messaggio"
+            : "Il modello locale sta rispondendo";
         var elapsed = _conversation.AnswerStarted is { } started ? DateTimeOffset.Now - started : TimeSpan.Zero;
         WorkingText.Text = elapsed.TotalSeconds < 1
             ? $"⏳ {who}…"

@@ -76,8 +76,20 @@ public class ChatEntry(Speaker speaker, string text = "") : INotifyPropertyChang
         }
     }
 
-    /// <summary>The answer has started but no text has arrived yet: the bubble shows a "typing" mark.</summary>
-    public bool IsWaiting => _isStreaming && _text.Length == 0;
+    /// <summary>
+    /// The answer has started but no words have arrived yet: the bubble shows a "typing" mark. Only blanks so far
+    /// (a model often starts with a newline) still count as waiting, or the bubble would show nothing at all.
+    /// </summary>
+    public bool IsWaiting => _isStreaming && string.IsNullOrWhiteSpace(_text);
+
+    private string _waitingText = "Sto pensando…";
+
+    /// <summary>What the bubble says next to the typing mark ("Leggo il messaggio…", "Sto pensando…").</summary>
+    public string WaitingText
+    {
+        get => _waitingText;
+        set => Set(ref _waitingText, value);
+    }
 
     /// <summary>For a local answer: the question it answered, so the bubble can offer "Chiedi a Claude".</summary>
     public string? Question { get; init; }

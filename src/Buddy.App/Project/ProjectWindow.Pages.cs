@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Buddy.Core.Mentor;
 using Buddy.Core.Repo;
 using Buddy.Core.Vault;
 
@@ -17,7 +18,7 @@ namespace Buddy.App.Project;
 public partial class ProjectWindow
 {
     /// <summary>The built-in generic pages (also in <see cref="Views"/>).</summary>
-    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "people", "episodes", "calls", "registry", "commitments", "prs"];
+    private static readonly HashSet<string> GenericPages = ["week", "costs", "decisions", "glossary", "people", "episodes", "profile", "calls", "registry", "commitments", "prs"];
 
     private const string PagePrefix = "page:";
     private const string NewPageKey = "page:+";
@@ -107,18 +108,29 @@ public partial class ProjectWindow
         PageContent content;
         try
         {
-            content = key switch
+            // Slow sources (git, gh): placeholders in the shape of the cards while they are read, not a blank page.
+            Task<PageContent>? slow = key switch
+            {
+                "week" => WeekPageAsync(refresh),
+                "prs" => PullRequestsPageAsync(filter, refresh),
+                _ => null,
+            };
+            if (slow is { IsCompleted: false })
+            {
+                ShowPageLoading(true);
+            }
+
+            content = slow is not null ? await slow : key switch
             {
                 "decisions" => DecisionsPage(filter),
                 "glossary" => GlossaryPage(filter),
                 "people" => PeoplePage(filter),
                 "episodes" => EpisodesPage(filter),
+                "profile" => ProfilePage(filter),
                 "calls" => CallsPage(filter),
                 "registry" => RegistryPage(filter),
                 "commitments" => CommitmentsPage(filter),
                 "costs" => CostsPage(filter),
-                "week" => await WeekPageAsync(refresh),
-                "prs" => await PullRequestsPageAsync(filter, refresh),
                 _ when key.StartsWith(PagePrefix, StringComparison.Ordinal) => CustomPage(key[PagePrefix.Length..], filter),
                 _ => new PageContent("", null, [], [], ""),
             };
@@ -130,13 +142,17 @@ public partial class ProjectWindow
 
         if (render != _pageRender || _view != key)
         {
-            return; // another page (or a newer render) took over meanwhile
+            return; // another page (or a newer render) took over meanwhile, and cleared the placeholders itself
         }
+
+        ShowPageLoading(false);
 
         ViewSubtitle.Text = content.Subtitle;
         PageHeader.Markdown = content.Header ?? "";
         PageHeaderPanel.IsVisible = !string.IsNullOrWhiteSpace(content.Header);
         PageCards.ItemsSource = content.Cards;
+        PageCharts.Children.Clear();
+        PageCharts.Children.AddRange(content.Charts);
         PageEmpty.Text = content.Empty;
         PageEmptyPanel.IsVisible = content.Cards.Count == 0 && content.Empty.Length > 0;
         PageButtons.Children.Clear();
@@ -154,6 +170,21 @@ public partial class ProjectWindow
         }
 
         FitPageCards();
+    }
+
+    /// <summary>Four grey cards breathing in place of the page's cards (and nothing else) while it loads.</summary>
+    private void ShowPageLoading(bool loading)
+    {
+        PageLoading.IsVisible = loading;
+        PageLoadingCards.ItemsSource = loading ? new object[] { 1, 2, 3, 4 } : null;
+        if (loading)
+        {
+            PageCards.ItemsSource = null;
+            PageCharts.Children.Clear();
+            PageEmptyPanel.IsVisible = false;
+            PageHeaderPanel.IsVisible = false;
+            FitPageCards();
+        }
     }
 
     /// <summary>Two or three cards per row, whatever the window's width.</summary>
@@ -256,6 +287,16 @@ public partial class ProjectWindow
             case "episode:file":
                 var episodesFile = Episodes.PathFor(_settings);
                 Shell.Open(File.Exists(episodesFile) ? episodesFile : Path.GetDirectoryName(episodesFile)!);
+                break;
+            case "profile:new":
+                ChatCommandRequested?.Invoke("/resoconto");
+                break;
+            case "profile:file":
+                var reportFile = ProfileReports.PathFor(_settings);
+                Shell.Open(File.Exists(reportFile) ? reportFile : Path.GetDirectoryName(reportFile)!);
+                break;
+            case "episode:reflect":
+                ChatCommandRequested?.Invoke("/rifletti");
                 break;
             case "said:new:info":
                 await NewSaidAsync(SaidKind.Info);
@@ -777,7 +818,12 @@ public partial class ProjectWindow
 
                 // Screenshots (![[…]]) are found in the episodes' folder, where the form saved them.
                 return new PageCard(e.Title, e.Date.ToString("dddd d MMMM yyyy", Italian), chips,
-                    NoteLinks.ToMarkdown(body.ToString().TrimEnd(), EpisodesFolder, EpisodesFolder), EpisodeTarget + e.Key, "#C9A86A");
+                    NoteLinks.ToMarkdown(body.ToString().TrimEnd(), EpisodesFolder, EpisodesFolder), EpisodeTarget + e.Key, "#C9A86A")
+                {
+                    // The local model goes back over it with questions, in the chat; nothing leaves the PC.
+                    Actions = [new PageCardAction("🧭 Riflettiamo", "Il modello locale ti fa qualche domanda, una alla volta, per capire cosa c'era sotto e come superarlo", "")
+                        { Local = ChatCommandAction + "/rifletti " + e.Key }],
+                };
             }).ToList();
         var where = string.IsNullOrWhiteSpace(_settings.Mentor.JournalPath) ? "nella cartella del progetto" : "nel tuo diario";
         return new PageContent(
@@ -786,6 +832,7 @@ public partial class ProjectWindow
             [
                 new PageButton("＋ Nuovo episodio", "episode:new", "Cosa è successo, con chi, come hai reagito e com'è finita (anche /episodio testo in chat)"),
                 new PageButton("📄 Apri il file", "episode:file", $"{Episodes.FileName} così com'è scritto"),
+                new PageButton("🧭 Cosa si ripete?", "episode:reflect", "Il modello locale legge gli ultimi episodi e ti aiuta a capire cosa torna (persone, reazioni, situazioni)"),
             ],
             filter.Length > 0 ? "Nessun episodio corrisponde alla ricerca." : "Ancora nessun episodio: raccontane uno con «＋ Nuovo episodio» o con /episodio in chat.");
     }
@@ -893,6 +940,269 @@ public partial class ProjectWindow
 
             Reload();
         }
+    }
+
+    // ---- Il mio profilo -----------------------------------------------------------------------------------------
+
+    private static readonly Avalonia.Media.Color Lilac = Avalonia.Media.Color.Parse("#B99BF5");
+    private static readonly Avalonia.Media.Color Grey = Avalonia.Media.Color.Parse("#A0A4B8");
+    private static readonly Avalonia.Media.Color Green = Avalonia.Media.Color.Parse("#7BC47F");
+    private static readonly Avalonia.Media.Color Amber = Avalonia.Media.Color.Parse("#E0B05C");
+    private static readonly Avalonia.Media.Color Red = Avalonia.Media.Color.Parse("#E8857A");
+    private static readonly Avalonia.Media.Color Blue = Avalonia.Media.Color.Parse("#7FA7E8");
+    private static readonly Avalonia.Media.Color Teal = Avalonia.Media.Color.Parse("#5CC2C7");
+    private static readonly Avalonia.Media.Color Pink = Avalonia.Media.Color.Parse("#D98BC8");
+
+    /// <summary>
+    /// The latest report of the mentor (Resoconto.md, in the journal): the portrait and the marks with how they moved on
+    /// top; then the charts (the marks as a radar and over time, mood and hours from Andamento.md, the episodes month by
+    /// month, the relationships with the people, the interventions' balance); then strengths, things to improve, next
+    /// steps, one card per intervention, the skills from the pills.
+    /// </summary>
+    private PageContent ProfilePage(string filter)
+    {
+        var path = ProfileReports.PathFor(_settings);
+        var reports = ProfileReports.Read(path);
+        var report = reports.Count > 0 ? reports[0] : null;
+        var previous = reports.Count > 1 ? reports[1] : null;
+        var journal = _settings.Mentor.JournalPath ?? "";
+        PageButton[] buttons =
+        [
+            new PageButton("＋ Nuovo resoconto", "profile:new", "Il mentore rilegge diario, profilo ed episodi e ti dà un resoconto con i voti (anche /resoconto in chat)"),
+            new PageButton("📄 Apri il file", "profile:file", $"{ProfileReports.FileName} così com'è scritto, con i resoconti precedenti"),
+        ];
+
+        var header = new StringBuilder();
+        if (report is not null)
+        {
+            if (report.Summary.Length > 0)
+            {
+                header.AppendLine(report.Summary).AppendLine();
+            }
+
+            if (report.Since.Length > 0)
+            {
+                header.AppendLine($"**Rispetto al {previous?.Date.ToString("d MMMM", Italian) ?? "resoconto precedente"}:** {report.Since}").AppendLine();
+            }
+
+            if (report.Average is { } average)
+            {
+                var line = $"*Media dei voti {average.ToString("0.0", Italian)}/10";
+                if (previous?.Average is { } before)
+                {
+                    line += $" (il {previous.Date.ToString("d MMMM", Italian)} era {before.ToString("0.0", Italian)})";
+                }
+
+                header.AppendLine(line + ". Sono ipotesi dai fatti del diario, non giudizi: se non ti ritrovi, correggi il file.*");
+            }
+        }
+
+        var charts = filter.Length == 0 ? ProfileCharts(reports, journal) : [];
+
+        bool Matches(string text) => filter.Length == 0 || text.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
+        var cards = new List<PageCard>();
+        void ListCard(string title, string? subtitle, IReadOnlyList<string> items, string accent)
+        {
+            var shown = items.Where(Matches).ToList();
+            if (shown.Count > 0)
+            {
+                cards.Add(new PageCard(title, subtitle, [], string.Join("\n", shown.Select(i => "- " + i)), path, accent));
+            }
+        }
+
+        if (report is not null)
+        {
+            // Why each mark: the evidence the mentor read, with how it moved since last time.
+            var reasons = report.Scores
+                .Where(s => Matches($"{s.Aspect} {s.Reason}"))
+                .Select(s =>
+                {
+                    var change = ProfileReports.Change(report, previous, s.Aspect);
+                    var trend = change switch { > 0 => $" ↑{change}", < 0 => $" ↓{-change}", _ => "" };
+                    return $"- **{s.Aspect}** {(s.Score is { } v ? $"{v}/10{trend}" : "n.d.")}" + (s.Reason.Length > 0 ? $" — {s.Reason}" : "");
+                })
+                .ToList();
+            if (reasons.Count > 0)
+            {
+                cards.Add(new PageCard("Perché questi voti", "gli indizi letti nel diario", [], string.Join("\n", reasons), path, "#B99BF5"));
+            }
+
+            ListCard("Punti di forza", null, report.Strengths, "#7BC47F");
+            ListCard("Da migliorare", null, report.Improvements, "#E0B05C");
+            ListCard("Prossimi passi", "piccole azioni per le prossime due settimane", report.NextSteps, "#7FA7E8");
+            void Interventions(IReadOnlyList<Intervention> items, bool positive)
+            {
+                foreach (var item in items.Where(i => Matches($"{i.What} {i.Why}")))
+                {
+                    var when = DateOnly.TryParseExact(item.When, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)
+                        ? day.ToString("dddd d MMMM yyyy", Italian) : null;
+                    cards.Add(new PageCard(item.What, when,
+                        [positive ? new Chip("✅ intervento positivo", ChipKind.Good) : new Chip("⚠ da fare diversamente", ChipKind.Hot)],
+                        item.Why.Length > 0 ? (positive ? "**Perché ha funzionato:** " : "**Cosa potevi fare diversamente:** ") + item.Why : null,
+                        path, positive ? "#7BC47F" : "#E8857A"));
+                }
+            }
+
+            Interventions(report.Positive, positive: true);
+            Interventions(report.Negative, positive: false);
+        }
+
+        // Skills, from the pills and their reviews.
+        var pills = Path.Combine(journal, "Pillole.md");
+        if (filter.Length == 0 && journal.Length > 0 && File.Exists(pills) && SkillsMap.Parse(File.ReadAllText(pills)) is { Count: > 0 } skills)
+        {
+            cards.Add(new PageCard("Competenze", "dalle pillole e dai ripassi", [], SkillsMap.ToMarkdown(skills), pills, "#5CC2C7"));
+        }
+
+        if (reports.Count > 1 && filter.Length == 0)
+        {
+            var history = new StringBuilder("| Data | Media | Voti |\n|---|---|---|\n");
+            foreach (var past in reports.Take(6))
+            {
+                history.AppendLine($"| {past.Date.ToString("d MMM yyyy", Italian)} | {past.Average?.ToString("0.0", Italian) ?? "n.d."} | "
+                                   + string.Join(" · ", past.Rated.Select(s => $"{s.Aspect} {s.Score}")) + " |");
+            }
+
+            cards.Add(new PageCard("Com'è cambiato", $"{reports.Count} resoconti", [], history.ToString(), path, "#B99BF5"));
+        }
+
+        return new PageContent(
+            report is null
+                ? $"Il resoconto del mentore su di te · in {ProfileReports.FileName}, privato"
+                : $"Resoconto del {report.Date.ToString("d MMMM yyyy", Italian)}"
+                  + (previous is null ? "" : $" · confronto con il {previous.Date.ToString("d MMMM", Italian)}")
+                  + $" · in {ProfileReports.FileName}, privato",
+            header.Length > 0 ? header.ToString().TrimEnd() : null, cards, buttons,
+            report is null
+                ? "Ancora nessun resoconto: chiedilo con «＋ Nuovo resoconto» o con /resoconto in chat. Più episodi, diari e retro ci sono, più è preciso."
+                : "Nessuna voce corrisponde alla ricerca.")
+        {
+            Charts = charts,
+        };
+    }
+
+    /// <summary>The profile page's charts, each only when there is something to draw.</summary>
+    private List<Control> ProfileCharts(IReadOnlyList<ProfileReport> reports, string journal)
+    {
+        var charts = new List<Control>();
+        var report = reports.Count > 0 ? reports[0] : null;
+        var previous = reports.Count > 1 ? reports[1] : null;
+
+        // The marks as a radar, the previous report dashed under them.
+        if (report is not null && report.Rated.Any())
+        {
+            var series = new List<ChartSeries> { new("Oggi", Lilac, report.Scores.Select(s => (double?)s.Score).ToList()) };
+            var legend = new List<(string, Avalonia.Media.Color, bool)> { ($"{report.Date.ToString("d MMM", Italian)}", Lilac, false) };
+            if (previous is not null)
+            {
+                series.Add(new ChartSeries("Prima", Grey, ProfileReports.Aspects
+                    .Select(a => (double?)previous.Scores.FirstOrDefault(s => s.Aspect == a)?.Score).ToList(), Dashed: true));
+                legend.Add(($"{previous.Date.ToString("d MMM", Italian)}", Grey, true));
+            }
+
+            var missing = report.Scores.Count(s => s.Score is null);
+            charts.Add(ChartPanels.Panel("Il tuo profilo a colpo d'occhio",
+                missing > 0 ? $"{missing} aspett{(missing == 1 ? "o" : "i")} ancora senza voto: mancano indizi nel diario" : "voti da 1 a 10",
+                new RadarChart { Axes = report.Scores.Select(s => s.Aspect).ToList(), Series = series }, legend));
+
+            charts.Add(ChartPanels.Panel("I voti",
+                previous is null ? "il primo resoconto: dal prossimo vedrai come cambiano" : $"↑↓ rispetto al {previous.Date.ToString("d MMMM", Italian)}",
+                new BarChart
+                {
+                    Rows = report.Scores.Select(s => (s.Aspect, (double?)s.Score, (double?)ProfileReports.Change(report, previous, s.Aspect))).ToList(),
+                }));
+        }
+
+        // The marks over time: the average, and the aspects that moved the most.
+        if (reports.Count > 1)
+        {
+            var timeline = reports.Take(8).Reverse().ToList();
+            Avalonia.Media.Color[] palette = [Blue, Green, Amber];
+            var moved = ProfileReports.Aspects
+                .Select(a => (Aspect: a, Values: timeline.Select(r => r.Scores.FirstOrDefault(s => s.Aspect == a)?.Score).ToList()))
+                .Where(x => x.Values.Count(v => v is not null) >= 2)
+                .OrderByDescending(x => Math.Abs((x.Values.Last(v => v is not null) ?? 0) - (x.Values.First(v => v is not null) ?? 0)))
+                .Take(3)
+                .ToList();
+            var series = new List<ChartSeries> { new("Media", Lilac, timeline.Select(r => r.Average).ToList()) };
+            series.AddRange(moved.Select((m, i) => new ChartSeries(m.Aspect, palette[i], m.Values.Select(v => (double?)v).ToList())));
+            charts.Add(ChartPanels.Panel("Come cambiano i voti", "la media e gli aspetti che si sono mossi di più",
+                new LineChart { Labels = timeline.Select(r => r.Date.ToString("d MMM", Italian)).ToList(), Series = series, Min = 0, Max = 10 },
+                series.Select(s => (s.Name, s.Color, false))));
+        }
+
+        // Mood and hours, week by week, from the weekly retro.
+        var weeks = ProfileTrends.ReadAndamento(journal).TakeLast(12).ToList();
+        if (weeks.Any(w => w.Mood is not null))
+        {
+            var moods = weeks.Where(w => w.Mood is not null).Select(w => w.Mood!.Value).ToList();
+            charts.Add(ChartPanels.Panel("Umore per settimana", $"media {moods.Average().ToString("0.0", Italian)} su 5 · dai check-out (Andamento.md)",
+                new LineChart
+                {
+                    Labels = weeks.Select(w => ProfileTrends.ShortWeek(w.Week)).ToList(),
+                    Series = [new ChartSeries("Umore", Pink, weeks.Select(w => w.Mood).ToList())],
+                    Min = 1, Max = 5, Step = 1,
+                }));
+        }
+
+        if (weeks.Any(w => w.Hours is not null))
+        {
+            Avalonia.Media.Color Kept(WeekTrend w) => w.KeptKind switch { "sì" => Green, "in parte" => Amber, "no" => Red, _ => Grey };
+            var kept = weeks.Count(w => w.KeptKind == "sì");
+            var rated = weeks.Count(w => w.KeptKind.Length > 0);
+            charts.Add(ChartPanels.Panel("Ore attive e abitudini",
+                rated > 0 ? $"abitudine della settimana mantenuta {kept} volte su {rated}" : "ore al PC per settimana",
+                new ColumnChart
+                {
+                    Labels = weeks.Select(w => ProfileTrends.ShortWeek(w.Week)).ToList(),
+                    Columns = weeks.Select(w => (IReadOnlyList<ColumnPart>)[new ColumnPart(Math.Round(w.Hours ?? 0), Kept(w))]).ToList(),
+                },
+                rated > 0 ? [("mantenuta", Green, false), ("in parte", Amber, false), ("no", Red, false), ("non valutata", Grey, false)] : null));
+        }
+
+        // The episodes, month by month: those that went smoothly and those that hurt.
+        var episodes = Episodes.Read(Episodes.PathFor(_settings));
+        if (episodes.Count > 0)
+        {
+            var months = ProfileTrends.EpisodesByMonth(episodes, DateOnly.FromDateTime(DateTime.Today));
+            var tense = months.Sum(m => m.Tense);
+            var total = months.Sum(m => m.Calm + m.Tense);
+            charts.Add(ChartPanels.Panel("Episodi con i colleghi", $"ultimi 6 mesi: {total} episodi, {tense} tes{(tense == 1 ? "o" : "i")}",
+                new ColumnChart
+                {
+                    Labels = months.Select(m => m.Month.ToString("MMM", Italian)).ToList(),
+                    Columns = months.Select(m => (IReadOnlyList<ColumnPart>)[new ColumnPart(m.Calm, Teal), new ColumnPart(m.Tense, Red)]).ToList(),
+                },
+                [("sereni", Teal, false), ("tesi", Red, false)]));
+        }
+
+        // How things stand with the people of the project.
+        if (NoteTitled(People.Note) is { } peopleNote && People.Parse(peopleNote.Content) is { Count: > 0 } people)
+        {
+            var (counts, unset) = ProfileTrends.Relationships(people);
+            if (counts.Any(c => c.Count > 0))
+            {
+                Avalonia.Media.Color[] shades = [Green, Teal, Blue, Amber, Red];
+                charts.Add(ChartPanels.Panel("Rapporti con le persone",
+                    $"{people.Count} persone nella nota Persone" + (unset > 0 ? $" · {unset} senza rapporto scritto" : ""),
+                    new ColumnChart
+                    {
+                        Labels = counts.Select(c => c.Relationship).ToList(),
+                        Columns = counts.Select((c, i) => (IReadOnlyList<ColumnPart>)[new ColumnPart(c.Count, shades[i])]).ToList(),
+                    }));
+            }
+        }
+
+        // The interventions' balance in the latest report.
+        if (report is not null && report.Positive.Count + report.Negative.Count > 0)
+        {
+            var (good, bad) = (report.Positive.Count, report.Negative.Count);
+            charts.Add(ChartPanels.Panel("Bilancio degli interventi",
+                $"{good} riuscit{(good == 1 ? "o" : "i")} · {bad} da fare diversamente, nel resoconto del {report.Date.ToString("d MMMM", Italian)}",
+                ChartPanels.Ratio(good, bad, Green, Red), [("riusciti", Green, false), ("da fare diversamente", Red, false)]));
+        }
+
+        return charts;
     }
 
     // ---- Costi ------------------------------------------------------------------------------------------------

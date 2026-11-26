@@ -14,6 +14,9 @@ public sealed partial class Conversation
     private readonly Context.SemanticIndex? _semantic;
     private readonly HashSet<string> _titling = [];
 
+    /// <summary>When the router started reading the message the local model then answers: the wait counts from there.</summary>
+    private DateTimeOffset? _routedAt;
+
     /// <summary>The local model's jobs, for the windows too (card form, dictation); null in tests without it.</summary>
     public LocalAi? LocalAi { get; }
 
@@ -32,8 +35,30 @@ public sealed partial class Conversation
             return false;
         }
 
+        // Reading the message takes the local model a few seconds: the message and a waiting bubble show at once
+        // (the answer replaces the bubble), and the working strip counts the time.
+        ShowPending(input, "Leggo il messaggio…");
         PetState = PetState.Think;
-        var decision = await LocalAi.RouteAsync(input);
+        IsRouting = true;
+        _routedAt = DateTimeOffset.Now;
+        AnswerStarted ??= _routedAt;
+        Notify(nameof(IsAnswering));
+        RouteDecision? decision;
+        try
+        {
+            decision = await LocalAi.RouteAsync(input);
+        }
+        finally
+        {
+            IsRouting = false;
+            if (!IsAnswering)
+            {
+                AnswerStarted = null;
+            }
+
+            Notify(nameof(IsAnswering));
+        }
+
         PetState = PetState.Idle;
         if (decision is null)
         {
